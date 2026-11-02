@@ -12,16 +12,21 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Download Libv2ray Core
         run: |
           mkdir -p V2rayNG/app/libs
-          wget -O V2rayNG/app/libs/libv2ray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
+          LATEST_URL=$(curl -s https://api.github.com/repos/2dust/AndroidLibXrayLite/releases/latest | grep "browser_download_url.*aar" | cut -d '"' -f 4)
+          wget -O V2rayNG/app/libs/libv2ray.aar "$LATEST_URL"
 
       - name: Grant execute permission for gradlew
         run: |
@@ -31,10 +36,10 @@ jobs:
       - name: Build Debug APK
         run: |
           cd V2rayNG
-          ./gradlew assembleDebug
+          ./gradlew assemblePlaystoreDebug
 
       - name: Upload Penny VPN APK
         uses: actions/upload-artifact@v4
         with:
           name: Penny-VPN-Installer
-          path: V2rayNG/app/build/outputs/apk/debug/*.apk
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*.apk

@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
@@ -20,16 +23,21 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,17 +61,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.dto.TestServiceMessage
@@ -99,6 +112,81 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+
+// ═════════════════════════ زبان (فارسی / انگلیسی) ═════════════════════════
+
+private enum class AppLang(val code: String) { FA("fa"), EN("en") }
+
+private object Strings {
+    fun subtitle(l: AppLang) =
+        if (l == AppLang.FA) "انتخابگر هوشمند سریع‌ترین سرور" else "Smart Fastest Server Selector"
+
+    fun splashTagline(l: AppLang) =
+        if (l == AppLang.FA) "اتصال امن، هوشمند و پرسرعت" else "Fast, Smart & Secure Protection"
+
+    fun ready(l: AppLang) = if (l == AppLang.FA) "آماده" else "Ready"
+    fun connectedBadge(l: AppLang) = if (l == AppLang.FA) "متصل ✅" else "Connected ✅"
+    fun smartConnect(l: AppLang) = if (l == AppLang.FA) "اتصال هوشمند" else "Smart Connect"
+    fun tapToCancel(l: AppLang) = if (l == AppLang.FA) "ضربه = لغو" else "Tap to Cancel"
+    fun disconnect(l: AppLang) = if (l == AppLang.FA) "قطع اتصال" else "Disconnect"
+
+    fun download(l: AppLang) = if (l == AppLang.FA) "دانلود" else "Download"
+    fun upload(l: AppLang) = if (l == AppLang.FA) "آپلود" else "Upload"
+    fun duration(l: AppLang) = if (l == AppLang.FA) "مدت اتصال" else "Duration"
+    fun totalData(l: AppLang) = if (l == AppLang.FA) "حجم مصرفی" else "Total Data"
+
+    fun noServerYet(l: AppLang) =
+        if (l == AppLang.FA) "هنوز سروری اسکن نشده؛ دکمه اسکن یا اتصال را بزنید."
+        else "No servers scanned yet; tap Scan or Connect."
+
+    fun suggestedPrefix(l: AppLang, label: String) =
+        if (l == AppLang.FA) "پیشنهاد: $label" else "Suggested: $label"
+
+    fun scanServersBtn(l: AppLang) = if (l == AppLang.FA) "🔍 اسکن سرورها" else "🔍 Scan Servers"
+    fun nextServerBtn(l: AppLang) = if (l == AppLang.FA) "⏭ سرور بعدی" else "⏭ Next Server"
+
+    fun scanInfo(l: AppLang, min: Long, count: Int): String {
+        return if (l == AppLang.FA) {
+            val ago = when {
+                min < 1 -> "چند لحظه پیش"
+                min < 60 -> "$min دقیقه پیش"
+                else -> "${min / 60} ساعت پیش"
+            }
+            "آخرین اسکن: $ago  •  $count سرور آماده"
+        } else {
+            val ago = when {
+                min < 1 -> "just now"
+                min < 60 -> "${min}m ago"
+                else -> "${min / 60}h ago"
+            }
+            "Last scan: $ago  •  $count servers ready"
+        }
+    }
+
+    fun noScanYet(l: AppLang) =
+        if (l == AppLang.FA) "هنوز اسکنی انجام نشده" else "No scan performed yet"
+
+    fun menuBestConfigs(l: AppLang) = if (l == AppLang.FA) "بهترین کانفیگ‌ها" else "Best Configs"
+    fun menuAutoSwitch(l: AppLang, on: Boolean) =
+        if (l == AppLang.FA) (if (on) "✓ تعویض خودکار هنگام قطعی" else "تعویض خودکار هنگام قطعی")
+        else (if (on) "✓ Auto-Switch on Drop" else "Auto-Switch on Drop")
+
+    fun menuAutoReconnect(l: AppLang, on: Boolean) =
+        if (l == AppLang.FA) (if (on) "✓ اتصال خودکار در تغییر شبکه" else "اتصال خودکار در تغییر شبکه")
+        else (if (on) "✓ Auto-Reconnect on Net Change" else "Auto-Reconnect on Net Change")
+
+    fun menuAppLog(l: AppLang) = if (l == AppLang.FA) "لاگ برنامه" else "App Logs"
+    fun menuCoreLog(l: AppLang) = if (l == AppLang.FA) "لاگ هسته (Logcat)" else "Core Logs (Logcat)"
+    fun close(l: AppLang) = if (l == AppLang.FA) "بستن" else "Close"
+    fun copy(l: AppLang) = if (l == AppLang.FA) "کپی" else "Copy"
+    fun clear(l: AppLang) = if (l == AppLang.FA) "پاک کردن" else "Clear"
+    fun emptyBestList(l: AppLang) =
+        if (l == AppLang.FA) "هنوز لیستی ساخته نشده. ابتدا اسکن کنید."
+        else "No server list yet. Please scan first."
+
+    fun emptyLogs(l: AppLang) =
+        if (l == AppLang.FA) "هنوز لاگی ثبت نشده." else "No logs recorded yet."
+}
 
 // ═════════════════════════ مدل‌ها ═════════════════════════
 
@@ -199,8 +287,149 @@ private fun StatCell(icon: String, value: String, label: String, modifier: Modif
     }
 }
 
+/**
+ * اسپلش و انیمیشن خلاقانه ورود با لوگوی گربه VPN
+ */
 @Composable
-private fun NeonBrandHeader(mode: UiMode) {
+private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        entered = true
+        delay(2300)
+        onFinished()
+    }
+
+    val logoScale by animateFloatAsState(
+        targetValue = if (entered) 1f else 0.35f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "splashScale"
+    )
+
+    val inf = rememberInfiniteTransition(label = "splashInf")
+    val orbitAngle by inf.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
+        label = "orbitAngle"
+    )
+    val ringWave by inf.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
+        label = "ringWave"
+    )
+    val glowPulse by inf.animateFloat(
+        initialValue = 14f,
+        targetValue = 32f,
+        animationSpec = infiniteRepeatable(
+            tween(900, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "glowPulse"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF0B2558),
+                        Color(0xFF0F172A),
+                        Color(0xFF020617)
+                    )
+                )
+            )
+            .clickable { onFinished() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier.size(250.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    val baseR = size.minDimension * 0.36f
+
+                    // امواج راداری در حال گسترش
+                    for (k in 0..1) {
+                        val t = (ringWave + k * 0.5f) % 1f
+                        drawCircle(
+                            color = Color(0xFF38BDF8).copy(alpha = (1f - t) * 0.38f),
+                            radius = baseR + t * size.minDimension * 0.16f,
+                            center = center,
+                            style = Stroke(width = 3.dp.toPx())
+                        )
+                    }
+
+                    // کمان‌های نئونی چرخان دور لوگو
+                    val arcR = baseR + 10.dp.toPx()
+                    val tl = Offset(center.x - arcR, center.y - arcR)
+                    val sz = Size(arcR * 2f, arcR * 2f)
+                    drawArc(
+                        color = Color(0xFF00E676),
+                        startAngle = orbitAngle,
+                        sweepAngle = 100f,
+                        useCenter = false,
+                        topLeft = tl,
+                        size = sz,
+                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        color = Color(0xFF38BDF8),
+                        startAngle = orbitAngle + 180f,
+                        sweepAngle = 100f,
+                        useCenter = false,
+                        topLeft = tl,
+                        size = sz,
+                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+
+                Image(
+                    painter = painterResource(id = R.drawable.penny_cat_logo),
+                    contentDescription = "Penny VPN Logo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(182.dp)
+                        .scale(logoScale)
+                        .clip(CircleShape)
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = "PENNY VPN",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 3.sp,
+                style = TextStyle(
+                    shadow = Shadow(
+                        color = Color(0xFF38BDF8),
+                        offset = Offset(0f, 0f),
+                        blurRadius = glowPulse
+                    )
+                )
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = Strings.splashTagline(lang),
+                color = Color(0xFF94A3B8),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun NeonBrandHeader(mode: UiMode, lang: AppLang, onLogoClick: () -> Unit) {
     val glowTarget = when (mode) {
         UiMode.IDLE -> Color(0xFF38BDF8)
         UiMode.SCANNING -> Color(0xFFFFAB00)
@@ -219,31 +448,98 @@ private fun NeonBrandHeader(mode: UiMode) {
         label = "neonBlur"
     )
 
-    Column {
-        Text(
-            text = "PENNY VPN",
-            color = Color.White,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 2.sp,
-            style = TextStyle(
-                shadow = Shadow(
-                    color = neonColor,
-                    offset = Offset(0f, 0f),
-                    blurRadius = blurRadius
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(id = R.drawable.penny_cat_logo),
+            contentDescription = "Penny VPN Cat Logo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .border(1.5.dp, neonColor.copy(alpha = 0.7f), CircleShape)
+                .clickable { onLogoClick() }
+        )
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                text = "PENNY VPN",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 2.sp,
+                style = TextStyle(
+                    shadow = Shadow(
+                        color = neonColor,
+                        offset = Offset(0f, 0f),
+                        blurRadius = blurRadius
+                    )
                 )
             )
-        )
+            Text(
+                text = Strings.subtitle(lang),
+                color = Color(0xFF94A3B8),
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
+/**
+ * انیمیشن پالس زنده روی متن وضعیت اتصال در حالت CONNECTED
+ */
+@Composable
+private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang) {
+    val isConnected = mode == UiMode.CONNECTED
+    val inf = rememberInfiniteTransition(label = "statusPulse")
+    val pulseScale by inf.animateFloat(
+        initialValue = 1.0f,
+        targetValue = if (isConnected) 1.08f else 1.0f,
+        animationSpec = infiniteRepeatable(
+            tween(1100, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "statusScale"
+    )
+    val pulseGlow by inf.animateFloat(
+        initialValue = 8f,
+        targetValue = if (isConnected) 24f else 8f,
+        animationSpec = infiniteRepeatable(
+            tween(1100, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "statusGlow"
+    )
+
+    Crossfade(
+        targetState = if (isConnected) Strings.connectedBadge(lang) else statusMessage,
+        label = "status"
+    ) { msg ->
         Text(
-            text = "انتخابگر هوشمند سریع‌ترین سرور",
-            color = Color(0xFF94A3B8),
-            fontSize = 12.sp
+            text = msg,
+            color = if (isConnected) Color(0xFF00E676) else Color.White,
+            fontSize = 15.sp,
+            fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            style = if (isConnected) {
+                TextStyle(
+                    shadow = Shadow(
+                        color = Color(0xFF00E676).copy(alpha = 0.85f),
+                        offset = Offset(0f, 0f),
+                        blurRadius = pulseGlow
+                    )
+                )
+            } else {
+                TextStyle.Default
+            },
+            modifier = Modifier
+                .scale(if (isConnected) pulseScale else 1f)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         )
     }
 }
 
 @Composable
-private fun PowerButton(mode: UiMode, progress: Float, onClick: () -> Unit) {
+private fun PowerButton(mode: UiMode, progress: Float, lang: AppLang, onClick: () -> Unit) {
     val target = when (mode) {
         UiMode.IDLE -> Color(0xFF2979FF)
         UiMode.SCANNING -> Color(0xFFFFA000)
@@ -346,10 +642,10 @@ private fun PowerButton(mode: UiMode, progress: Float, onClick: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = when (m) {
-                            UiMode.IDLE -> "اتصال هوشمند"
-                            UiMode.SCANNING -> "ضربه = لغو"
-                            UiMode.CONNECTING -> "ضربه = لغو"
-                            UiMode.CONNECTED -> "قطع اتصال"
+                            UiMode.IDLE -> Strings.smartConnect(lang)
+                            UiMode.SCANNING -> Strings.tapToCancel(lang)
+                            UiMode.CONNECTING -> Strings.tapToCancel(lang)
+                            UiMode.CONNECTED -> Strings.disconnect(lang)
                         },
                         color = fg.copy(alpha = 0.8f), fontSize = 12.sp
                     )
@@ -399,6 +695,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private val socksPort: Int get() = SettingsManager.getSocksPort()
 
     // ── وضعیت UI ──
+    private var showSplash by mutableStateOf(true)
+    private var appLang by mutableStateOf(AppLang.FA)
     private var phase by mutableStateOf(Phase.IDLE)
     private var statusMessage by mutableStateOf("آماده")
     private var scanProgress by mutableStateOf(0f)
@@ -406,6 +704,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private var connectStartMs by mutableStateOf(0L)
     private var lastConnectedGuid by mutableStateOf<String?>(null)
     private var autoSwitch by mutableStateOf(true)
+    private var autoReconnect by mutableStateOf(true)
+    private var userWantsConnected by mutableStateOf(false)
 
     private var showMenu by mutableStateOf(false)
     private var showLog by mutableStateOf(false)
@@ -418,6 +718,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private val countryCache = ConcurrentHashMap<String, String>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
     private var workJob: Job? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     private val prefs by lazy { getSharedPreferences("penny_prefs", Context.MODE_PRIVATE) }
 
@@ -426,8 +727,8 @@ class MainActivity : HelperBaseComponentActivity() {
             if (it.resultCode == RESULT_OK) {
                 startSmartConnect()
             } else {
-                statusMessage = "مجوز VPN داده نشد!"
-                plog("مجوز VPN داده نشد")
+                statusMessage = if (appLang == AppLang.FA) "مجوز VPN داده نشد!" else "VPN permission denied!"
+                plog("VPN permission denied")
             }
         }
 
@@ -437,12 +738,112 @@ class MainActivity : HelperBaseComponentActivity() {
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
         loadSaved()
         startMonitor()
+        registerNetworkChangeAutoReconnect()
+    }
+
+    override fun onDestroy() {
+        unregisterNetworkChangeCallback()
+        super.onDestroy()
+    }
+
+    // ═════════════════════════ تشخیص تغییر شبکه و اتصال مجدد خودکار (Auto-Reconnect) ═════════════════════════
+
+    private fun registerNetworkChangeAutoReconnect() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    super.onAvailable(network)
+                    if (!autoReconnect || !userWantsConnected) return
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        delay(1800) // صبر کوتاه برای پایداری شبکه جدید
+                        if (!autoReconnect || !userWantsConnected || phase != Phase.IDLE) return@launch
+                        val isRunning = mainViewModel.uiState.value.isRunning
+                        val tunnelAlive = isRunning && testThroughLocalProxy(TEST_URLS.first()) > 0
+                        if (!tunnelAlive) {
+                            plog(
+                                if (appLang == AppLang.FA)
+                                    "🌐 تغییر شبکه یا افت ناگهانی تشخیص داده شد؛ اتصال مجدد خودکار به آخرین سرور سالم..."
+                                else
+                                    "🌐 Network change / drop detected; auto-reconnecting to last healthy server..."
+                            )
+                            triggerAutoReconnect()
+                        }
+                    }
+                }
+
+                override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                    super.onCapabilitiesChanged(network, networkCapabilities)
+                    if (!autoReconnect || !userWantsConnected || phase != Phase.IDLE) return
+                    if (!mainViewModel.uiState.value.isRunning) {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            delay(1500)
+                            if (autoReconnect && userWantsConnected && phase == Phase.IDLE && !mainViewModel.uiState.value.isRunning) {
+                                plog("🔄 Auto-Reconnect triggered on network capability recovery")
+                                triggerAutoReconnect()
+                            }
+                        }
+                    }
+                }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            networkCallback = cb
+        } catch (e: Exception) {
+            plog("NetworkCallback error: ${e.message}")
+        }
+    }
+
+    private fun unregisterNetworkChangeCallback() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            networkCallback?.let { cm.unregisterNetworkCallback(it) }
+            networkCallback = null
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun triggerAutoReconnect() {
+        if (phase != Phase.IDLE || bestList.isEmpty()) return
+        if (SettingsManager.isVpnMode() && VpnService.prepare(this@MainActivity) != null) return
+
+        ui {
+            phase = Phase.CONNECTING
+            statusMessage = if (appLang == AppLang.FA)
+                "در حال اتصال مجدد خودکار به آخرین سرور سالم..."
+            else
+                "Auto-reconnecting to last healthy server..."
+        }
+        try {
+            failedGuids.clear()
+            val connected = connectFromList(startAfter = null)
+            ui {
+                statusMessage = if (connected != null) {
+                    if (appLang == AppLang.FA) "اتصال مجدد خودکار برقرار شد ✅" else "Auto-reconnected ✅"
+                } else {
+                    if (appLang == AppLang.FA) "اتصال مجدد ناموفق بود" else "Auto-reconnect failed"
+                }
+            }
+        } finally {
+            withContext(NonCancellable + Dispatchers.Main) {
+                phase = Phase.IDLE
+            }
+        }
     }
 
     // ═════════════════════════ ذخیره / بازیابی ═════════════════════════
 
+    private fun toggleLanguage() {
+        appLang = if (appLang == AppLang.FA) AppLang.EN else AppLang.FA
+        prefs.edit().putString("app_lang", appLang.code).apply()
+        statusMessage = Strings.ready(appLang)
+    }
+
     private fun loadSaved() {
+        val savedLang = prefs.getString("app_lang", "fa")
+        appLang = if (savedLang == "en") AppLang.EN else AppLang.FA
+        statusMessage = Strings.ready(appLang)
         autoSwitch = prefs.getBoolean("auto_switch", true)
+        autoReconnect = prefs.getBoolean("auto_reconnect", true)
+        userWantsConnected = prefs.getBoolean("user_connected", false)
         lastScanTime = prefs.getLong("scan_time", 0L)
         connectStartMs = prefs.getLong("connect_time", 0L)
         lastConnectedGuid = prefs.getString("last_guid", null)
@@ -459,9 +860,9 @@ class MainActivity : HelperBaseComponentActivity() {
             }
             bestList.clear()
             bestList.addAll(assignLabels(out))
-            plog("لیست ذخیره‌شده بارگذاری شد: ${out.size} سرور")
+            plog("Loaded cached servers: ${out.size}")
         } catch (e: Exception) {
-            plog("خطا در بارگذاری لیست: ${e.message}")
+            plog("Error loading cache: ${e.message}")
         }
     }
 
@@ -471,7 +872,7 @@ class MainActivity : HelperBaseComponentActivity() {
             list.forEach { arr.put(JSONObject().put("g", it.guid).put("c", it.cc).put("m", it.ms)) }
             prefs.edit().putString("list", arr.toString()).putLong("scan_time", scanTime).apply()
         } catch (e: Exception) {
-            plog("خطا در ذخیره لیست: ${e.message}")
+            plog("Error saving cache: ${e.message}")
         }
     }
 
@@ -489,7 +890,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun copyLogToClipboard() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("PennyVPN log", logLines.joinToString("\n")))
-        statusMessage = "لاگ کپی شد"
+        statusMessage = if (appLang == AppLang.FA) "لاگ کپی شد" else "Logs copied"
     }
 
     private suspend fun ui(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
@@ -572,234 +973,284 @@ class MainActivity : HelperBaseComponentActivity() {
                 ?: bestList.firstOrNull { it.guid == lastConnectedGuid }
                 ?: bestList.firstOrNull()
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF020617)))
-                )
-        ) {
-            Column(
+        val layoutDir = if (appLang == AppLang.FA) LayoutDirection.Rtl else LayoutDirection.Ltr
+
+        CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 28.dp, bottom = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .background(
+                        Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF020617)))
+                    )
             ) {
-                // ── هدر نئونی درخشان + منو ──
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp)
+                        .padding(top = 28.dp, bottom = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    NeonBrandHeader(mode = mode)
-                    Box {
-                        TextButton(onClick = { showMenu = true }) {
-                            Text("⋮", color = Color.White, fontSize = 28.sp)
-                        }
-                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("بهترین کانفیگ‌ها") },
-                                onClick = { showMenu = false; showBest = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (autoSwitch) "✓ تعویض خودکار هنگام قطعی" else "تعویض خودکار هنگام قطعی") },
-                                onClick = {
-                                    showMenu = false
-                                    autoSwitch = !autoSwitch
-                                    prefs.edit().putBoolean("auto_switch", autoSwitch).apply()
-                                    plog("تعویض خودکار: $autoSwitch")
+                    // ── هدر نئونی درخشان با لوگو + دکمه تغییر زبان FA/EN + منو ──
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NeonBrandHeader(
+                            mode = mode,
+                            lang = appLang,
+                            onLogoClick = { showSplash = true }
+                        )
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = Color(0xFF1E293B),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { toggleLanguage() }
+                            ) {
+                                Text(
+                                    text = if (appLang == AppLang.FA) "EN" else "FA",
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+
+                            Box {
+                                TextButton(onClick = { showMenu = true }) {
+                                    Text("⋮", color = Color.White, fontSize = 28.sp)
                                 }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("لاگ برنامه") },
-                                onClick = { showMenu = false; showLog = true }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("لاگ هسته (Logcat)") },
-                                onClick = {
-                                    showMenu = false
-                                    startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
+                                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(Strings.menuBestConfigs(appLang)) },
+                                        onClick = { showMenu = false; showBest = true }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(Strings.menuAutoSwitch(appLang, autoSwitch)) },
+                                        onClick = {
+                                            showMenu = false
+                                            autoSwitch = !autoSwitch
+                                            prefs.edit().putBoolean("auto_switch", autoSwitch).apply()
+                                            plog("Auto-switch: $autoSwitch")
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(Strings.menuAutoReconnect(appLang, autoReconnect)) },
+                                        onClick = {
+                                            showMenu = false
+                                            autoReconnect = !autoReconnect
+                                            prefs.edit().putBoolean("auto_reconnect", autoReconnect).apply()
+                                            plog("Auto-reconnect: $autoReconnect")
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (appLang == AppLang.FA) "🌐 Language: English" else "🌐 زبان: فارسی") },
+                                        onClick = {
+                                            showMenu = false
+                                            toggleLanguage()
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(Strings.menuAppLog(appLang)) },
+                                        onClick = { showMenu = false; showLog = true }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(Strings.menuCoreLog(appLang)) },
+                                        onClick = {
+                                            showMenu = false
+                                            startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
-                }
 
-                Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
 
-                // ── دکمه اصلی انیمیشنی ──
-                PowerButton(mode = mode, progress = scanProgress, onClick = { onPowerClick() })
-
-                // ── پیام وضعیت ──
-                Crossfade(
-                    targetState = if (mode == UiMode.CONNECTED) "متصل ✅" else statusMessage,
-                    label = "status"
-                ) { msg ->
-                    Text(
-                        text = msg,
-                        color = if (mode == UiMode.CONNECTED) Color(0xFF00E676) else Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                    // ── دکمه اصلی انیمیشنی ──
+                    PowerButton(
+                        mode = mode,
+                        progress = scanProgress,
+                        lang = appLang,
+                        onClick = { onPowerClick() }
                     )
-                }
 
-                // ── آمار زنده ──
-                AnimatedVisibility(
-                    visible = mode == UiMode.CONNECTED,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
+                    // ── پیام وضعیت با انیمیشن پالس در حالت CONNECTED ──
+                    PulsingStatusText(mode = mode, statusMessage = statusMessage, lang = appLang)
+
+                    // ── آمار زنده ──
+                    AnimatedVisibility(
+                        visible = mode == UiMode.CONNECTED,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Surface(
+                            color = Color(0xFF111C33),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    StatCell(
+                                        "⬇", fmtSpeed(downSpeed), Strings.download(appLang),
+                                        Modifier.weight(1f)
+                                    )
+                                    StatCell(
+                                        "⬆", fmtSpeed(upSpeed), Strings.upload(appLang),
+                                        Modifier.weight(1f)
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    StatCell(
+                                        "⏱", fmtDuration(elapsedSec), Strings.duration(appLang),
+                                        Modifier.weight(1f)
+                                    )
+                                    StatCell(
+                                        "📊",
+                                        fmtBytes(totalDown + totalUp),
+                                        Strings.totalData(appLang),
+                                        Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // ── کارت سرور (ستاره‌ها دقیقاً جلوی اسم سرور در یک ردیف، نه زیر آن) ──
                     Surface(
-                        color = Color(0xFF111C33),
+                        color = Color(0xFF1E293B),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(enabled = !busy && bestList.isNotEmpty()) {
+                                showBest = true
+                            }
                     ) {
-                        Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                StatCell(
-                                    "⬇", fmtSpeed(downSpeed), "دانلود",
-                                    Modifier.weight(1f)
-                                )
-                                StatCell(
-                                    "⬆", fmtSpeed(upSpeed), "آپلود",
-                                    Modifier.weight(1f)
-                                )
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                StatCell("⏱", fmtDuration(elapsedSec), "مدت اتصال", Modifier.weight(1f))
-                                StatCell(
-                                    "📊",
-                                    fmtBytes(totalDown + totalUp),
-                                    "حجم مصرفی",
-                                    Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // ── کارت سرور (ستاره‌ها دقیقاً جلوی اسم سرور در یک ردیف، نه زیر آن) ──
-                Surface(
-                    color = Color(0xFF1E293B),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(enabled = !busy && bestList.isNotEmpty()) {
-                            showBest = true
-                        }
-                ) {
-                    if (current == null) {
-                        Text(
-                            "هنوز سروری اسکن نشده؛ دکمه اسکن یا اتصال را بزنید.",
-                            color = Color(0xFF94A3B8), fontSize = 13.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(18.dp)
-                        )
-                    } else {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 15.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(current.flag, fontSize = 30.sp)
-                            Spacer(Modifier.width(12.dp))
+                        if (current == null) {
+                            Text(
+                                Strings.noServerYet(appLang),
+                                color = Color(0xFF94A3B8), fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp)
+                            )
+                        } else {
                             Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 15.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = if (mode == UiMode.CONNECTED) current.label else "پیشنهاد: ${current.label}",
-                                    color = current.tier.color,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                StarsRow(current.stars, 16.sp)
+                                Text(current.flag, fontSize = 30.sp)
+                                Spacer(Modifier.width(12.dp))
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (mode == UiMode.CONNECTED) current.label else Strings.suggestedPrefix(appLang, current.label),
+                                        color = current.tier.color,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    StarsRow(current.stars, 16.sp)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(current.tier.icon, fontSize = 24.sp)
                             }
-                            Spacer(Modifier.width(8.dp))
-                            Text(current.tier.icon, fontSize = 24.sp)
                         }
                     }
-                }
 
-                Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(14.dp))
 
-                // ── نوار پیشرفت اسکن ──
-                AnimatedVisibility(visible = phase == Phase.SCANNING) {
-                    val p by animateFloatAsState(scanProgress, tween(400), label = "bar")
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color(0xFF1E293B))
-                    ) {
+                    // ── نوار پیشرفت اسکن ──
+                    AnimatedVisibility(visible = phase == Phase.SCANNING) {
+                        val p by animateFloatAsState(scanProgress, tween(400), label = "bar")
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth(p.coerceIn(0f, 1f))
-                                .fillMaxHeight()
-                                .background(Color(0xFFFFA000))
-                        )
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Color(0xFF1E293B))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(p.coerceIn(0f, 1f))
+                                    .fillMaxHeight()
+                                    .background(Color(0xFFFFA000))
+                            )
+                        }
                     }
+
+                    // ── دکمه‌های جدا: اسکن / سرور بعدی ──
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { startScanOnly() },
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(Strings.scanServersBtn(appLang), fontSize = 13.sp) }
+                        Button(
+                            onClick = { switchNext() },
+                            enabled = !busy && isRunning && bestList.size > 1,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                        ) { Text(Strings.nextServerBtn(appLang), fontSize = 13.sp, color = Color.White) }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    val scanInfo = if (lastScanTime > 0L) {
+                        val min = (System.currentTimeMillis() - lastScanTime) / 60000L
+                        Strings.scanInfo(appLang, min, bestList.size)
+                    } else Strings.noScanYet(appLang)
+                    Text(scanInfo, color = Color(0xFF64748B), fontSize = 12.sp)
                 }
 
-                // ── دکمه‌های جدا: اسکن / سرور بعدی ──
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // ── اسپلش خلاقانه ابتدای برنامه با لوگوی گربه VPN ──
+                AnimatedVisibility(
+                    visible = showSplash,
+                    enter = fadeIn(tween(300)) + scaleIn(tween(300)),
+                    exit = fadeOut(tween(500)) + scaleOut(tween(500))
                 ) {
-                    OutlinedButton(
-                        onClick = { startScanOnly() },
-                        enabled = !busy,
-                        modifier = Modifier.weight(1f)
-                    ) { Text("🔍 اسکن سرورها", fontSize = 13.sp) }
-                    Button(
-                        onClick = { switchNext() },
-                        enabled = !busy && isRunning && bestList.size > 1,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                    ) { Text("⏭ سرور بعدی", fontSize = 13.sp, color = Color.White) }
+                    PennySplashIntro(
+                        lang = appLang,
+                        onFinished = { showSplash = false }
+                    )
                 }
-
-                Spacer(Modifier.height(10.dp))
-                val scanInfo = if (lastScanTime > 0L) {
-                    val min = (System.currentTimeMillis() - lastScanTime) / 60000L
-                    val ago = if (min < 1) "چند لحظه پیش" else if (min < 60) "$min دقیقه پیش" else "${min / 60} ساعت پیش"
-                    "آخرین اسکن: $ago  •  ${bestList.size} سرور آماده"
-                } else "هنوز اسکنی انجام نشده"
-                Text(scanInfo, color = Color(0xFF64748B), fontSize = 12.sp)
             }
-        }
 
-        if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning)
-        if (showLog) LogDialog()
+            if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning)
+            if (showLog) LogDialog()
+        }
     }
 
     @Composable
     private fun BestConfigsDialog(selectedGuid: String?, isRunning: Boolean) {
         AlertDialog(
             onDismissRequest = { showBest = false },
-            confirmButton = { TextButton(onClick = { showBest = false }) { Text("بستن") } },
-            title = { Text("بهترین کانفیگ‌ها") },
+            confirmButton = { TextButton(onClick = { showBest = false }) { Text(Strings.close(appLang)) } },
+            title = { Text(Strings.menuBestConfigs(appLang)) },
             text = {
                 if (bestList.isEmpty()) {
-                    Text("هنوز لیستی ساخته نشده. ابتدا اسکن کنید.")
+                    Text(Strings.emptyBestList(appLang))
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                         items(bestList.toList()) { s ->
@@ -851,10 +1302,10 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun LogDialog() {
         AlertDialog(
             onDismissRequest = { showLog = false },
-            title = { Text("لاگ برنامه") },
+            title = { Text(Strings.menuAppLog(appLang)) },
             text = {
                 if (logLines.isEmpty()) {
-                    Text("هنوز لاگی ثبت نشده.")
+                    Text(Strings.emptyLogs(appLang))
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
                         items(logLines.toList().asReversed()) { line ->
@@ -870,11 +1321,11 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             confirmButton = {
                 Row {
-                    TextButton(onClick = { copyLogToClipboard() }) { Text("کپی") }
-                    TextButton(onClick = { logLines.clear() }) { Text("پاک کردن") }
+                    TextButton(onClick = { copyLogToClipboard() }) { Text(Strings.copy(appLang)) }
+                    TextButton(onClick = { logLines.clear() }) { Text(Strings.clear(appLang)) }
                 }
             },
-            dismissButton = { TextButton(onClick = { showLog = false }) { Text("بستن") } }
+            dismissButton = { TextButton(onClick = { showLog = false }) { Text(Strings.close(appLang)) } }
         )
     }
 
@@ -900,11 +1351,12 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun disconnect() {
+        userWantsConnected = false
+        prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
         LauncherManager.stopService(this)
-        statusMessage = "اتصال قطع شد"
+        statusMessage = if (appLang == AppLang.FA) "اتصال قطع شد" else "Disconnected"
         connectStartMs = 0L
-        prefs.edit().remove("connect_time").apply()
-        plog("اتصال توسط کاربر قطع شد")
+        plog("Disconnected by user")
     }
 
     private fun cancelWork() {
@@ -914,15 +1366,15 @@ class MainActivity : HelperBaseComponentActivity() {
         )
         phase = Phase.IDLE
         scanProgress = 0f
-        statusMessage = "لغو شد"
-        plog("عملیات توسط کاربر لغو شد")
+        statusMessage = if (appLang == AppLang.FA) "لغو شد" else "Cancelled"
+        plog("Operation cancelled by user")
     }
 
     /** دکمه اتصال: اگر لیست خالی/قدیمی است اول اسکن، بعد وصل */
     private fun startSmartConnect() {
         if (phase != Phase.IDLE) return
         phase = Phase.CONNECTING
-        statusMessage = "در حال آماده‌سازی..."
+        statusMessage = if (appLang == AppLang.FA) "در حال آماده‌سازی..." else "Preparing..."
         failedGuids.clear()
         if (Build.VERSION.SDK_INT >= 37) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
@@ -938,20 +1390,24 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 var result = connectFromList()
                 if (result == null && !scanned) {
-                    plog("همه‌ی سرورهای لیست ناموفق بودند؛ اسکن مجدد")
+                    plog("All cached servers failed; rescanning...")
                     failedGuids.clear()
                     if (runScan()) result = connectFromList()
                 }
                 ui {
-                    statusMessage =
-                        if (result != null) "متصل شد" else "هیچ سرور سالمی پیدا نشد. لاگ برنامه را ببینید."
+                    statusMessage = if (result != null) {
+                        if (appLang == AppLang.FA) "متصل شد" else "Connected"
+                    } else {
+                        if (appLang == AppLang.FA) "هیچ سرور سالمی پیدا نشد. لاگ برنامه را ببینید."
+                        else "No working server found. Check App Logs."
+                    }
                 }
                 if (result == null) LauncherManager.stopService(this@MainActivity)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                plog("خطای کلی: ${e.javaClass.simpleName}: ${e.message}")
-                ui { statusMessage = "خطا: ${e.localizedMessage ?: "مشکل در ارتباط"}" }
+                plog("Error: ${e.javaClass.simpleName}: ${e.message}")
+                ui { statusMessage = "Error: ${e.localizedMessage ?: "Network issue"}" }
             } finally {
                 withContext(NonCancellable + Dispatchers.Main) {
                     phase = Phase.IDLE
@@ -969,14 +1425,16 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 val ok = runScan()
                 ui {
-                    statusMessage =
-                        if (ok) "اسکن تمام شد: ${bestList.size} سرور آماده" else statusMessage
+                    statusMessage = if (ok) {
+                        if (appLang == AppLang.FA) "اسکن تمام شد: ${bestList.size} سرور آماده"
+                        else "Scan complete: ${bestList.size} servers ready"
+                    } else statusMessage
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                plog("خطا در اسکن: ${e.javaClass.simpleName}: ${e.message}")
-                ui { statusMessage = "خطا: ${e.localizedMessage ?: "مشکل در ارتباط"}" }
+                plog("Scan error: ${e.javaClass.simpleName}: ${e.message}")
+                ui { statusMessage = "Error: ${e.localizedMessage ?: "Connection failed"}" }
             } finally {
                 withContext(NonCancellable + Dispatchers.Main) {
                     phase = Phase.IDLE
@@ -989,22 +1447,28 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun switchNext() {
         if (phase != Phase.IDLE) return
         phase = Phase.CONNECTING
-        statusMessage = "در حال جستجوی سرور بعدی..."
+        statusMessage = if (appLang == AppLang.FA) "در حال جستجوی سرور بعدی..." else "Switching to next server..."
         val current = mainViewModel.uiState.value.selectedGuid
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 if (current != null) failedGuids.add(current)
                 val res = connectFromList(startAfter = current)
                 if (res == null && current != null) {
-                    plog("سرور بعدی پیدا نشد؛ بازگشت به سرور قبلی")
+                    plog("Next server not found; reverting to previous")
                     failedGuids.remove(current)
                     connectAndVerify(current)
                 }
-                ui { statusMessage = if (res != null) "سرور جدید وصل شد" else "سرور سالم دیگری پیدا نشد." }
+                ui {
+                    statusMessage = if (res != null) {
+                        if (appLang == AppLang.FA) "سرور جدید وصل شد" else "Switched to new server"
+                    } else {
+                        if (appLang == AppLang.FA) "سرور سالم دیگری پیدا نشد." else "No other healthy server found."
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                plog("خطا در سرور بعدی: ${e.javaClass.simpleName}: ${e.message}")
+                plog("Switch error: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
                 withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
             }
@@ -1016,25 +1480,33 @@ class MainActivity : HelperBaseComponentActivity() {
         if (!mainViewModel.uiState.value.isRunning && SettingsManager.isVpnMode() &&
             VpnService.prepare(this) != null
         ) {
-            statusMessage = "ابتدا یک بار روی دکمه اتصال بزنید تا مجوز VPN داده شود."
+            statusMessage = if (appLang == AppLang.FA)
+                "ابتدا یک بار روی دکمه اتصال بزنید تا مجوز VPN داده شود."
+            else
+                "Tap the main Connect button once to grant VPN permission."
             return
         }
         phase = Phase.CONNECTING
-        statusMessage = "اتصال به ${entry.label}..."
+        statusMessage = if (appLang == AppLang.FA) "اتصال به ${entry.label}..." else "Connecting to ${entry.label}..."
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val ping = connectAndVerify(entry.guid)
                 if (ping > 0) {
                     markConnected(entry.guid, ping)
-                    ui { statusMessage = "متصل شد" }
+                    ui { statusMessage = if (appLang == AppLang.FA) "متصل شد" else "Connected" }
                 } else {
-                    ui { statusMessage = "این سرور کار نکرد؛ سرور دیگری انتخاب کنید." }
-                    plog("❌ ${entry.label} پاسخ نداد")
+                    ui {
+                        statusMessage = if (appLang == AppLang.FA)
+                            "این سرور کار نکرد؛ سرور دیگری انتخاب کنید."
+                        else
+                            "Server did not respond; try another one."
+                    }
+                    plog("❌ ${entry.label} failed")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                plog("خطا: ${e.message}")
+                plog("Error: ${e.message}")
             } finally {
                 withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
             }
@@ -1047,13 +1519,23 @@ class MainActivity : HelperBaseComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (true) {
                 delay(MONITOR_INTERVAL_MS)
-                if (!autoSwitch || phase != Phase.IDLE || !mainViewModel.uiState.value.isRunning) continue
+                if (phase != Phase.IDLE) continue
+
+                val running = mainViewModel.uiState.value.isRunning
+                // اگر کاربر قصد اتصال داشته اما سرویس به صورت ناگهانی متوقف شده است (Auto-Reconnect)
+                if (!running && userWantsConnected && autoReconnect && bestList.isNotEmpty()) {
+                    plog("⚠ Unexpected VPN drop detected; running auto-reconnect...")
+                    triggerAutoReconnect()
+                    continue
+                }
+
+                if (!autoSwitch || !running) continue
                 try {
                     healthCheckAndSwitch()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    plog("خطا در مانیتور: ${e.message}")
+                    plog("Monitor error: ${e.message}")
                 }
             }
         }
@@ -1070,15 +1552,21 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         if (ok) return
 
-        plog("⚠ اتصال فعلی پاسخ نمی‌دهد؛ تعویض خودکار")
+        plog("⚠ Active tunnel unresponsive; auto-switching...")
         val current = mainViewModel.uiState.value.selectedGuid
         if (current != null) failedGuids.add(current)
-        ui { phase = Phase.CONNECTING; statusMessage = "اتصال قطع شد؛ تعویض خودکار..." }
+        ui {
+            phase = Phase.CONNECTING
+            statusMessage = if (appLang == AppLang.FA) "اتصال قطع شد؛ تعویض خودکار..." else "Connection dropped; auto-switching..."
+        }
         try {
             val r = connectFromList(startAfter = current)
             ui {
-                statusMessage =
-                    if (r != null) "به سرور بهتر تعویض شد" else "سرور سالمی پیدا نشد؛ اسکن کنید"
+                statusMessage = if (r != null) {
+                    if (appLang == AppLang.FA) "به سرور بهتر تعویض شد" else "Switched to healthier server"
+                } else {
+                    if (appLang == AppLang.FA) "سرور سالمی پیدا نشد؛ اسکن کنید" else "No healthy server found; please scan"
+                }
             }
         } finally {
             withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
@@ -1088,8 +1576,12 @@ class MainActivity : HelperBaseComponentActivity() {
     // ═════════════════════════ اسکن ═════════════════════════
 
     private suspend fun runScan(): Boolean {
-        ui { phase = Phase.SCANNING; scanProgress = 0.03f; statusMessage = "در حال دریافت لیست سرورها..." }
-        plog("شروع اسکن")
+        ui {
+            phase = Phase.SCANNING
+            scanProgress = 0.03f
+            statusMessage = if (appLang == AppLang.FA) "در حال دریافت لیست سرورها..." else "Fetching server lists..."
+        }
+        plog("Scan started")
 
         // دانلود موازی منابع برای افزایش چشمگیر سرعت اسکن
         val contents = coroutineScope {
@@ -1098,35 +1590,51 @@ class MainActivity : HelperBaseComponentActivity() {
             }.awaitAll().filter { it.isNotEmpty() }
         }
         if (contents.isEmpty()) {
-            plog("هیچ منبعی دانلود نشد")
-            ui { statusMessage = "خطا در دانلود سرورها! اینترنت یا فیلترشکن را بررسی کنید." }
+            plog("No subscription sources downloaded")
+            ui {
+                statusMessage = if (appLang == AppLang.FA)
+                    "خطا در دانلود سرورها! اینترنت یا فیلترشکن را بررسی کنید."
+                else
+                    "Failed to download servers! Check your connection."
+            }
             return false
         }
 
-        ui { scanProgress = 0.15f; statusMessage = "در حال پردازش کانفیگ‌ها..." }
+        ui {
+            scanProgress = 0.15f
+            statusMessage = if (appLang == AppLang.FA) "در حال پردازش کانفیگ‌ها..." else "Processing configs..."
+        }
         val before = MmkvManager.decodeServerList("").toSet()
         for (content in contents) {
             try {
                 val r = AngConfigManager.importBatchConfig(content, "", true)
-                plog("import نتیجه: $r")
+                plog("import result: $r")
             } catch (e: Exception) {
-                plog("import خطا: ${e.message}")
+                plog("import error: ${e.message}")
             }
         }
         val newGuids = MmkvManager.decodeServerList("").filter { it !in before }
-        plog("کانفیگ جدید: ${newGuids.size}")
+        plog("New configs: ${newGuids.size}")
         if (newGuids.isEmpty()) {
-            ui { statusMessage = "هیچ کانفیگ معتبری یافت نشد!" }
+            ui {
+                statusMessage = if (appLang == AppLang.FA) "هیچ کانفیگ معتبری یافت نشد!" else "No valid configs found!"
+            }
             return false
         }
 
         // مرحله ۱: فیلتر سریع TCP
-        ui { scanProgress = 0.25f; statusMessage = "تست اولیه ${minOf(newGuids.size, MAX_TCP_CANDIDATES)} سرور..." }
+        val tcpSampleCount = minOf(newGuids.size, MAX_TCP_CANDIDATES)
+        ui {
+            scanProgress = 0.25f
+            statusMessage = if (appLang == AppLang.FA) "تست اولیه $tcpSampleCount سرور..." else "TCP probing $tcpSampleCount servers..."
+        }
         val tcpOk = tcpFilter(newGuids.shuffled().take(MAX_TCP_CANDIDATES))
-        plog("قابل دسترس (TCP): ${tcpOk.size}")
+        plog("Reachable (TCP): ${tcpOk.size}")
         if (tcpOk.isEmpty()) {
             MmkvManager.removeServers(newGuids, "")
-            ui { statusMessage = "هیچ سروری در دسترس نبود." }
+            ui {
+                statusMessage = if (appLang == AppLang.FA) "هیچ سروری در دسترس نبود." else "No reachable servers found."
+            }
             return false
         }
 
@@ -1143,7 +1651,10 @@ class MainActivity : HelperBaseComponentActivity() {
 
         // مرحله ۲: تست واقعی با هسته‌ی خود برنامه (بدون وصل شدن، موازی)
         MmkvManager.clearAllTestDelayResults(keep)
-        ui { scanProgress = 0.35f; statusMessage = "تست واقعی سرورها (0/${keep.size})..." }
+        ui {
+            scanProgress = 0.35f
+            statusMessage = if (appLang == AppLang.FA) "تست واقعی سرورها (0/${keep.size})..." else "Real ping test (0/${keep.size})..."
+        }
         withContext(Dispatchers.Main) {
             MessageHelper.sendMsg2TestService(
                 this@MainActivity,
@@ -1160,7 +1671,7 @@ class MainActivity : HelperBaseComponentActivity() {
             val d = done
             ui {
                 scanProgress = 0.35f + 0.55f * d / keep.size
-                statusMessage = "تست واقعی سرورها ($d/${keep.size})..."
+                statusMessage = if (appLang == AppLang.FA) "تست واقعی سرورها ($d/${keep.size})..." else "Real ping test ($d/${keep.size})..."
             }
             if (done >= keep.size) break
         }
@@ -1176,16 +1687,21 @@ class MainActivity : HelperBaseComponentActivity() {
             val d = MmkvManager.decodeServerAffiliationInfo(g)?.testDelayMillis ?: 0L
             if (d > 0L) g to d else null
         }.sortedBy { it.second }
-        plog("سالم در تست واقعی: ${valid.size} از ${keep.size}")
+        plog("Healthy in real test: ${valid.size}/${keep.size}")
 
         if (valid.isEmpty()) {
             MmkvManager.removeServers(keep.filter { it != selected }, "")
-            ui { statusMessage = "هیچ سرور سالمی در تست واقعی پیدا نشد." }
+            ui {
+                statusMessage = if (appLang == AppLang.FA) "هیچ سرور سالمی در تست واقعی پیدا نشد." else "No healthy servers passed verification."
+            }
             return false
         }
 
         // ساخت لیست نهایی
-        ui { scanProgress = 0.93f; statusMessage = "در حال ساخت لیست بهترین‌ها..." }
+        ui {
+            scanProgress = 0.93f
+            statusMessage = if (appLang == AppLang.FA) "در حال ساخت لیست بهترین‌ها..." else "Building best servers list..."
+        }
         val top = valid.take(BEST_LIST_SIZE)
         resolveCountries(top.map { it.first })
         val entries = assignLabels(top.map { (g, d) -> PennyServer(g, resolveCountry(g), d, "") })
@@ -1204,7 +1720,7 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 1f
         }
         failedGuids.clear()
-        plog("اسکن کامل شد: ${entries.size} سرور (بهترین: ${entries.first().label} ${'★'.toString().repeat(entries.first().stars)})")
+        plog("Scan complete: ${entries.size} servers (Best: ${entries.first().label} ${'★'.toString().repeat(entries.first().stars)})")
         return true
     }
 
@@ -1216,7 +1732,7 @@ class MainActivity : HelperBaseComponentActivity() {
             val startIdx = snapshot.indexOfFirst { it.guid == startAfter }
             if (startIdx >= 0) snapshot.drop(startIdx + 1) + snapshot.take(startIdx + 1) else snapshot
         } else {
-            // اولویت با آخرین سرور سالم متصل‌شده (برای اتصال فوری در باز شدن بعدی اپ)
+            // اولویت با آخرین سرور سالم متصل‌شده (برای اتصال فوری و اتصال مجدد خودکار)
             val preferred = snapshot.firstOrNull { it.guid == lastConnectedGuid }
             if (preferred != null) listOf(preferred) + snapshot.filter { it.guid != preferred.guid }
             else snapshot
@@ -1227,26 +1743,34 @@ class MainActivity : HelperBaseComponentActivity() {
         for (s in order) {
             if (attempts >= MAX_CONNECT_ATTEMPTS) break
             attempts++
-            ui { phase = Phase.CONNECTING; statusMessage = "در حال اتصال به ${s.label}..." }
-            plog("تلاش $attempts: ${s.label}")
+            ui {
+                phase = Phase.CONNECTING
+                statusMessage = if (appLang == AppLang.FA) "در حال اتصال به ${s.label}..." else "Connecting to ${s.label}..."
+            }
+            plog("Attempt $attempts: ${s.label}")
             val ping = connectAndVerify(s.guid)
             if (ping > 0) {
-                plog("✅ وصل شد: ${s.label} (${ping}ms)")
+                plog("✅ Connected: ${s.label} (${ping}ms)")
                 markConnected(s.guid, ping)
                 return s
             }
             failedGuids.add(s.guid)
-            plog("❌ ناموفق: ${s.label}")
+            plog("❌ Failed: ${s.label}")
         }
         return null
     }
 
     private suspend fun markConnected(guid: String, verifiedPingMs: Long = -1L) {
         val now = System.currentTimeMillis()
-        prefs.edit().putString("last_guid", guid).putLong("connect_time", now).apply()
+        prefs.edit()
+            .putString("last_guid", guid)
+            .putLong("connect_time", now)
+            .putBoolean("user_connected", true)
+            .apply()
         ui {
             connectStartMs = now
             lastConnectedGuid = guid
+            userWantsConnected = true
             if (verifiedPingMs > 0L) {
                 val idx = bestList.indexOfFirst { it.guid == guid }
                 if (idx >= 0) {
@@ -1280,13 +1804,13 @@ class MainActivity : HelperBaseComponentActivity() {
             waited += 300
         }
         if (!mainViewModel.uiState.value.isRunning) {
-            plog("سرویس بالا نیامد (بعد از ${waited}ms)")
+            plog("Service did not start (${waited}ms)")
             return -1L
         }
         delay(1500)
 
         if (!withContext(Dispatchers.IO) { isLocalPortOpen() }) {
-            plog("هشدار: پورت SOCKS $socksPort باز نیست")
+            plog("Warning: SOCKS port $socksPort not open yet")
         }
         repeat(2) {
             for (url in TEST_URLS) {
@@ -1323,11 +1847,11 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 val content = downloadUrl(mirror)
                 if (content.isNotEmpty()) {
-                    plog("دانلود موفق (مسیر ${i + 1}): ${content.length} کاراکتر")
+                    plog("Download OK (mirror ${i + 1}): ${content.length} chars")
                     return content
                 }
             } catch (e: Exception) {
-                plog("دانلود ناموفق (مسیر ${i + 1}): ${e.message}")
+                plog("Download failed (mirror ${i + 1}): ${e.message}")
             }
         }
         return ""
@@ -1382,14 +1906,14 @@ class MainActivity : HelperBaseComponentActivity() {
                 if (code == 204 || code == 200) {
                     (System.currentTimeMillis() - start).coerceAtLeast(1L)
                 } else {
-                    plog("تست پراکسی: کد پاسخ $code")
+                    plog("Proxy test HTTP $code")
                     -1L
                 }
             } finally {
                 conn.disconnect()
             }
         } catch (e: Exception) {
-            plog("تست پراکسی ناموفق: ${e.javaClass.simpleName}: ${e.message}")
+            plog("Proxy test failed: ${e.javaClass.simpleName}: ${e.message}")
             -1L
         }
     }

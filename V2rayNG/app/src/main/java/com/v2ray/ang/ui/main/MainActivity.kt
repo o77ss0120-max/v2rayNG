@@ -191,7 +191,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         MmkvManager.removeAllServer()
                         mainViewModel.onAction(MainAction.ImportBatchConfig(configText))
                         delay(600)
-                        val firstGuid = MmkvManager.decodeServerList().firstOrNull()
+                        val firstGuid = MmkvManager.decodeServerList("").firstOrNull()
                         if (firstGuid != null) {
                             mainViewModel.updateSelectedGuid(firstGuid)
                         }
@@ -226,7 +226,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun startV2Ray() {
         if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
-            val firstGuid = MmkvManager.decodeServerList().firstOrNull()
+            val firstGuid = MmkvManager.decodeServerList("").firstOrNull()
             if (firstGuid != null) {
                 mainViewModel.updateSelectedGuid(firstGuid)
             } else {

@@ -10,9 +10,9 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.v2ray.ang"
+        applicationId = "com.pennyvpn.app"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 35
         versionCode = 755
         versionName = "2.3.15"
 

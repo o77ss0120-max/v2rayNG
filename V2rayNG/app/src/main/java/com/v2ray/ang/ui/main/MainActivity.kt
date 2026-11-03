@@ -54,6 +54,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -123,15 +124,15 @@ private enum class AppLang(val code: String) { FA("fa"), EN("en") }
 private object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =
         if (l == AppLang.FA) {
-            if (vip) "👑 اشتراک ویژه VIP فعال (سرورهای اختصاصی)" else "انتخابگر هوشمند سریع‌ترین سرور"
+            if (vip) "👑 اشتراک ویژه VIP فعال • سرورهای اختصاصی" else "انتخابگر هوشمند سریع‌ترین سرور"
         } else {
-            if (vip) "👑 VIP Special Mode Active (Dedicated)" else "Smart Fastest Server Selector"
+            if (vip) "👑 VIP Special Mode • Dedicated Servers" else "Smart Fastest Server Selector"
         }
 
     fun splashTagline(l: AppLang) =
         if (l == AppLang.FA) "اتصال امن، هوشمند و پرسرعت" else "Fast, Smart & Secure Protection"
 
-    fun ready(l: AppLang) = if (l == AppLang.FA) "آماده" else "Ready"
+    fun ready(l: AppLang) = if (l == AppLang.FA) "آماده اتصال" else "Ready to Connect"
     fun connectedBadge(l: AppLang, vip: Boolean) =
         if (l == AppLang.FA) {
             if (vip) "متصل به سرور ویژه VIP 👑" else "متصل ✅"
@@ -156,7 +157,7 @@ private object Strings {
 
     fun noServerYet(l: AppLang, vip: Boolean) =
         if (l == AppLang.FA) {
-            if (vip) "هنوز سرور VIP اسکن نشده؛ دکمه اسکن VIP یا اتصال را بزنید."
+            if (vip) "هنوز سرور VIP اسکن نشده؛ دکمه اسکن یا اتصال را بزنید."
             else "هنوز سروری اسکن نشده؛ دکمه اسکن یا اتصال را بزنید."
         } else {
             if (vip) "No VIP servers scanned yet; tap Scan or Connect."
@@ -168,7 +169,7 @@ private object Strings {
 
     fun scanServersBtn(l: AppLang, vip: Boolean) =
         if (l == AppLang.FA) {
-            if (vip) "👑 اسکن سرورهای VIP" else "🔍 اسکن سرورها"
+            if (vip) "👑 اسکن VIP" else "🔍 اسکن سرورها"
         } else {
             if (vip) "👑 Scan VIP" else "🔍 Scan Servers"
         }
@@ -203,27 +204,12 @@ private object Strings {
 
     fun menuBestConfigs(l: AppLang, vip: Boolean) =
         if (l == AppLang.FA) {
-            if (vip) "👑 لیست سرورهای ویژه VIP" else "بهترین کانفیگ‌ها"
+            if (vip) "👑 لیست سرورهای ویژه VIP" else "لیست بهترین سرورها"
         } else {
-            if (vip) "👑 VIP Dedicated Servers" else "Best Configs"
+            if (vip) "👑 VIP Dedicated Servers" else "Best Servers List"
         }
 
-    fun menuVipPanel(l: AppLang, active: Boolean) =
-        if (l == AppLang.FA) {
-            if (active) "👑 مدیریت اشتراک ویژه VIP (فعال)" else "👑 فعال‌سازی اشتراک ویژه VIP"
-        } else {
-            if (active) "👑 Manage VIP Subscription (Active)" else "👑 Activate VIP Subscription"
-        }
-
-    fun menuAutoSwitch(l: AppLang, on: Boolean) =
-        if (l == AppLang.FA) (if (on) "✓ تعویض خودکار هنگام قطعی" else "تعویض خودکار هنگام قطعی")
-        else (if (on) "✓ Auto-Switch on Drop" else "Auto-Switch on Drop")
-
-    fun menuAutoReconnect(l: AppLang, on: Boolean) =
-        if (l == AppLang.FA) (if (on) "✓ اتصال خودکار در تغییر شبکه" else "اتصال خودکار در تغییر شبکه")
-        else (if (on) "✓ Auto-Reconnect on Net Change" else "Auto-Reconnect on Net Change")
-
-    fun menuAppLog(l: AppLang) = if (l == AppLang.FA) "لاگ برنامه" else "App Logs"
+    fun menuAppLog(l: AppLang) = if (l == AppLang.FA) "گزارش و لاگ برنامه" else "App Activity Logs"
     fun menuCoreLog(l: AppLang) = if (l == AppLang.FA) "لاگ هسته (Logcat)" else "Core Logs (Logcat)"
     fun close(l: AppLang) = if (l == AppLang.FA) "بستن" else "Close"
     fun copy(l: AppLang) = if (l == AppLang.FA) "کپی" else "Copy"
@@ -243,10 +229,6 @@ private object VipLicenseManager {
     const val VIP_MAX_BYTES = 50L * 1024L * 1024L * 1024L      // ۵۰ گیگابایت
     private const val ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 
-    /**
-     * تولید امضای ۴ کاراکتری از روی سریال ۴ کاراکتری
-     * فرمت کد متغیر: PVIP-XXXX-YYYY (که XXXX سریال یکتا و YYYY امضای رمزنگاری آن است)
-     */
     fun computeSignature(serial4: String): String {
         val clean = serial4.uppercase(Locale.US).trim()
         var h = 2166136261L
@@ -264,10 +246,6 @@ private object VipLicenseManager {
         return sb.toString()
     }
 
-    /**
-     * بررسی صحت کد متغیر VIP.
-     * خروجی: سریال ۴ کاراکتری در صورت معتبر بودن، یا null در صورت نامعتبر بودن.
-     */
     fun verifyCode(rawCode: String): String? {
         val normalized = rawCode.uppercase(Locale.US).trim().replace(" ", "")
         val parts = normalized.split("-")
@@ -282,21 +260,20 @@ private object VipLicenseManager {
     }
 }
 
-// ═════════════════════════ مدل‌ها ═════════════════════════
+// ═════════════════════════ مدل‌ها (رنگ یکپارچه و مدرن برای نام سرورها) ═════════════════════════
 
 private enum class Phase { IDLE, SCANNING, CONNECTING }
 
 private enum class UiMode { IDLE, SCANNING, CONNECTING, CONNECTED }
 
-private enum class Tier(val title: String, val color: Color, val icon: String) {
-    ULTRA("Ultra", Color(0xFFE040FB), "💎"),
-    TURBO("Turbo", Color(0xFFFFB300), "⚡"),
-    VIP("VIP", Color(0xFF40C4FF), "👑"),
-    STANDARD("Standard", Color(0xFF69F0AE), "🚀"),
-    BASIC("Basic", Color(0xFF90A4AE), "🌐")
+private enum class Tier(val title: String, val badgeText: String, val icon: String) {
+    ULTRA("Ultra", "10G ULTRA", "⚡"),
+    TURBO("Turbo", "TURBO", "⚡"),
+    VIP("VIP", "HIGH SPEED", "✦"),
+    STANDARD("Standard", "STABLE", "✦"),
+    BASIC("Basic", "ONLINE", "•")
 }
 
-/** ستاره از روی پینگ واقعی هسته (میلی‌ثانیه) */
 private fun starsFor(ms: Long): Int = when {
     ms <= 350 -> 5
     ms <= 600 -> 4
@@ -362,15 +339,15 @@ private fun fmtDuration(sec: Long): String {
     return String.format(Locale.US, "%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
 }
 
-// ═════════════════════════ کامپوننت‌های گرافیکی ═════════════════════════
+// ═════════════════════════ کامپوننت‌های گرافیکی مدرن ═════════════════════════
 
 @Composable
-private fun StarsRow(stars: Int, size: TextUnit = 16.sp) {
+private fun StarsRow(stars: Int, size: TextUnit = 14.sp) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         for (i in 1..5) {
             Text(
                 text = "★",
-                color = if (i <= stars) Color(0xFFFFC107) else Color(0xFF475569),
+                color = if (i <= stars) Color(0xFFFBBF24) else Color(0xFF334155),
                 fontSize = size
             )
         }
@@ -380,7 +357,7 @@ private fun StarsRow(stars: Int, size: TextUnit = 16.sp) {
 @Composable
 private fun StatCell(icon: String, value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("$icon $value", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text("$icon $value", color = Color(0xFFF8FAFC), fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
         Text(label, color = Color(0xFF94A3B8), fontSize = 11.sp)
     }
@@ -407,13 +384,126 @@ private fun StaggeredServerItem(
             .fillMaxWidth()
             .graphicsLayer {
                 alpha = anim.value
-                translationY = (1f - anim.value) * 38f
-                val sc = 0.94f + 0.06f * anim.value
+                translationY = (1f - anim.value) * 34f
+                val sc = 0.95f + 0.05f * anim.value
                 scaleX = sc
                 scaleY = sc
             }
     ) {
         content()
+    }
+}
+
+/**
+ * کارت مدرن نمایش سرور (با رنگ سفید یکدست برای نام سرور و ستاره‌ها دقیقاً روبه‌روی نام)
+ */
+@Composable
+private fun ModernServerCard(
+    server: PennyServer?,
+    isConnected: Boolean,
+    isVipMode: Boolean,
+    lang: AppLang,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = when {
+        isConnected -> Color(0xFF10B981).copy(alpha = 0.65f)
+        isVipMode -> Color(0xFFF59E0B).copy(alpha = 0.45f)
+        else -> Color(0xFF334155).copy(alpha = 0.7f)
+    }
+
+    Surface(
+        color = Color(0xFF0F172A).copy(alpha = 0.88f),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+            .clickable(enabled = enabled) { onClick() }
+    ) {
+        if (server == null) {
+            Text(
+                text = Strings.noServerYet(lang, isVipMode),
+                color = Color(0xFF94A3B8),
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // باکس مدرن پرچم کشور
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color(0xFF1E293B))
+                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(13.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(server.flag, fontSize = 24.sp)
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    // ردیف افقی: نام سرور با رنگ سفید یکدست + ستاره‌ها دقیقاً جلوی نام سرور
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = server.label,
+                            color = Color(0xFFF8FAFC), // رنگ سفید یکدست و مدرن
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        StarsRow(server.stars, 13.sp)
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = if (isConnected) {
+                            if (lang == AppLang.FA) "سرور فعال • اتصال پایدار" else "Active Server • Stable Tunnel"
+                        } else {
+                            if (lang == AppLang.FA) "آماده اتصال • برای تغییر سرور ضربه بزنید" else "Ready • Tap to change server"
+                        },
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // بج مدرن وضعیت / کیفیت
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (isConnected) Color(0xFF064E3B)
+                            else if (isVipMode) Color(0xFF451A03)
+                            else Color(0xFF1E293B)
+                        )
+                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = if (isVipMode) "👑 VIP" else server.tier.badgeText,
+                        color = if (isConnected) Color(0xFF34D399)
+                        else if (isVipMode) Color(0xFFFBBF24)
+                        else Color(0xFF38BDF8),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -556,6 +646,9 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
     }
 }
 
+/**
+ * هدر نئونی متمرکز و پایین‌تر از لبه بالایی صفحه (برای دسترسی و دید بهتر)
+ */
 @Composable
 private fun NeonBrandHeader(
     mode: UiMode,
@@ -583,25 +676,31 @@ private fun NeonBrandHeader(
         label = "neonBlur"
     )
 
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
-        Image(
-            painter = painterResource(id = R.drawable.penny_cat_logo),
-            contentDescription = "Penny VPN Cat Logo",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .border(1.5.dp, neonColor.copy(alpha = 0.7f), CircleShape)
-                .clickable { onLogoClick() }
-        )
-        Spacer(Modifier.width(10.dp))
-        Column {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.penny_cat_logo),
+                contentDescription = "Penny VPN Cat Logo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .border(1.5.dp, neonColor.copy(alpha = 0.75f), CircleShape)
+                    .clickable { onLogoClick() }
+            )
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = if (isVipMode) "PENNY VIP" else "PENNY VPN",
                 color = Color.White,
-                fontSize = 22.sp,
+                fontSize = 25.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 2.sp,
+                letterSpacing = 2.5.sp,
                 style = TextStyle(
                     shadow = Shadow(
                         color = neonColor,
@@ -610,14 +709,15 @@ private fun NeonBrandHeader(
                     )
                 )
             )
-            Text(
-                text = Strings.subtitle(lang, isVipMode),
-                color = if (isVipMode) Color(0xFFFFD54F) else Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = Strings.subtitle(lang, isVipMode),
+            color = if (isVipMode) Color(0xFFFFD54F) else Color(0xFF94A3B8),
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -670,7 +770,7 @@ private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang
             },
             modifier = Modifier
                 .scale(if (isConnected) pulseScale else 1f)
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
 }
@@ -714,7 +814,7 @@ private fun PowerButton(
         label = "pbBreathe"
     )
 
-    Box(modifier = Modifier.size(260.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(245.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val c = Offset(size.width / 2f, size.height / 2f)
             val r = size.minDimension * 0.33f
@@ -761,7 +861,7 @@ private fun PowerButton(
 
         Box(
             modifier = Modifier
-                .size(176.dp)
+                .size(168.dp)
                 .scale(if (mode == UiMode.IDLE) breathe else 1f)
                 .clip(CircleShape)
                 .background(
@@ -780,7 +880,7 @@ private fun PowerButton(
                             UiMode.CONNECTING -> "CONNECTING"
                             UiMode.CONNECTED -> "CONNECTED"
                         },
-                        color = fg, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold
+                        color = fg, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -809,12 +909,12 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val MAX_TCP_CANDIDATES = 300
         private const val TCP_PARALLEL = 40
 
-        private const val REAL_TEST_COUNT = 60          // تعداد سرور برای تست واقعی هسته
+        private const val REAL_TEST_COUNT = 60
         private const val REAL_TEST_TIMEOUT_MS = 45_000L
         private const val BEST_LIST_SIZE = 15
         private const val MAX_CONNECT_ATTEMPTS = 6
 
-        private const val STALE_MS = 6 * 60 * 60 * 1000L // لیست قدیمی‌تر از ۶ ساعت
+        private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
         private val TEST_URLS = listOf(
@@ -823,13 +923,11 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
-    // منابع عمومی کاربران عادی
     private val SUBSCRIPTION_SOURCES = listOf(
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub7.txt",
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub8.txt"
     )
 
-    // منابع اختصاصی و جداگانه مشترکین ویژه VIP
     private val VIP_SUBSCRIPTION_SOURCES = listOf(
         "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt",
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
@@ -845,7 +943,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showSplash by mutableStateOf(true)
     private var appLang by mutableStateOf(AppLang.FA)
     private var phase by mutableStateOf(Phase.IDLE)
-    private var statusMessage by mutableStateOf("آماده")
+    private var statusMessage by mutableStateOf("آماده اتصال")
     private var scanProgress by mutableStateOf(0f)
     private var lastScanTime by mutableStateOf(0L)
     private var vipLastScanTime by mutableStateOf(0L)
@@ -1081,14 +1179,12 @@ class MainActivity : HelperBaseComponentActivity() {
         connectStartMs = prefs.getLong("connect_time", 0L)
         lastConnectedGuid = prefs.getString("last_guid", null)
 
-        // بارگذاری اطلاعات VIP
         vipActive = prefs.getBoolean("vip_active", false)
         useVipServers = prefs.getBoolean("use_vip_servers", vipActive)
         vipCode = prefs.getString("vip_code", "") ?: ""
         vipExpireMs = prefs.getLong("vip_expire_ms", 0L)
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
 
-        // بارگذاری لیست عادی
         prefs.getString("list", null)?.let { json ->
             try {
                 val arr = JSONArray(json)
@@ -1107,7 +1203,6 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
 
-        // بارگذاری لیست اختصاصی VIP
         prefs.getString("vip_list", null)?.let { json ->
             try {
                 val arr = JSONArray(json)
@@ -1262,184 +1357,39 @@ class MainActivity : HelperBaseComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF020617)))
+                        Brush.verticalGradient(listOf(Color(0xFF0B132B), Color(0xFF020617)))
                     )
             ) {
+                // ── لوگوی کمرنگ (Watermark) در پس‌زمینه ──
+                Image(
+                    painter = painterResource(id = R.drawable.penny_cat_logo),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(340.dp)
+                        .align(Alignment.Center)
+                        .alpha(0.06f)
+                )
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
-                        .padding(top = 26.dp, bottom = 24.dp),
+                        .padding(top = 38.dp, bottom = 24.dp), // فاصله مناسب از بالای صفحه تا اسم اپ خیلی بالا نباشد
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // ── هدر نئونی درخشان با لوگو + دکمه VIP + تغییر زبان FA/EN + منو ──
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NeonBrandHeader(
-                            mode = mode,
-                            lang = appLang,
-                            isVipMode = isVipMode,
-                            onLogoClick = { showSplash = true },
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
+                    // ── هدر نئونی متمرکز و پایین‌تر از لبه بالایی ──
+                    NeonBrandHeader(
+                        mode = mode,
+                        lang = appLang,
+                        isVipMode = isVipMode,
+                        onLogoClick = { showSplash = true }
+                    )
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // دکمه اشتراک ویژه VIP در هدر
-                            Surface(
-                                color = if (vipActive) Color(0xFF422006) else Color(0xFF1E293B),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .border(
-                                        1.dp,
-                                        if (vipActive) Color(0xFFF59E0B) else Color(0xFF475569),
-                                        RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { showVipDialog = true }
-                            ) {
-                                Text(
-                                    text = if (vipActive) "👑 VIP ✓" else "👑 VIP",
-                                    color = if (vipActive) Color(0xFFFBBF24) else Color(0xFFE2E8F0),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                )
-                            }
-
-                            // دکمه تغییر زبان FA / EN
-                            Surface(
-                                color = Color(0xFF1E293B),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { toggleLanguage() }
-                            ) {
-                                Text(
-                                    text = if (appLang == AppLang.FA) "EN" else "FA",
-                                    color = Color(0xFF38BDF8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                )
-                            }
-
-                            Box {
-                                TextButton(onClick = { showMenu = true }) {
-                                    Text("⋮", color = Color.White, fontSize = 26.sp)
-                                }
-                                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text(Strings.menuVipPanel(appLang, vipActive), color = Color(0xFFFBBF24)) },
-                                        onClick = { showMenu = false; showVipDialog = true }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Strings.menuBestConfigs(appLang, isVipMode)) },
-                                        onClick = { showMenu = false; showBest = true }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Strings.menuAutoSwitch(appLang, autoSwitch)) },
-                                        onClick = {
-                                            showMenu = false
-                                            autoSwitch = !autoSwitch
-                                            prefs.edit().putBoolean("auto_switch", autoSwitch).apply()
-                                            plog("Auto-switch: $autoSwitch")
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Strings.menuAutoReconnect(appLang, autoReconnect)) },
-                                        onClick = {
-                                            showMenu = false
-                                            autoReconnect = !autoReconnect
-                                            prefs.edit().putBoolean("auto_reconnect", autoReconnect).apply()
-                                            plog("Auto-reconnect: $autoReconnect")
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(if (appLang == AppLang.FA) "🌐 Language: English" else "🌐 زبان: فارسی") },
-                                        onClick = {
-                                            showMenu = false
-                                            toggleLanguage()
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Strings.menuAppLog(appLang)) },
-                                        onClick = { showMenu = false; showLog = true }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(Strings.menuCoreLog(appLang)) },
-                                        onClick = {
-                                            showMenu = false
-                                            startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // ── نوار وضعیت اشتراک VIP (۱ ماه یا ۵۰ گیگ) در صورت فعال بودن ──
-                    AnimatedVisibility(visible = vipActive) {
-                        val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
-                        val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
-                        val progressRatio = (vipUsedBytes.toFloat() / VipLicenseManager.VIP_MAX_BYTES.toFloat()).coerceIn(0f, 1f)
-
-                        Surface(
-                            color = Color(0xFF271705),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 10.dp)
-                                .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                .clickable { showVipDialog = true }
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (appLang == AppLang.FA) "👑 اشتراک ویژه VIP فعال" else "👑 VIP Subscription Active",
-                                        color = Color(0xFFFBBF24),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = if (appLang == AppLang.FA)
-                                            "$remDays روز مانده  •  ${fmtBytes(remBytes)} از 50 GB"
-                                        else
-                                            "${remDays}d left  •  ${fmtBytes(remBytes)} / 50 GB",
-                                        color = Color(0xFFFDE68A),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(5.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(Color(0xFF451A03))
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth((1f - progressRatio).coerceIn(0f, 1f))
-                                            .fillMaxHeight()
-                                            .background(Color(0xFFF59E0B))
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(14.dp))
 
                     // ── دکمه اصلی انیمیشنی ──
                     PowerButton(
@@ -1465,13 +1415,14 @@ class MainActivity : HelperBaseComponentActivity() {
                         exit = fadeOut() + shrinkVertically()
                     ) {
                         Surface(
-                            color = Color(0xFF111C33),
-                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF0F172A).copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(18.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 8.dp)
+                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(18.dp))
                         ) {
-                            Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp)) {
+                            Column(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     StatCell(
                                         "⬇", fmtSpeed(downSpeed), Strings.download(appLang),
@@ -1482,7 +1433,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                         Modifier.weight(1f)
                                     )
                                 }
-                                Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(10.dp))
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     StatCell(
                                         "⏱", fmtDuration(elapsedSec), Strings.duration(appLang),
@@ -1499,62 +1450,17 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
 
-                    // ── کارت سرور (ستاره‌ها دقیقاً جلوی اسم سرور در یک ردیف، نه زیر آن) ──
-                    Surface(
-                        color = if (isVipMode) Color(0xFF231B12) else Color(0xFF1E293B),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(
-                                width = if (isVipMode) 1.dp else 0.dp,
-                                color = if (isVipMode) Color(0xFFF59E0B).copy(alpha = 0.45f) else Color.Transparent,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .clickable(enabled = !busy && currentList.isNotEmpty()) {
-                                showBest = true
-                            }
-                    ) {
-                        if (current == null) {
-                            Text(
-                                Strings.noServerYet(appLang, isVipMode),
-                                color = Color(0xFF94A3B8), fontSize = 13.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(18.dp)
-                            )
-                        } else {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 15.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(current.flag, fontSize = 30.sp)
-                                Spacer(Modifier.width(12.dp))
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = if (mode == UiMode.CONNECTED) current.label else Strings.suggestedPrefix(appLang, current.label),
-                                        color = if (isVipMode) Color(0xFFFBBF24) else current.tier.color,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    StarsRow(current.stars, 16.sp)
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (isVipMode) "👑" else current.tier.icon, fontSize = 24.sp)
-                            }
-                        }
-                    }
+                    // ── کارت سرور مدرن با رنگ سفید یکدست و ستاره‌ها روبه‌روی نام سرور ──
+                    ModernServerCard(
+                        server = current,
+                        isConnected = mode == UiMode.CONNECTED,
+                        isVipMode = isVipMode,
+                        lang = appLang,
+                        enabled = !busy && currentList.isNotEmpty(),
+                        onClick = { showBest = true }
+                    )
 
                     Spacer(Modifier.height(12.dp))
 
@@ -1578,19 +1484,22 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ── دکمه‌های جدا: اسکن / سرور بعدی ──
+                    // ── دکمه‌های اسکن و سرور بعدی ──
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         OutlinedButton(
                             onClick = { startScanOnly() },
                             enabled = !busy,
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.weight(1f)
                         ) { Text(Strings.scanServersBtn(appLang, isVipMode), fontSize = 13.sp) }
+
                         Button(
                             onClick = { switchNext() },
                             enabled = !busy && isRunning && currentList.size > 1,
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isVipMode) Color(0xFFD97706) else Color(0xFF2563EB)
@@ -1598,12 +1507,161 @@ class MainActivity : HelperBaseComponentActivity() {
                         ) { Text(Strings.nextServerBtn(appLang), fontSize = 13.sp, color = Color.White) }
                     }
 
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
+
+                    // ── داک مدرن پایین صفحه (جایگاه جدید اشتراک VIP، تغییر زبان و منوی مدرن در دسترس انگشت شست) ──
+                    Surface(
+                        color = Color(0xFF0F172A).copy(alpha = 0.92f),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(20.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // کارت/دکمه اشتراک ویژه VIP در پایین صفحه
+                                Surface(
+                                    color = if (vipActive) Color(0xFF271705) else Color(0xFF1E293B),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(
+                                            1.dp,
+                                            if (vipActive) Color(0xFFF59E0B).copy(alpha = 0.6f) else Color(0xFF334155),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .clickable { showVipDialog = true }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = if (vipActive) {
+                                                    if (appLang == AppLang.FA) "👑 اشتراک ویژه VIP فعال" else "👑 VIP Active"
+                                                } else {
+                                                    if (appLang == AppLang.FA) "👑 اشتراک ویژه VIP" else "👑 VIP Mode"
+                                                },
+                                                color = if (vipActive) Color(0xFFFBBF24) else Color(0xFFF8FAFC),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            val subVipText = if (vipActive) {
+                                                val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
+                                                val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
+                                                if (appLang == AppLang.FA) "$remDays روز • ${fmtBytes(remBytes)} مانده"
+                                                else "${remDays}d • ${fmtBytes(remBytes)} left"
+                                            } else {
+                                                if (appLang == AppLang.FA) "فعال‌سازی با کد متغیر (۱ ماه / ۵۰ گیگ)"
+                                                else "Activate with code (1M / 50GB)"
+                                            }
+                                            Text(
+                                                text = subVipText,
+                                                color = if (vipActive) Color(0xFFFDE68A) else Color(0xFF94A3B8),
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Text(
+                                            text = if (vipActive) "✓" else "❯",
+                                            color = if (vipActive) Color(0xFF34D399) else Color(0xFF94A3B8),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                // دکمه تغییر زبان در داک پایین
+                                Surface(
+                                    color = Color(0xFF1E293B),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(14.dp))
+                                        .clickable { toggleLanguage() }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = if (appLang == AppLang.FA) "EN" else "FA",
+                                            color = Color(0xFF38BDF8),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                        Text(
+                                            text = if (appLang == AppLang.FA) "زبان" else "Lang",
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+
+                                // دکمه منوی مدرن در داک پایین
+                                Surface(
+                                    color = Color(0xFF1E293B),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(14.dp))
+                                        .clickable { showMenu = true }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = "⚙",
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (appLang == AppLang.FA) "منو" else "Menu",
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            // نوار پیشرفت حجم ۵۰ گیگ در صورت فعال بودن VIP
+                            if (vipActive) {
+                                val progressRatio = (vipUsedBytes.toFloat() / VipLicenseManager.VIP_MAX_BYTES.toFloat()).coerceIn(0f, 1f)
+                                Spacer(Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color(0xFF451A03))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth((1f - progressRatio).coerceIn(0f, 1f))
+                                            .fillMaxHeight()
+                                            .background(Color(0xFFF59E0B))
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
                     val scanInfo = if (activeScanTime > 0L) {
                         val min = (System.currentTimeMillis() - activeScanTime) / 60000L
                         Strings.scanInfo(appLang, min, currentList.size, isVipMode)
                     } else Strings.noScanYet(appLang, isVipMode)
-                    Text(scanInfo, color = Color(0xFF64748B), fontSize = 12.sp)
+                    Text(scanInfo, color = Color(0xFF64748B), fontSize = 11.sp)
                 }
 
                 // ── اسپلش خلاقانه ابتدای برنامه با لوگوی گربه VPN ──
@@ -1619,6 +1677,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             }
 
+            if (showMenu) ModernMenuDialog(isVipMode)
             if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning, isVipMode)
             if (showVipDialog) VipSubscriptionDialog()
             if (showLog) LogDialog()
@@ -1626,7 +1685,164 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * دیالوگ فعال‌سازی و مدیریت اشتراک ویژه VIP (با کد متغیر، ۱ ماه یا ۵۰ گیگ اعتبار و لیست سرور جداگانه)
+     * منوی مدرن کارتی (جایگزین منوی قدیمی سه‌نقطه بالا)
+     */
+    @Composable
+    private fun ModernMenuDialog(isVipMode: Boolean) {
+        AlertDialog(
+            onDismissRequest = { showMenu = false },
+            confirmButton = {
+                TextButton(onClick = { showMenu = false }) {
+                    Text(Strings.close(appLang))
+                }
+            },
+            title = {
+                Text(
+                    text = if (appLang == AppLang.FA) "⚙ منوی تنظیمات و امکانات" else "⚙ Settings & Control Center",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // ۱. کارت اشتراک ویژه VIP
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                showMenu = false
+                                showVipDialog = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (appLang == AppLang.FA) "👑 اشتراک ویژه VIP (۱ ماه / ۵۰ گیگ)" else "👑 VIP Subscription (1M / 50GB)",
+                                color = Color(0xFFFBBF24),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                            Text("❯", color = Color(0xFF94A3B8))
+                        }
+                    }
+
+                    // ۲. کارت لیست بهترین سرورها
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                showMenu = false
+                                showBest = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "⚡ " + Strings.menuBestConfigs(appLang, isVipMode),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                            Text("${activeList.size}", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+
+                    // ۳. سوییچ تعویض خودکار هنگام قطعی
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (appLang == AppLang.FA) "🔄 تعویض خودکار هنگام قطعی" else "🔄 Auto-Switch on Drop",
+                                fontSize = 13.sp,
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = autoSwitch,
+                                onCheckedChange = {
+                                    autoSwitch = it
+                                    prefs.edit().putBoolean("auto_switch", it).apply()
+                                }
+                            )
+                        }
+                    }
+
+                    // ۴. سوییچ اتصال خودکار در تغییر شبکه
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (appLang == AppLang.FA) "🌐 اتصال خودکار در تغییر شبکه" else "🌐 Auto-Reconnect on Net Change",
+                                fontSize = 13.sp,
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = autoReconnect,
+                                onCheckedChange = {
+                                    autoReconnect = it
+                                    prefs.edit().putBoolean("auto_reconnect", it).apply()
+                                }
+                            )
+                        }
+                    }
+
+                    // ۵. ردیف لاگ برنامه و لاگ هسته
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showMenu = false; showLog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(Strings.menuAppLog(appLang), fontSize = 11.sp, maxLines = 1)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                showMenu = false
+                                startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(Strings.menuCoreLog(appLang), fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    /**
+     * دیالوگ فعال‌سازی و مدیریت اشتراک ویژه VIP
      */
     @Composable
     private fun VipSubscriptionDialog() {
@@ -1756,7 +1972,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * دیالوگ بهترین کانفیگ‌ها همراه با انیمیشن ورود پلکانی (Staggered Entrance Animation)
+     * دیالوگ مدرن بهترین کانفیگ‌ها همراه با کارت‌های یکدست، رنگ سفید برای نام سرور، و انیمیشن ورود پلکانی
      */
     @Composable
     private fun BestConfigsDialog(selectedGuid: String?, isRunning: Boolean, isVipMode: Boolean) {
@@ -1764,29 +1980,56 @@ class MainActivity : HelperBaseComponentActivity() {
         AlertDialog(
             onDismissRequest = { showBest = false },
             confirmButton = { TextButton(onClick = { showBest = false }) { Text(Strings.close(appLang)) } },
-            title = { Text(Strings.menuBestConfigs(appLang, isVipMode)) },
+            title = {
+                Text(
+                    text = Strings.menuBestConfigs(appLang, isVipMode),
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
             text = {
                 if (listToShow.isEmpty()) {
                     Text(Strings.emptyBestList(appLang))
                 } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         itemsIndexed(listToShow, key = { _, item -> item.guid }) { index, s ->
                             StaggeredServerItem(index = index) {
-                                Column {
-                                    val active = isRunning && s.guid == selectedGuid
+                                val active = isRunning && s.guid == selectedGuid
+                                Surface(
+                                    color = if (active) Color(0xFF064E3B).copy(alpha = 0.45f) else Color(0xFF1E293B),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(
+                                            1.dp,
+                                            if (active) Color(0xFF10B981) else Color(0xFF334155),
+                                            RoundedCornerShape(14.dp)
+                                        )
+                                        .clickable(enabled = phase == Phase.IDLE) {
+                                            showBest = false
+                                            connectToEntry(s)
+                                        }
+                                ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable(enabled = phase == Phase.IDLE) {
-                                                showBest = false
-                                                connectToEntry(s)
-                                            }
-                                            .padding(vertical = 12.dp),
+                                            .padding(horizontal = 12.dp, vertical = 11.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(s.flag, fontSize = 24.sp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(Color(0xFF0F172A)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(s.flag, fontSize = 20.sp)
+                                        }
                                         Spacer(Modifier.width(10.dp))
-                                        // ستاره‌ها دقیقاً جلوی اسم سرور قرار گرفته‌اند، نه زیر آن
+                                        // نام سرور با رنگ سفید یکدست + ستاره‌ها دقیقاً جلوی نام سرور
                                         Row(
                                             modifier = Modifier.weight(1f),
                                             verticalAlignment = Alignment.CenterVertically,
@@ -1794,22 +2037,26 @@ class MainActivity : HelperBaseComponentActivity() {
                                         ) {
                                             Text(
                                                 text = s.label,
-                                                color = if (isVipMode) Color(0xFFFBBF24) else s.tier.color,
+                                                color = Color(0xFFF8FAFC), // رنگ سفید یکدست بدون رنگ‌های شلوغ
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 15.sp,
+                                                fontSize = 14.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            StarsRow(s.stars, 14.sp)
+                                            StarsRow(s.stars, 13.sp)
                                         }
                                         Spacer(Modifier.width(6.dp))
-                                        Text(if (isVipMode) "👑" else s.tier.icon, fontSize = 18.sp)
                                         if (active) {
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("✅", fontSize = 18.sp)
+                                            Text("✅", fontSize = 16.sp)
+                                        } else {
+                                            Text(
+                                                text = s.tier.badgeText,
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
-                                    HorizontalDivider()
                                 }
                             }
                         }
@@ -2149,7 +2396,6 @@ class MainActivity : HelperBaseComponentActivity() {
             return false
         }
 
-        // مرحله ۱: فیلتر سریع TCP
         val tcpSampleCount = minOf(newGuids.size, MAX_TCP_CANDIDATES)
         ui {
             scanProgress = 0.25f
@@ -2176,7 +2422,6 @@ class MainActivity : HelperBaseComponentActivity() {
         val toRemove = MmkvManager.decodeServerList("").filter { it !in protect }
         MmkvManager.removeServers(toRemove, "")
 
-        // مرحله ۲: تست واقعی با هسته برنامه
         MmkvManager.clearAllTestDelayResults(keep)
         ui {
             scanProgress = 0.35f

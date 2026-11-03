@@ -561,7 +561,8 @@ private fun NeonBrandHeader(
     mode: UiMode,
     lang: AppLang,
     isVipMode: Boolean,
-    onLogoClick: () -> Unit
+    onLogoClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val glowTarget = when {
         isVipMode && mode == UiMode.IDLE -> Color(0xFFFFD54F)
@@ -582,7 +583,7 @@ private fun NeonBrandHeader(
         label = "neonBlur"
     )
 
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         Image(
             painter = painterResource(id = R.drawable.penny_cat_logo),
             contentDescription = "Penny VPN Cat Logo",
@@ -1282,7 +1283,8 @@ class MainActivity : HelperBaseComponentActivity() {
                             mode = mode,
                             lang = appLang,
                             isVipMode = isVipMode,
-                            onLogoClick = { showSplash = true }
+                            onLogoClick = { showSplash = true },
+                            modifier = Modifier.weight(1f, fill = false)
                         )
 
                         Row(
@@ -1419,15 +1421,20 @@ class MainActivity : HelperBaseComponentActivity() {
                                     )
                                 }
                                 Spacer(Modifier.height(6.dp))
-                                LinearProgressIndicator(
-                                    progress = { 1f - progressRatio },
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(5.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = Color(0xFFF59E0B),
-                                    trackColor = Color(0xFF451A03)
-                                )
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(Color(0xFF451A03))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth((1f - progressRatio).coerceIn(0f, 1f))
+                                            .fillMaxHeight()
+                                            .background(Color(0xFFF59E0B))
+                                    )
+                                }
                             }
                         }
                     }

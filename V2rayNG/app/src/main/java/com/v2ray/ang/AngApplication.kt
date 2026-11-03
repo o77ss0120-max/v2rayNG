@@ -2,44 +2,53 @@ package com.v2ray.ang
 
 import android.app.Application
 import android.content.Context
+import androidx.core.content.ContextCompat
 import androidx.work.Configuration
 import androidx.work.WorkManager
-import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
+import com.v2ray.ang.handler.AppLocaleManager
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
-import com.v2ray.ang.util.Utils
+import com.v2ray.ang.ui.compose.ThemeManager
 
 class AngApplication : Application(), Configuration.Provider {
     companion object {
         lateinit var application: AngApplication
     }
 
+    /**
+     * Attaches the base context to the application.
+     * @param base The base context.
+     */
     override fun attachBaseContext(base: Context?) {
-        super.attachBaseContext(base)
+        super.attachBaseContext(base?.let(ContextCompat::getContextForLanguage))
         application = this
     }
 
-    override val workManagerConfiguration: Configuration by lazy {
-        Configuration.Builder()
-            .setDefaultProcessName("${ANG_PACKAGE}:bg")
-            .build()
-    }
+    override val workManagerConfiguration: Configuration = Configuration.Builder()
+        .setDefaultProcessName("${ANG_PACKAGE}:bg")
+        .build()
 
+    /**
+     * Initializes the application.
+     */
     override fun onCreate() {
         super.onCreate()
 
-        MMKV.initialize(this)
+        MmkvManager.initialize(this)
+        AppLocaleManager.initialize(this)
 
-        Utils.setNightMode()
+        // Initialize WorkManager with the custom configuration
         try {
             WorkManager.initialize(this, workManagerConfiguration)
         } catch (_: Exception) {
             // Already initialized via Configuration.Provider by MobileAds or WorkManager
         }
 
-        SettingsManager.initRoutingRulesets(this)
-        es.dmoral.toasty.Toasty.Config.getInstance()
-            .setGravity(android.view.Gravity.BOTTOM, 0, 200)
-            .apply()
+        // Ensure critical preference defaults are present in MMKV early
+        SettingsManager.initApp(this)
+
+        // Initialize theme state from MMKV
+        ThemeManager.refresh()
     }
 }

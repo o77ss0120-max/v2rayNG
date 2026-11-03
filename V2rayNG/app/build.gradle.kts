@@ -10,9 +10,9 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.pennyvpn.app"
+        applicationId = "com.v2ray.ang"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 755
         versionName = "2.3.15"
 
@@ -20,7 +20,18 @@ android {
         splits {
             abi {
                 isEnable = false
-                isUniversalApk = true
+                reset()
+                if (!abiFilterList.isNullOrEmpty()) {
+                    include(*abiFilterList.toTypedArray())
+                } else {
+                    include(
+                        "arm64-v8a",
+                        "armeabi-v7a",
+                        "x86_64",
+                        "x86"
+                    )
+                }
+                isUniversalApk = abiFilterList.isNullOrEmpty()
             }
         }
 
@@ -166,6 +177,7 @@ dependencies {
 
     implementation(libs.androidx.activity.compose)
     implementation("com.google.android.gms:play-services-ads:23.6.0")
+    implementation("com.google.guava:guava:33.3.1-android")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)

@@ -1,6 +1,5 @@
 package com.v2ray.ang.ui.main
 
-import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -8,202 +7,265 @@ import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.runtime.Composable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
-import com.v2ray.ang.AppConfig
-import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
-import com.v2ray.ang.dto.entities.ProfileItem
-import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
-import com.v2ray.ang.extension.toast
-import com.v2ray.ang.extension.toastError
-import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
-import com.v2ray.ang.handler.SubscriptionInfoParser
-import com.v2ray.ang.ui.AboutActivity
-import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
-import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
-import com.v2ray.ang.ui.logcat.LogcatActivity
-import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
-import com.v2ray.ang.ui.routing.RoutingSettingActivity
-import com.v2ray.ang.ui.server.ProfileEditorResult
-import com.v2ray.ang.ui.server.ServerCustomConfigActivity
-import com.v2ray.ang.ui.server.ServerGroupActivity
-import com.v2ray.ang.ui.server.ServerHttpActivity
-import com.v2ray.ang.ui.server.ServerHysteria2Activity
-import com.v2ray.ang.ui.server.ServerProxyChainActivity
-import com.v2ray.ang.ui.server.ServerShadowsocksActivity
-import com.v2ray.ang.ui.server.ServerSocksActivity
-import com.v2ray.ang.ui.server.ServerTrojanActivity
-import com.v2ray.ang.ui.server.ServerVlessActivity
-import com.v2ray.ang.ui.server.ServerVmessActivity
-import com.v2ray.ang.ui.server.ServerWireguardActivity
-import com.v2ray.ang.ui.settings.SettingsActivity
-import com.v2ray.ang.ui.subscription.SubSettingActivity
-import com.v2ray.ang.ui.userasset.UserAssetActivity
-import com.v2ray.ang.util.LogUtil
-import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : HelperBaseComponentActivity() {
 
+    // لینک پنل گیت‌هاب شما
     private val PENNY_PANEL_URL = "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
 
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModel.Factory(application, MainRepository(application as AngApplication))
     }
 
+    private var statusMessage by mutableStateOf("برای اتصال روی دکمه ضربه بزنید")
+    private var isFetching by mutableStateOf(false)
+
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == RESULT_OK) {
                 startV2Ray()
+            } else {
+                statusMessage = "مجوز VPN داده نشد!"
             }
-        }
-
-    private val profileEditorLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode != RESULT_OK) return@registerForActivityResult
-            val data = result.data ?: return@registerForActivityResult
-            val action = data.getStringExtra(ProfileEditorResult.EXTRA_ACTION)
-                ?: return@registerForActivityResult
-            if (action != ProfileEditorResult.ACTION_SAVED &&
-                action != ProfileEditorResult.ACTION_DELETED
-            ) return@registerForActivityResult
-            val restartService = data.getBooleanExtra(
-                ProfileEditorResult.EXTRA_RESTART_SERVICE, false
-            )
-            val selectedProfileSaved = action == ProfileEditorResult.ACTION_SAVED &&
-                    data.getStringExtra(ProfileEditorResult.EXTRA_GUID) == mainViewModel.uiState.value.selectedGuid
-            mainViewModel.onAction(MainAction.RefreshGroups)
-            if (restartService || selectedProfileSaved) LauncherManager.restartService(this)
-        }
-
-    private val settingsActivityLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            val restartService = SettingsChangeManager.consumeRestartService()
-            val refreshGroups = SettingsChangeManager.consumeSetupGroupTab()
-            mainViewModel.refreshUiSettings()
-            if (refreshGroups) mainViewModel.onAction(MainAction.RefreshGroups)
-            if (restartService) LauncherManager.restartService(this)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
-
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
     @Composable
     override fun ScreenContent() {
         BackHandler { moveTaskToBack(false) }
-        MainScreen(
-            mainViewModel = mainViewModel,
-            onAction = { action ->
-                when (action) {
-                    MainAction.ToggleService -> handleFabAction()
-                    MainAction.TestCurrentServer -> handleLayoutTestClick()
-                    MainAction.ImportQRcode -> importQRcode()
-                    MainAction.ImportClipboard -> importClipboard()
-                    MainAction.ImportConfigLocal -> importConfigLocal()
-                    is MainAction.ImportManually -> importManually(action.type)
-                    MainAction.RestartService -> LauncherManager.restartServiceOrStart(this, ::requestServiceStart)
-                    MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
-                    is MainAction.SelectServer -> setSelectServer(action.guid)
-                    is MainAction.EditServer -> editServer(action.guid, action.profile)
-                    is MainAction.ShareClipboard -> shareToClipboard(action.guid)
-                    is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
-                    is MainAction.OpenSubscriptionLink -> openSubscriptionLink(action.url)
-                    else -> mainViewModel.onAction(action)
-                }
+        val uiState by mainViewModel.uiState.collectAsState()
+        val isRunning = uiState.isRunning
+
+        val buttonColor by animateColorAsState(
+            targetValue = when {
+                isFetching -> Color(0xFFFFA000) // نارنجی در حال دریافت سرور
+                isRunning -> Color(0xFF00E676)  // سبز در حالت متصل
+                else -> Color(0xFF2979FF)       // آبی در حالت قطع
             },
-            onNavigate = { route -> navigateTo(route) },
+            label = "buttonColor"
         )
-    }
 
-    private fun shareToClipboard(guid: String): Boolean =
-        AngConfigManager.share2Clipboard(this, guid) == 0
-
-    private fun shareFullContentAsync(guid: String) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val result = AngConfigManager.shareFullContent2Clipboard(this@MainActivity, guid)
-            withContext(Dispatchers.Main) {
-                if (result == 0) toastSuccess(R.string.toast_success)
-                else toastError(R.string.toast_failure)
-            }
-        }
-    }
-
-    private fun openSubscriptionLink(url: String) {
-        val safeUrl = SubscriptionInfoParser.sanitizeLink(url) ?: return
-        Utils.openUri(this, safeUrl)
-    }
-
-    private fun navigateTo(destination: MainDestination) {
-        val intent = when (destination) {
-            MainDestination.Subscriptions -> Intent(this, SubSettingActivity::class.java)
-            MainDestination.PerAppProxy -> Intent(this, PerAppProxyActivity::class.java)
-            MainDestination.Routing -> Intent(this, RoutingSettingActivity::class.java)
-            MainDestination.UserAssets -> Intent(this, UserAssetActivity::class.java)
-            MainDestination.Settings -> Intent(this, SettingsActivity::class.java)
-            MainDestination.Logcat -> Intent(this, LogcatActivity::class.java)
-            MainDestination.CheckUpdate -> Intent(this, CheckUpdateActivity::class.java)
-            MainDestination.BackupRestore -> Intent(this, BackupActivity::class.java)
-            MainDestination.About -> Intent(this, AboutActivity::class.java)
-            MainDestination.Promotion -> {
-                Utils.openUri(
-                    this,
-                    "${Utils.decode(AppConfig.APP_PROMOTION_URL)}?t=${System.currentTimeMillis()}"
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFF0F172A), Color(0xFF020617))
+                    )
                 )
-                return
+                .padding(24.dp)
+        ) {
+            // هدر بالای صفحه
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "PENNY VPN",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "اتصال امن، پرسرعت و رایگان",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 14.sp
+                )
+            }
+
+            // دکمه بزرگ تک‌کلیکه وسط صفحه
+            Box(
+                modifier = Modifier
+                    .size(210.dp)
+                    .align(Alignment.Center)
+                    .clip(CircleShape)
+                    .background(buttonColor.copy(alpha = 0.15f))
+                    .border(4.dp, buttonColor, CircleShape)
+                    .clickable(enabled = !isFetching) {
+                        handleOneClickAction()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(170.dp)
+                        .clip(CircleShape)
+                        .background(buttonColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = when {
+                                isFetching -> "WAIT..."
+                                isRunning -> "CONNECTED"
+                                else -> "CONNECT"
+                            },
+                            color = if (isRunning) Color.Black else Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (isRunning) "قطع اتصال" else "شروع اتصال",
+                            color = if (isRunning) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
+            // بخش وضعیت و تست پینگ در پایین صفحه
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    color = Color(0xFF1E293B),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isRunning) "وضعیت: متصل و ایمن ✅" else statusMessage,
+                            color = if (isRunning) Color(0xFF00E676) else Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+
+                        if (isRunning) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { mainViewModel.testCurrentServerRealPing() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155))
+                            ) {
+                                Text("تست پینگ سرور", color = Color.White)
+                            }
+                        }
+                    }
+                }
             }
         }
-        settingsActivityLauncher.launch(intent)
     }
 
-    private fun handleFabAction() {
+    private fun handleOneClickAction() {
         if (mainViewModel.uiState.value.isRunning) {
             LauncherManager.stopService(this)
+            statusMessage = "اتصال قطع شد"
         } else {
             fetchPennyConfigsAndStart()
         }
     }
 
+    private fun downloadTextWithTimeout(urlStr: String): String {
+        val url = URL("$urlStr?t=${System.currentTimeMillis()}") // جلوگیری از کش شدن لینک قدیمی
+        val conn = url.openConnection() as HttpURLConnection
+        conn.connectTimeout = 8000
+        conn.readTimeout = 8000
+        conn.setRequestProperty("User-Agent", "v2rayNG/1.8.0")
+        return conn.inputStream.bufferedReader().use { it.readText() }.trim()
+    }
+
     private fun fetchPennyConfigsAndStart() {
-        toast("در حال دریافت سرورهای Penny VPN...")
+        isFetching = true
+        statusMessage = "در حال دریافت جدیدترین سرور از پنل..."
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                var configText = java.net.URL(PENNY_PANEL_URL).readText().trim()
-                if (configText.startsWith("http")) {
-                    configText = java.net.URL(configText).readText().trim()
+                // ۱. دریافت محتوای پنل گیت‌هاب (با اضافه کردن ضد کش)
+                var configText = try {
+                    downloadTextWithTimeout(PENNY_PANEL_URL)
+                } catch (e: Exception) {
+                    // مسیر کمکی ضد فیلتر در صورتی که گیت‌هاب روی اینترنت کاربر بسته باشد
+                    downloadTextWithTimeout("https://ghproxy.net/$PENNY_PANEL_URL")
                 }
-                withContext(Dispatchers.Main) {
-                    if (configText.isNotEmpty()) {
-                        MmkvManager.removeAllServer()
-                        mainViewModel.onAction(MainAction.ImportBatchConfig(configText))
-                        delay(600)
-                        val firstGuid = MmkvManager.decodeServerList("").firstOrNull()
-                        if (firstGuid != null) {
-                            mainViewModel.updateSelectedGuid(firstGuid)
+
+                // ۲. اگر داخل فایل Gist یک لینک سابسکریپشن (http...) گذاشته باشید، محتوای آن را هم باز می‌کند
+                if (configText.startsWith("http://") || configText.startsWith("https://")) {
+                    val subUrl = configText.lines().first().trim()
+                    configText = downloadTextWithTimeout(subUrl)
+                }
+
+                if (configText.isNotEmpty()) {
+                    // ۳. پاک کردن سرورهای قبلی و ایمپورت مستقیم و آنی در دیتابیس
+                    MmkvManager.removeAllServer()
+                    val (count, _) = AngConfigManager.importBatchConfig(configText, "", false)
+
+                    withContext(Dispatchers.Main) {
+                        isFetching = false
+                        if (count > 0) {
+                            // ۴. انتخاب اولین سرور از دیتابیس و روشن کردن هسته
+                            mainViewModel.onAction(MainAction.RefreshGroups)
+                            val serverList = MmkvManager.decodeServerList("")
+                            val firstGuid = serverList.firstOrNull()
+
+                            if (firstGuid != null) {
+                                MmkvManager.setSelectServer(firstGuid)
+                                mainViewModel.updateSelectedGuid(firstGuid)
+                                statusMessage = "$count سرور دریافت شد. در حال اتصال..."
+                                requestServiceStart()
+                            } else {
+                                statusMessage = "خطا: لیست سرورها خالی است!"
+                            }
+                        } else {
+                            statusMessage = "خطا: فرمت کانفیگ داخل پنل معتبر نیست!"
                         }
-                        requestServiceStart()
-                    } else {
-                        toast("کانفیگ فعالی در پنل یافت نشد!")
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        isFetching = false
+                        statusMessage = "خطا: فایل پنل گیت‌هاب شما خالی است!"
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    toast("خطا در دریافت سرورها، اتصال با سرور فعلی...")
-                    requestServiceStart()
+                    isFetching = false
+                    statusMessage = "خطا در ارتباط با پنل: ${e.localizedMessage ?: "اینترنت را بررسی کنید"}"
                 }
             }
         }
@@ -218,109 +280,16 @@ class MainActivity : HelperBaseComponentActivity() {
         if (intent == null) startV2Ray() else requestVpnPermission.launch(intent)
     }
 
-    private fun handleLayoutTestClick() {
-        if (mainViewModel.uiState.value.isRunning) {
-            mainViewModel.testCurrentServerRealPing()
-        }
-    }
-
     private fun startV2Ray() {
-        if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
-            val firstGuid = MmkvManager.decodeServerList("").firstOrNull()
-            if (firstGuid != null) {
-                mainViewModel.updateSelectedGuid(firstGuid)
-            } else {
-                toast(R.string.title_file_chooser)
-                return
-            }
+        val firstGuid = MmkvManager.decodeServerList("").firstOrNull()
+        if (firstGuid != null) {
+            MmkvManager.setSelectServer(firstGuid)
+            mainViewModel.updateSelectedGuid(firstGuid)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
         }
         LauncherManager.startService(this)
-    }
-
-    private fun importManually(createConfigType: Int) {
-        val intent = when (createConfigType) {
-            EConfigType.POLICYGROUP.value -> Intent(this, ServerGroupActivity::class.java)
-            EConfigType.PROXYCHAIN.value -> Intent(this, ServerProxyChainActivity::class.java)
-            EConfigType.VMESS.value -> Intent(this, ServerVmessActivity::class.java)
-            EConfigType.VLESS.value -> Intent(this, ServerVlessActivity::class.java)
-            EConfigType.SHADOWSOCKS.value -> Intent(this, ServerShadowsocksActivity::class.java)
-            EConfigType.SOCKS.value -> Intent(this, ServerSocksActivity::class.java)
-            EConfigType.HTTP.value -> Intent(this, ServerHttpActivity::class.java)
-            EConfigType.TROJAN.value -> Intent(this, ServerTrojanActivity::class.java)
-            EConfigType.WIREGUARD.value -> Intent(this, ServerWireguardActivity::class.java)
-            EConfigType.HYSTERIA2.value -> Intent(this, ServerHysteria2Activity::class.java)
-            else -> Intent(this, ServerHttpActivity::class.java).apply {
-                putExtra("createConfigType", createConfigType)
-            }
-        }.apply {
-            putExtra("subscriptionId", mainViewModel.uiState.value.selectedGroupId)
-        }
-        profileEditorLauncher.launch(intent)
-    }
-
-    private fun importQRcode() {
-        launchQRCodeScanner { scanResult ->
-            if (scanResult != null) {
-                mainViewModel.onAction(MainAction.ImportBatchConfig(scanResult))
-            }
-        }
-    }
-
-    private fun importClipboard() {
-        try {
-            val text = Utils.getClipboard(this)
-            mainViewModel.onAction(MainAction.ImportBatchConfig(text))
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to import config from clipboard", e)
-        }
-    }
-
-    private fun importConfigLocal() {
-        launchFileChooser { uri ->
-            if (uri == null) return@launchFileChooser
-            try {
-                contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                    mainViewModel.onAction(MainAction.ImportBatchConfig(reader.readText()))
-                }
-            } catch (e: Exception) {
-                LogUtil.e(AppConfig.TAG, "Failed to read content from URI", e)
-            }
-        }
-    }
-
-    private fun editServer(guid: String, profile: ProfileItem) {
-        val activityClass = when (profile.configType) {
-            EConfigType.CUSTOM -> ServerCustomConfigActivity::class.java
-            EConfigType.POLICYGROUP -> ServerGroupActivity::class.java
-            EConfigType.PROXYCHAIN -> ServerProxyChainActivity::class.java
-            EConfigType.VMESS -> ServerVmessActivity::class.java
-            EConfigType.VLESS -> ServerVlessActivity::class.java
-            EConfigType.SHADOWSOCKS -> ServerShadowsocksActivity::class.java
-            EConfigType.SOCKS -> ServerSocksActivity::class.java
-            EConfigType.HTTP -> ServerHttpActivity::class.java
-            EConfigType.TROJAN -> ServerTrojanActivity::class.java
-            EConfigType.WIREGUARD -> ServerWireguardActivity::class.java
-            EConfigType.HYSTERIA2 -> ServerHysteria2Activity::class.java
-            else -> ServerHttpActivity::class.java
-        }
-        val intent = Intent(this, activityClass).apply {
-            putExtra("guid", guid)
-            putExtra("isRunning", mainViewModel.uiState.value.isRunning)
-            putExtra("createConfigType", profile.configType.value)
-            putExtra("subscriptionId", mainViewModel.uiState.value.selectedGroupId)
-        }
-        profileEditorLauncher.launch(intent)
-    }
-
-    private fun setSelectServer(guid: String) {
-        val selected = mainViewModel.uiState.value.selectedGuid
-        if (guid != selected) {
-            mainViewModel.updateSelectedGuid(guid)
-            LauncherManager.restartService(this)
-        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {

@@ -61,6 +61,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -131,13 +133,13 @@ private enum class AppLang(val code: String) { EN("en") }
 
 private object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =
-        if (vip) "👑 1 Month 50 GB Active • Dedicated Servers" else "Smart Fastest Server Selector"
+        if (vip) "1 Month 50 GB Active • Dedicated Servers" else "Smart Fastest Server Selector"
 
     fun splashTagline(l: AppLang) = "Fast, Smart & Secure Protection"
 
     fun ready(l: AppLang) = "Ready to Connect"
     fun connectedBadge(l: AppLang, vip: Boolean) =
-        if (vip) "Connected to VIP (1M / 50GB) 👑" else "Connected ✅"
+        if (vip) "Connected to VIP (1M / 50GB)" else "Connected"
 
     fun smartConnect(l: AppLang, vip: Boolean) =
         if (vip) "VIP Connect" else "Smart Connect"
@@ -155,9 +157,9 @@ private object Strings {
         else "No servers scanned yet; tap Scan or Connect."
 
     fun scanServersBtn(l: AppLang, vip: Boolean) =
-        if (vip) "👑 Scan VIP" else "🔍 Scan Servers"
+        if (vip) "Scan VIP" else "Scan Servers"
 
-    fun nextServerBtn(l: AppLang) = "⏭ Next Server"
+    fun nextServerBtn(l: AppLang) = "Next Server"
 
     fun scanInfo(l: AppLang, min: Long, count: Int, vip: Boolean): String {
         val tag = if (vip) "VIP " else ""
@@ -173,7 +175,7 @@ private object Strings {
         if (vip) "No VIP scan performed yet" else "No scan performed yet"
 
     fun menuBestConfigs(l: AppLang, vip: Boolean) =
-        if (vip) "👑 1M 50GB Dedicated Servers" else "Best Servers List"
+        if (vip) "1M 50GB Dedicated Servers" else "Best Servers List"
 
     fun menuAppLog(l: AppLang) = "App Activity Logs"
     fun menuCoreLog(l: AppLang) = "Core Logs (Logcat)"
@@ -183,6 +185,152 @@ private object Strings {
     fun emptyBestList(l: AppLang) = "No server list yet. Please scan first."
     fun emptyLogs(l: AppLang) = "No logs recorded yet."
 }
+
+/**
+ * آیکن الماس سفید شیشه‌ای (White Glassy Diamond) جایگزین تاج
+ */
+@Composable
+private fun GlassDiamondIcon(
+    size: Dp = 15.dp,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+
+        val outerPath = Path().apply {
+            moveTo(w * 0.24f, h * 0.14f)
+            lineTo(w * 0.76f, h * 0.14f)
+            lineTo(w * 0.96f, h * 0.38f)
+            lineTo(w * 0.50f, h * 0.92f)
+            lineTo(w * 0.04f, h * 0.38f)
+            close()
+        }
+
+        drawPath(
+            path = outerPath,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFFFFFFFF).copy(alpha = 0.96f),
+                    Color(0xFFE4E9F2).copy(alpha = 0.78f),
+                    Color(0xFFB4C3D8).copy(alpha = 0.55f)
+                ),
+                start = Offset(0f, 0f),
+                end = Offset(w, h)
+            )
+        )
+
+        val topFacet = Path().apply {
+            moveTo(w * 0.24f, h * 0.14f)
+            lineTo(w * 0.76f, h * 0.14f)
+            lineTo(w * 0.68f, h * 0.38f)
+            lineTo(w * 0.32f, h * 0.38f)
+            close()
+        }
+        drawPath(
+            path = topFacet,
+            color = Color(0xFFFFFFFF).copy(alpha = 0.56f)
+        )
+
+        val leftLowerFacet = Path().apply {
+            moveTo(w * 0.04f, h * 0.38f)
+            lineTo(w * 0.32f, h * 0.38f)
+            lineTo(w * 0.50f, h * 0.92f)
+            close()
+        }
+        drawPath(
+            path = leftLowerFacet,
+            color = Color(0xFFD0D8E8).copy(alpha = 0.42f)
+        )
+
+        drawLine(
+            color = Color(0xFFFFFFFF).copy(alpha = 0.85f),
+            start = Offset(w * 0.04f, h * 0.38f),
+            end = Offset(w * 0.96f, h * 0.38f),
+            strokeWidth = 1.dp.toPx()
+        )
+        drawLine(
+            color = Color(0xFFFFFFFF).copy(alpha = 0.75f),
+            start = Offset(w * 0.24f, h * 0.14f),
+            end = Offset(w * 0.32f, h * 0.38f),
+            strokeWidth = 0.9.dp.toPx()
+        )
+        drawLine(
+            color = Color(0xFFFFFFFF).copy(alpha = 0.75f),
+            start = Offset(w * 0.76f, h * 0.14f),
+            end = Offset(w * 0.68f, h * 0.38f),
+            strokeWidth = 0.9.dp.toPx()
+        )
+        drawLine(
+            color = Color(0xFFEFF3FA).copy(alpha = 0.70f),
+            start = Offset(w * 0.32f, h * 0.38f),
+            end = Offset(w * 0.50f, h * 0.92f),
+            strokeWidth = 0.9.dp.toPx()
+        )
+        drawLine(
+            color = Color(0xFFEFF3FA).copy(alpha = 0.70f),
+            start = Offset(w * 0.68f, h * 0.38f),
+            end = Offset(w * 0.50f, h * 0.92f),
+            strokeWidth = 0.9.dp.toPx()
+        )
+
+        drawPath(
+            path = outerPath,
+            color = Color(0xFFFFFFFF).copy(alpha = 0.92f),
+            style = Stroke(width = 1.15.dp.toPx())
+        )
+    }
+}
+
+/**
+ * آیکن منوی مدرن خطی (بدون ایموجی)
+ */
+@Composable
+private fun MenuLinesIcon(
+    size: Dp = 15.dp,
+    color: Color = Color(0xFFE8ECF4),
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 1.6.dp.toPx()
+        drawLine(
+            color = color,
+            start = Offset(w * 0.12f, h * 0.24f),
+            end = Offset(w * 0.88f, h * 0.24f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color.copy(alpha = 0.85f),
+            start = Offset(w * 0.22f, h * 0.50f),
+            end = Offset(w * 0.78f, h * 0.50f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.12f, h * 0.76f),
+            end = Offset(w * 0.88f, h * 0.76f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+/**
+ * رنگ‌بندی مشکی و طوسی متالیک برای دکمه‌های خاموش/روشن (Switch) در منو
+ */
+@Composable
+private fun metallicSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Color(0xFFE4E7F0),
+    checkedTrackColor = Color(0xFF3B3E48),
+    checkedBorderColor = Color(0xFF5A5E6B),
+    uncheckedThumbColor = Color(0xFF7E828E),
+    uncheckedTrackColor = Color(0xFF121317),
+    uncheckedBorderColor = Color(0xFF2C2E36)
+)
 
 // ═════════════════════════ اعتبارسنجی کد متغیر اشتراک ۱ ماه ۵۰ گیگ ═════════════════════════
 
@@ -312,22 +460,9 @@ private fun fmtDuration(sec: Long): String {
 // ═════════════════════════ کامپوننت‌های گرافیکی مدرن (تم نقره‌ای متالیک، خاکستری و نود شاینی) ═════════════════════════
 
 @Composable
-private fun StarsRow(stars: Int, size: TextUnit = 11.sp) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        for (i in 1..5) {
-            Text(
-                text = "★",
-                color = if (i <= stars) Color(0xFFD8C7B0) else Color(0xFF3E3D46),
-                fontSize = size
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatCell(icon: String, value: String, label: String, modifier: Modifier = Modifier) {
+private fun StatCell(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("$icon $value", color = Color(0xFFF2F4F8), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = Color(0xFFF2F4F8), fontSize = 14.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
         Text(label, color = Color(0xFF9EA1AB), fontSize = 10.sp)
     }
@@ -471,13 +606,13 @@ private fun ModernServerCard(
 
                     Spacer(Modifier.width(6.dp))
 
-                    // بج مدرن پینگ با ترکیب نقره‌ای متالیک
+                    // بج مدرن پینگ با ترکیب نقره‌ای متالیک و الماس سفید شیشه‌ای در حالت VIP
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(9.dp))
                             .background(
                                 if (isConnected) Color(0xFF2B2E38)
-                                else if (isVipMode) Color(0xFF2D2720)
+                                else if (isVipMode) Color(0xFF282A33)
                                 else Color(0xFF23242C)
                             )
                             .border(
@@ -488,15 +623,21 @@ private fun ModernServerCard(
                             )
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = if (isVipMode) "👑 ${currentSrv.ms} ms" else "${currentSrv.ms} ms",
-                            color = if (isConnected) Color(0xFFF2F4F8)
-                            else if (isVipMode) Color(0xFFE6CFAF)
-                            else Color(0xFFC8CCD6),
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isVipMode) {
+                                GlassDiamondIcon(size = 11.dp)
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = "${currentSrv.ms} ms",
+                                color = if (isConnected) Color(0xFFF2F4F8)
+                                else if (isVipMode) Color(0xFFE8ECF4)
+                                else Color(0xFFC8CCD6),
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                     }
                 }
             }
@@ -899,13 +1040,22 @@ private fun NeonBrandHeader(
             )
         }
         Spacer(Modifier.height(3.dp))
-        Text(
-            text = Strings.subtitle(lang, isVipMode),
-            color = if (isVipMode) Color(0xFFE6CFAF) else Color(0xFF9EA1AB),
-            fontSize = 11.5.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (isVipMode) {
+                GlassDiamondIcon(size = 12.dp)
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(
+                text = Strings.subtitle(lang, isVipMode),
+                color = if (isVipMode) Color(0xFFE8ECF4) else Color(0xFF9EA1AB),
+                fontSize = 11.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -1412,8 +1562,8 @@ class MainActivity : HelperBaseComponentActivity() {
             .putStringSet("used_vip_serials", usedSet)
             .apply()
 
-        plog("👑 1M/50GB Plan Activated with code $vipCode")
-        statusMessage = "1 Month 50 GB Plan Activated 👑"
+        plog("1M/50GB Plan Activated with code $vipCode")
+        statusMessage = "1 Month 50 GB Plan Activated"
 
         return true to statusMessage
     }
@@ -1433,7 +1583,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         val isRunning = mainViewModel.uiState.value.isRunning
                         val tunnelAlive = isRunning && testThroughLocalProxy(TEST_URLS.first()) > 0
                         if (!tunnelAlive) {
-                            plog("🌐 Network change / drop detected; auto-reconnecting to last healthy server...")
+                            plog("Network change / drop detected; auto-reconnecting to last healthy server...")
                             triggerAutoReconnect()
                         }
                     }
@@ -1446,7 +1596,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         lifecycleScope.launch(Dispatchers.IO) {
                             delay(1500)
                             if (autoReconnect && userWantsConnected && phase == Phase.IDLE && !mainViewModel.uiState.value.isRunning) {
-                                plog("🔄 Auto-Reconnect triggered on network capability recovery")
+                                plog("Auto-Reconnect triggered on network capability recovery")
                                 triggerAutoReconnect()
                             }
                         }
@@ -1480,7 +1630,7 @@ class MainActivity : HelperBaseComponentActivity() {
             failedGuids.clear()
             val connected = connectFromList(startAfter = null)
             ui {
-                statusMessage = if (connected != null) "Auto-reconnected ✅" else "Auto-reconnect failed"
+                statusMessage = if (connected != null) "Auto-reconnected" else "Auto-reconnect failed"
             }
         } finally {
             withContext(NonCancellable + Dispatchers.Main) {
@@ -1753,22 +1903,21 @@ class MainActivity : HelperBaseComponentActivity() {
                             Column(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     StatCell(
-                                        "⬇", fmtSpeed(downSpeed), Strings.download(appLang),
+                                        fmtSpeed(downSpeed), Strings.download(appLang),
                                         Modifier.weight(1f)
                                     )
                                     StatCell(
-                                        "⬆", fmtSpeed(upSpeed), Strings.upload(appLang),
+                                        fmtSpeed(upSpeed), Strings.upload(appLang),
                                         Modifier.weight(1f)
                                     )
                                 }
                                 Spacer(Modifier.height(10.dp))
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     StatCell(
-                                        "⏱", fmtDuration(elapsedSec), Strings.duration(appLang),
+                                        fmtDuration(elapsedSec), Strings.duration(appLang),
                                         Modifier.weight(1f)
                                     )
                                     StatCell(
-                                        "📊",
                                         fmtBytes(totalDown + totalUp),
                                         Strings.totalData(appLang),
                                         Modifier.weight(1f)
@@ -1812,7 +1961,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ── دکمه‌های اسکن و سرور بعدی با تم نود و خاکستری شاینی ──
+                    // ── دکمه‌های اسکن و سرور بعدی بدون ایموجی ──
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1823,11 +1972,17 @@ class MainActivity : HelperBaseComponentActivity() {
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(
-                                Strings.scanServersBtn(appLang, isVipMode),
-                                fontSize = 13.sp,
-                                color = Color(0xFFE8D3B5)
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isVipMode) {
+                                    GlassDiamondIcon(size = 13.dp)
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    Strings.scanServersBtn(appLang, isVipMode),
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFE8ECF4)
+                                )
+                            }
                         }
 
                         Button(
@@ -1836,13 +1991,13 @@ class MainActivity : HelperBaseComponentActivity() {
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isVipMode) Color(0xFFC8AD8D) else Color(0xFF36353E)
+                                containerColor = if (isVipMode) Color(0xFFD0D4DF) else Color(0xFF36353E)
                             )
                         ) {
                             Text(
                                 Strings.nextServerBtn(appLang),
                                 fontSize = 13.sp,
-                                color = if (isVipMode) Color(0xFF181512) else Color(0xFFF5EFE6),
+                                color = if (isVipMode) Color(0xFF15161B) else Color(0xFFF5EFE6),
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -1850,7 +2005,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // ── داک مدرن پایین صفحه (اشتراک ۱ ماه ۵۰ گیگ و منوی مدرن؛ فقط انگلیسی) ──
+                    // ── داک مدرن پایین صفحه (اشتراک ۱ ماه ۵۰ گیگ با الماس سفید شیشه‌ای و منوی مدرن؛ بدون ایموجی) ──
                     Surface(
                         color = Color(0xFF1A1A1F).copy(alpha = 0.94f),
                         shape = RoundedCornerShape(20.dp),
@@ -1864,16 +2019,16 @@ class MainActivity : HelperBaseComponentActivity() {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // کارت/دکمه اشتراک ۱ ماه ۵۰ گیگ
+                                // کارت/دکمه اشتراک ۱ ماه ۵۰ گیگ با آیکن الماس سفید شیشه‌ای
                                 Surface(
-                                    color = if (vipActive) Color(0xFF2D261E) else Color(0xFF25242B),
+                                    color = if (vipActive) Color(0xFF282A33) else Color(0xFF23242B),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .weight(1f)
                                         .clip(RoundedCornerShape(14.dp))
                                         .border(
                                             1.dp,
-                                            if (vipActive) Color(0xFFE6CFAF).copy(alpha = 0.7f) else Color(0xFF3E3D46),
+                                            if (vipActive) Color(0xFFE4E9F2).copy(alpha = 0.65f) else Color(0xFF3E3D46),
                                             RoundedCornerShape(14.dp)
                                         )
                                         .clickable { showVipDialog = true }
@@ -1883,40 +2038,47 @@ class MainActivity : HelperBaseComponentActivity() {
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Column {
-                                            Text(
-                                                text = if (vipActive) "👑 1 Month 50 GB (Active)" else "👑 1 Month 50 GB Plan",
-                                                color = if (vipActive) Color(0xFFF5E6D3) else Color(0xFFF5EFE6),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.ExtraBold
-                                            )
-                                            val subVipText = if (vipActive) {
-                                                val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
-                                                val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
-                                                "${remDays}d • ${fmtBytes(remBytes)} left"
-                                            } else {
-                                                "Activate dedicated servers with code"
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            GlassDiamondIcon(size = 18.dp)
+                                            Spacer(Modifier.width(9.dp))
+                                            Column {
+                                                Text(
+                                                    text = if (vipActive) "1 Month 50 GB (Active)" else "1 Month 50 GB Plan",
+                                                    color = Color(0xFFF2F4F8),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                                val subVipText = if (vipActive) {
+                                                    val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
+                                                    val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
+                                                    "${remDays}d • ${fmtBytes(remBytes)} left"
+                                                } else {
+                                                    "Activate dedicated servers with code"
+                                                }
+                                                Text(
+                                                    text = subVipText,
+                                                    color = if (vipActive) Color(0xFFD8DCE6) else Color(0xFFA6A39E),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
                                             }
-                                            Text(
-                                                text = subVipText,
-                                                color = if (vipActive) Color(0xFFE6CFAF) else Color(0xFFA6A39E),
-                                                fontSize = 10.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
                                         }
                                         Text(
-                                            text = if (vipActive) "✓" else "❯",
-                                            color = if (vipActive) Color(0xFFE8D3B5) else Color(0xFFA6A39E),
-                                            fontSize = 14.sp,
+                                            text = if (vipActive) "ACTIVE" else "›",
+                                            color = if (vipActive) Color(0xFFE4E9F2) else Color(0xFFA6A39E),
+                                            fontSize = if (vipActive) 10.sp else 15.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
                                 }
 
-                                // دکمه منوی مدرن در داک پایین
+                                // دکمه منوی مدرن در داک پایین (بدون ایموجی)
                                 Surface(
-                                    color = Color(0xFF25242B),
+                                    color = Color(0xFF23242B),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(14.dp))
@@ -1927,16 +2089,13 @@ class MainActivity : HelperBaseComponentActivity() {
                                         modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text(
-                                            text = "⚙",
-                                            color = Color(0xFFF5EFE6),
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        MenuLinesIcon(size = 15.dp)
+                                        Spacer(Modifier.height(3.dp))
                                         Text(
                                             text = "Menu",
                                             color = Color(0xFFA6A39E),
-                                            fontSize = 10.sp
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
                                         )
                                     }
                                 }
@@ -1951,13 +2110,13 @@ class MainActivity : HelperBaseComponentActivity() {
                                         .fillMaxWidth()
                                         .height(4.dp)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(Color(0xFF2A2622))
+                                        .background(Color(0xFF262830))
                                 ) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth((1f - progressRatio).coerceIn(0f, 1f))
                                             .fillMaxHeight()
-                                            .background(Color(0xFFE6CFAF))
+                                            .background(Color(0xFFE4E9F2))
                                     )
                                 }
                             }
@@ -2014,34 +2173,42 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * منوی مدرن کارتی با تم نود و خاکستری شاینی (English Only)
+     * منوی مدرن کارتی بدون هیچ ایموجی و با دکمه‌های خاموش/روشن مشکی طوسی
      */
     @Composable
     private fun ModernMenuDialog(isVipMode: Boolean) {
         AlertDialog(
             onDismissRequest = { showMenu = false },
+            containerColor = Color(0xFF191A20),
             confirmButton = {
                 TextButton(onClick = { showMenu = false }) {
-                    Text(Strings.close(appLang), color = Color(0xFFE6CFAF))
+                    Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
                 }
             },
             title = {
-                Text(
-                    text = "⚙ Settings & Control Center",
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 17.sp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MenuLinesIcon(size = 16.dp)
+                    Text(
+                        text = "Settings & Control Center",
+                        color = Color(0xFFF2F4F8),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp
+                    )
+                }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // ۱. کارت اشتراک ۱ ماه ۵۰ گیگ
+                    // ۱. کارت اشتراک ۱ ماه ۵۰ گیگ با الماس سفید شیشه‌ای
                     Surface(
-                        color = Color(0xFF25242B),
+                        color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFF3E3D46), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.35f), RoundedCornerShape(14.dp))
                             .clickable {
                                 showMenu = false
                                 showVipDialog = true
@@ -2052,24 +2219,28 @@ class MainActivity : HelperBaseComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "👑 1 Month 50 GB Plan",
-                                color = Color(0xFFE6CFAF),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                            Text("❯", color = Color(0xFFA6A39E))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                GlassDiamondIcon(size = 15.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "1 Month 50 GB Plan",
+                                    color = Color(0xFFF2F4F8),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            Text("›", color = Color(0xFFD0D4DF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    // ۲. کارت لیست بهترین سرورها
+                    // ۲. کارت لیست بهترین سرورها (بدون ایموجی)
                     Surface(
-                        color = Color(0xFF25242B),
+                        color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFF3E3D46), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
                             .clickable {
                                 showMenu = false
                                 showBest = true
@@ -2081,22 +2252,22 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "⚡ " + Strings.menuBestConfigs(appLang, isVipMode),
-                                color = Color(0xFFF5EFE6),
+                                text = Strings.menuBestConfigs(appLang, isVipMode),
+                                color = Color(0xFFF2F4F8),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
-                            Text("${activeList.size}", color = Color(0xFFE6CFAF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("${activeList.size}", color = Color(0xFFD8DCE6), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
 
-                    // ۳. سوییچ تعویض خودکار هنگام قطعی
+                    // ۳. سوییچ تعویض خودکار هنگام قطعی (مشکی و طوسی)
                     Surface(
-                        color = Color(0xFF25242B),
+                        color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3E3D46), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -2104,9 +2275,9 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "🔄 Auto-Switch on Drop",
+                                text = "Auto-Switch on Drop",
                                 fontSize = 13.sp,
-                                color = Color(0xFFF5EFE6),
+                                color = Color(0xFFF2F4F8),
                                 modifier = Modifier.weight(1f)
                             )
                             Switch(
@@ -2114,18 +2285,19 @@ class MainActivity : HelperBaseComponentActivity() {
                                 onCheckedChange = {
                                     autoSwitch = it
                                     prefs.edit().putBoolean("auto_switch", it).apply()
-                                }
+                                },
+                                colors = metallicSwitchColors()
                             )
                         }
                     }
 
-                    // ۴. سوییچ اتصال خودکار در تغییر شبکه
+                    // ۴. سوییچ اتصال خودکار در تغییر شبکه (مشکی و طوسی)
                     Surface(
-                        color = Color(0xFF25242B),
+                        color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3E3D46), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -2133,9 +2305,9 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "🌐 Auto-Reconnect on Net Change",
+                                text = "Auto-Reconnect on Net Change",
                                 fontSize = 13.sp,
-                                color = Color(0xFFF5EFE6),
+                                color = Color(0xFFF2F4F8),
                                 modifier = Modifier.weight(1f)
                             )
                             Switch(
@@ -2143,7 +2315,8 @@ class MainActivity : HelperBaseComponentActivity() {
                                 onCheckedChange = {
                                     autoReconnect = it
                                     prefs.edit().putBoolean("auto_reconnect", it).apply()
-                                }
+                                },
+                                colors = metallicSwitchColors()
                             )
                         }
                     }
@@ -2158,7 +2331,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(Strings.menuAppLog(appLang), fontSize = 11.sp, maxLines = 1, color = Color(0xFFE6CFAF))
+                            Text(Strings.menuAppLog(appLang), fontSize = 11.sp, maxLines = 1, color = Color(0xFFD8DCE6))
                         }
                         OutlinedButton(
                             onClick = {
@@ -2168,7 +2341,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(Strings.menuCoreLog(appLang), fontSize = 11.sp, maxLines = 1, color = Color(0xFFE6CFAF))
+                            Text(Strings.menuCoreLog(appLang), fontSize = 11.sp, maxLines = 1, color = Color(0xFFD8DCE6))
                         }
                     }
                 }
@@ -2177,7 +2350,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * دیالوگ فعال‌سازی و مدیریت اشتراک ۱ ماه ۵۰ گیگ
+     * دیالوگ فعال‌سازی و مدیریت اشتراک ۱ ماه ۵۰ گیگ با آیکن الماس سفید شیشه‌ای و کلید مشکی طوسی
      */
     @Composable
     private fun VipSubscriptionDialog() {
@@ -2188,17 +2361,24 @@ class MainActivity : HelperBaseComponentActivity() {
 
         AlertDialog(
             onDismissRequest = { showVipDialog = false },
+            containerColor = Color(0xFF191A20),
             confirmButton = {
                 TextButton(onClick = { showVipDialog = false }) {
-                    Text(Strings.close(appLang), color = Color(0xFFE6CFAF))
+                    Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
                 }
             },
             title = {
-                Text(
-                    text = "👑 1 Month 50 GB Plan",
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFE6CFAF)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    GlassDiamondIcon(size = 18.dp)
+                    Text(
+                        text = "1 Month 50 GB Plan",
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFF2F4F8)
+                    )
+                }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2208,29 +2388,32 @@ class MainActivity : HelperBaseComponentActivity() {
                         val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
 
                         Surface(
-                            color = Color(0xFF25242B),
+                            color = Color(0xFF23252D),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                                .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.40f), RoundedCornerShape(12.dp))
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    text = "Status: Active ✅ (Ad-Free)",
-                                    color = Color(0xFFF5E6D3),
+                                    text = "Status: Active (Ad-Free)",
+                                    color = Color(0xFFF2F4F8),
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = "Active Code: $vipCode",
                                     fontSize = 12.sp,
+                                    color = Color(0xFFD0D4DF),
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
                                     text = "Time Remaining: ${remDays}d ${remHours}h (of 30 days)",
+                                    color = Color(0xFFD0D4DF),
                                     fontSize = 12.sp
                                 )
                                 Text(
                                     text = "Traffic Remaining: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / 50 GB)",
+                                    color = Color(0xFFE4E7F0),
                                     fontSize = 12.sp
                                 )
                             }
@@ -2243,6 +2426,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         ) {
                             Text(
                                 text = "Use Dedicated VIP Servers",
+                                color = Color(0xFFF2F4F8),
                                 fontSize = 13.sp
                             )
                             Switch(
@@ -2250,12 +2434,14 @@ class MainActivity : HelperBaseComponentActivity() {
                                 onCheckedChange = {
                                     useVipServers = it
                                     prefs.edit().putBoolean("use_vip_servers", it).apply()
-                                }
+                                },
+                                colors = metallicSwitchColors()
                             )
                         }
                     } else {
                         Text(
                             text = "Enter your variable activation code to unlock 1 Month / 50 GB dedicated servers and Ad-Free mode:",
+                            color = Color(0xFFD0D4DF),
                             fontSize = 13.sp
                         )
 
@@ -2281,19 +2467,23 @@ class MainActivity : HelperBaseComponentActivity() {
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD8BE9B))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF383B46))
                         ) {
-                            Text(
-                                text = "Activate 1 Month 50 GB 👑",
-                                color = Color(0xFF1A1714),
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                GlassDiamondIcon(size = 15.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Activate 1 Month 50 GB",
+                                    color = Color(0xFFF2F4F8),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                         feedback?.let { msg ->
                             Text(
                                 text = msg,
-                                color = if (isSuccess) Color(0xFFF5E6D3) else Color(0xFFE57373),
+                                color = if (isSuccess) Color(0xFFE4E9F2) else Color(0xFFE57373),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -2337,10 +2527,19 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             },
             title = {
-                Text(
-                    text = Strings.menuBestConfigs(appLang, isVipMode),
-                    fontWeight = FontWeight.ExtraBold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (isVipMode) {
+                        GlassDiamondIcon(size = 16.dp)
+                    }
+                    Text(
+                        text = Strings.menuBestConfigs(appLang, isVipMode),
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFF2F4F8)
+                    )
+                }
             },
             text = {
                 if (listToShow.isEmpty()) {
@@ -2422,10 +2621,10 @@ class MainActivity : HelperBaseComponentActivity() {
                                             )
                                             if (active) {
                                                 Text(
-                                                    text = "✓",
+                                                    text = "ACTIVE",
                                                     color = Color(0xFFF2F4F8),
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 13.sp
+                                                    fontSize = 9.5.sp
                                                 )
                                             }
                                         }
@@ -2639,7 +2838,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     ui {
                         statusMessage = "Server did not respond; try another one."
                     }
-                    plog("❌ ${entry.label} failed")
+                    plog("${entry.label} failed")
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -2662,7 +2861,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 val running = mainViewModel.uiState.value.isRunning
                 if (!running && userWantsConnected && autoReconnect && activeList.isNotEmpty()) {
-                    plog("⚠ Unexpected VPN drop detected; running auto-reconnect...")
+                    plog("Unexpected VPN drop detected; running auto-reconnect...")
                     triggerAutoReconnect()
                     continue
                 }
@@ -2690,7 +2889,7 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         if (ok) return
 
-        plog("⚠ Active tunnel unresponsive; auto-switching...")
+        plog("Active tunnel unresponsive; auto-switching...")
         val current = mainViewModel.uiState.value.selectedGuid
         if (current != null) failedGuids.add(current)
         ui {
@@ -2896,12 +3095,12 @@ class MainActivity : HelperBaseComponentActivity() {
             plog("Attempt $attempts: ${s.label}")
             val ping = connectAndVerify(s.guid)
             if (ping > 0) {
-                plog("✅ Connected: ${s.label} (${ping}ms)")
+                plog("Connected: ${s.label} (${ping}ms)")
                 markConnected(s.guid, ping)
                 return s
             }
             failedGuids.add(s.guid)
-            plog("❌ Failed: ${s.label}")
+            plog("Failed: ${s.label}")
         }
         return null
     }

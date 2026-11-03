@@ -125,106 +125,63 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-// ═════════════════════════ زبان (فارسی / انگلیسی) ═════════════════════════
+// ═════════════════════════ زبان (فقط انگلیسی) ═════════════════════════
 
-private enum class AppLang(val code: String) { FA("fa"), EN("en") }
+private enum class AppLang(val code: String) { EN("en") }
 
 private object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "👑 اشتراک ۱ ماه ۵۰ گیگ فعال • سرورهای اختصاصی" else "انتخابگر هوشمند سریع‌ترین سرور"
-        } else {
-            if (vip) "👑 1 Month 50 GB Active • Dedicated Servers" else "Smart Fastest Server Selector"
-        }
+        if (vip) "👑 1 Month 50 GB Active • Dedicated Servers" else "Smart Fastest Server Selector"
 
-    fun splashTagline(l: AppLang) =
-        if (l == AppLang.FA) "اتصال امن، هوشمند و پرسرعت" else "Fast, Smart & Secure Protection"
+    fun splashTagline(l: AppLang) = "Fast, Smart & Secure Protection"
 
-    fun ready(l: AppLang) = if (l == AppLang.FA) "آماده اتصال" else "Ready to Connect"
+    fun ready(l: AppLang) = "Ready to Connect"
     fun connectedBadge(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "متصل به سرور ویژه (۱ ماه ۵۰ گیگ) 👑" else "متصل ✅"
-        } else {
-            if (vip) "Connected to VIP (1M / 50GB) 👑" else "Connected ✅"
-        }
+        if (vip) "Connected to VIP (1M / 50GB) 👑" else "Connected ✅"
 
     fun smartConnect(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "اتصال اشتراک ۱ ماه ۵۰ گیگ" else "اتصال هوشمند"
-        } else {
-            if (vip) "VIP Connect" else "Smart Connect"
-        }
+        if (vip) "VIP Connect" else "Smart Connect"
 
-    fun tapToCancel(l: AppLang) = if (l == AppLang.FA) "ضربه = لغو" else "Tap to Cancel"
-    fun disconnect(l: AppLang) = if (l == AppLang.FA) "قطع اتصال" else "Disconnect"
+    fun tapToCancel(l: AppLang) = "Tap to Cancel"
+    fun disconnect(l: AppLang) = "Disconnect"
 
-    fun download(l: AppLang) = if (l == AppLang.FA) "دانلود" else "Download"
-    fun upload(l: AppLang) = if (l == AppLang.FA) "آپلود" else "Upload"
-    fun duration(l: AppLang) = if (l == AppLang.FA) "مدت اتصال" else "Duration"
-    fun totalData(l: AppLang) = if (l == AppLang.FA) "حجم مصرفی" else "Total Data"
+    fun download(l: AppLang) = "Download"
+    fun upload(l: AppLang) = "Upload"
+    fun duration(l: AppLang) = "Duration"
+    fun totalData(l: AppLang) = "Total Data"
 
     fun noServerYet(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "هنوز سرور اشتراک ۱ ماه ۵۰ گیگ اسکن نشده؛ دکمه اسکن یا اتصال را بزنید."
-            else "هنوز سروری اسکن نشده؛ دکمه اسکن یا اتصال را بزنید."
-        } else {
-            if (vip) "No VIP servers scanned yet; tap Scan or Connect."
-            else "No servers scanned yet; tap Scan or Connect."
-        }
+        if (vip) "No VIP servers scanned yet; tap Scan or Connect."
+        else "No servers scanned yet; tap Scan or Connect."
 
     fun scanServersBtn(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "👑 اسکن سرورهای ویژه" else "🔍 اسکن سرورها"
-        } else {
-            if (vip) "👑 Scan VIP" else "🔍 Scan Servers"
-        }
+        if (vip) "👑 Scan VIP" else "🔍 Scan Servers"
 
-    fun nextServerBtn(l: AppLang) = if (l == AppLang.FA) "⏭ سرور بعدی" else "⏭ Next Server"
+    fun nextServerBtn(l: AppLang) = "⏭ Next Server"
 
     fun scanInfo(l: AppLang, min: Long, count: Int, vip: Boolean): String {
         val tag = if (vip) "VIP " else ""
-        return if (l == AppLang.FA) {
-            val ago = when {
-                min < 1 -> "چند لحظه پیش"
-                min < 60 -> "$min دقیقه پیش"
-                else -> "${min / 60} ساعت پیش"
-            }
-            "آخرین اسکن $tag: $ago  •  $count سرور آماده"
-        } else {
-            val ago = when {
-                min < 1 -> "just now"
-                min < 60 -> "${min}m ago"
-                else -> "${min / 60}h ago"
-            }
-            "Last ${tag}scan: $ago  •  $count servers ready"
+        val ago = when {
+            min < 1 -> "just now"
+            min < 60 -> "${min}m ago"
+            else -> "${min / 60}h ago"
         }
+        return "Last ${tag}scan: $ago  •  $count servers ready"
     }
 
     fun noScanYet(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "هنوز اسکن سرورهای ویژه انجام نشده" else "هنوز اسکنی انجام نشده"
-        } else {
-            if (vip) "No VIP scan performed yet" else "No scan performed yet"
-        }
+        if (vip) "No VIP scan performed yet" else "No scan performed yet"
 
     fun menuBestConfigs(l: AppLang, vip: Boolean) =
-        if (l == AppLang.FA) {
-            if (vip) "👑 لیست سرورهای اشتراک ۱ ماه ۵۰ گیگ" else "لیست بهترین سرورها"
-        } else {
-            if (vip) "👑 1M 50GB Dedicated Servers" else "Best Servers List"
-        }
+        if (vip) "👑 1M 50GB Dedicated Servers" else "Best Servers List"
 
-    fun menuAppLog(l: AppLang) = if (l == AppLang.FA) "گزارش و لاگ برنامه" else "App Activity Logs"
-    fun menuCoreLog(l: AppLang) = if (l == AppLang.FA) "لاگ هسته (Logcat)" else "Core Logs (Logcat)"
-    fun close(l: AppLang) = if (l == AppLang.FA) "بستن" else "Close"
-    fun copy(l: AppLang) = if (l == AppLang.FA) "کپی" else "Copy"
-    fun clear(l: AppLang) = if (l == AppLang.FA) "پاک کردن" else "Clear"
-    fun emptyBestList(l: AppLang) =
-        if (l == AppLang.FA) "هنوز لیستی ساخته نشده. ابتدا اسکن کنید."
-        else "No server list yet. Please scan first."
-
-    fun emptyLogs(l: AppLang) =
-        if (l == AppLang.FA) "هنوز لاگی ثبت نشده." else "No logs recorded yet."
+    fun menuAppLog(l: AppLang) = "App Activity Logs"
+    fun menuCoreLog(l: AppLang) = "Core Logs (Logcat)"
+    fun close(l: AppLang) = "Close"
+    fun copy(l: AppLang) = "Copy"
+    fun clear(l: AppLang) = "Clear"
+    fun emptyBestList(l: AppLang) = "No server list yet. Please scan first."
+    fun emptyLogs(l: AppLang) = "No logs recorded yet."
 }
 
 // ═════════════════════════ اعتبارسنجی کد متغیر اشتراک ۱ ماه ۵۰ گیگ ═════════════════════════
@@ -307,11 +264,11 @@ private data class PennyServer(
 }
 
 /**
- * نام‌گذاری سرورها بدون پرچم کشور به فرمت استاندارد:
+ * نام‌گذاری سرورها بدون پرچم کشور و مرتب‌شده بر اساس کمترین پینگ (ms):
  * Data center A-1, Data center A-2, Server A-1, Server A-2, Data center B-1, ...
  */
 private fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
-    return list.mapIndexed { index, s ->
+    return list.sortedBy { it.ms }.mapIndexed { index, s ->
         val groupChar = ('A'.code + (index / 4).coerceAtMost(5)).toChar()
         val num = (index % 2) + 1
         val isDataCenter = (index % 4) < 2
@@ -408,7 +365,8 @@ private fun StaggeredServerItem(
 }
 
 /**
- * کارت مدرن نمایش سرور بدون پرچم کشور با فونت ظریف‌تر و نمایش پینگ زنده
+ * کارت مدرن نمایش سرور بدون پرچم کشور و بدون ستاره/10G ULTRA
+ * همراه با افکت محو شدن (Fade / Crossfade) ملایم هنگام تغییر سرور
  */
 @Composable
 private fun ModernServerCard(
@@ -434,112 +392,112 @@ private fun ModernServerCard(
             .border(1.dp, borderColor, RoundedCornerShape(18.dp))
             .clickable(enabled = enabled) { onClick() }
     ) {
-        if (server == null) {
-            Text(
-                text = Strings.noServerYet(lang, isVipMode),
-                color = Color(0xFF9EA1AB),
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            )
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // باکس مدرن کد نود (بدون پرچم کشور - استایل نقره‌ای متالیک)
-                Box(
+        Crossfade(
+            targetState = server,
+            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            label = "serverCardFade"
+        ) { currentSrv ->
+            if (currentSrv == null) {
+                Text(
+                    text = Strings.noServerYet(lang, isVipMode),
+                    color = Color(0xFF9EA1AB),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF2B2D36), Color(0xFF1D1E24))
-                            )
-                        )
-                        .border(
-                            1.dp,
-                            if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.85f)
-                            else if (isVipMode) Color(0xFFD8C7B0).copy(alpha = 0.65f)
-                            else Color(0xFF454752),
-                            RoundedCornerShape(11.dp)
-                        ),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = server.codeTag.ifEmpty { "A-1" },
-                        color = if (isConnected) Color(0xFFF2F4F8)
-                        else if (isVipMode) Color(0xFFE6CFAF)
-                        else Color(0xFFD0D4DF),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-
-                Spacer(Modifier.width(10.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    // ردیف افقی: نام سرور با فونت ظریف‌تر (12.5sp) + ستاره‌ها جلوی نام
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    // باکس مدرن کد نود (بدون پرچم کشور - استایل نقره‌ای متالیک)
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF2B2D36), Color(0xFF1D1E24))
+                                )
+                            )
+                            .border(
+                                1.dp,
+                                if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.85f)
+                                else if (isVipMode) Color(0xFFD8C7B0).copy(alpha = 0.65f)
+                                else Color(0xFF454752),
+                                RoundedCornerShape(11.dp)
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = server.label,
+                            text = currentSrv.codeTag.ifEmpty { "A-1" },
+                            color = if (isConnected) Color(0xFFF2F4F8)
+                            else if (isVipMode) Color(0xFFE6CFAF)
+                            else Color(0xFFD0D4DF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = currentSrv.label,
                             color = Color(0xFFF2F4F8),
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        StarsRow(server.stars, 11.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = if (isConnected) {
+                                "Active Node • ${currentSrv.ms} ms • Stable"
+                            } else {
+                                "Ping ${currentSrv.ms} ms • Tap to change server"
+                            },
+                            color = Color(0xFF9EA1AB),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = if (isConnected) {
-                            if (lang == AppLang.FA) "نود فعال • پینگ ${server.ms}ms • تانل پایدار" else "Active Node • ${server.ms}ms • Stable"
-                        } else {
-                            if (lang == AppLang.FA) "پینگ ${server.ms}ms • برای تغییر سرور ضربه بزنید" else "Ping ${server.ms}ms • Tap to change server"
-                        },
-                        color = Color(0xFF9EA1AB),
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
 
-                Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(6.dp))
 
-                // بج مدرن وضعیت / کیفیت با ترکیب نقره‌ای متالیک
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(
-                            if (isConnected) Color(0xFF2B2E38)
-                            else if (isVipMode) Color(0xFF2D2720)
-                            else Color(0xFF23242C)
+                    // بج مدرن پینگ با ترکیب نقره‌ای متالیک
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(
+                                if (isConnected) Color(0xFF2B2E38)
+                                else if (isVipMode) Color(0xFF2D2720)
+                                else Color(0xFF23242C)
+                            )
+                            .border(
+                                1.dp,
+                                if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.65f)
+                                else Color(0xFF3E404A),
+                                RoundedCornerShape(9.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isVipMode) "👑 ${currentSrv.ms} ms" else "${currentSrv.ms} ms",
+                            color = if (isConnected) Color(0xFFF2F4F8)
+                            else if (isVipMode) Color(0xFFE6CFAF)
+                            else Color(0xFFC8CCD6),
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace
                         )
-                        .border(
-                            1.dp,
-                            if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.65f)
-                            else Color(0xFF3E404A),
-                            RoundedCornerShape(9.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = if (isVipMode) "👑 VIP" else server.tier.badgeText,
-                        color = if (isConnected) Color(0xFFF2F4F8)
-                        else if (isVipMode) Color(0xFFE6CFAF)
-                        else Color(0xFFC8CCD6),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
+                    }
                 }
             }
         }
@@ -568,18 +526,10 @@ private fun ServiceQualityUptimeCard(
         bestPingMs > 500 -> 0.89f
         else -> 0.96f
     }
-    val qualityLabel = if (lang == AppLang.FA) {
-        when {
-            bestPingMs in 1..250 -> "فوق‌العاده (Ultra)"
-            bestPingMs in 251..550 -> "عالی و پایدار"
-            else -> "پایدار"
-        }
-    } else {
-        when {
-            bestPingMs in 1..250 -> "Ultra Stable"
-            bestPingMs in 251..550 -> "Excellent"
-            else -> "Optimal"
-        }
+    val qualityLabel = when {
+        bestPingMs in 1..250 -> "Ultra Stable"
+        bestPingMs in 251..550 -> "Excellent"
+        else -> "Optimal"
     }
 
     var adLoaded by remember { mutableStateOf(false) }
@@ -616,7 +566,7 @@ private fun ServiceQualityUptimeCard(
                             .background(if (isConnected) Color(0xFFD8DCE6) else Color(0xFFC8B8A2))
                     )
                     Text(
-                        text = if (lang == AppLang.FA) "کیفیت کل سرویس: $qualityLabel" else "Service Quality: $qualityLabel",
+                        text = "Service Quality: $qualityLabel",
                         color = Color(0xFFECEEF4),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
@@ -669,20 +619,12 @@ private fun ServiceQualityUptimeCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (lang == AppLang.FA) {
-                        "پایداری تانل: بدون پکت‌لاس (0% Loss)"
-                    } else {
-                        "Tunnel Stability: 0% Packet Loss"
-                    },
+                    text = "Tunnel Stability: 0% Packet Loss",
                     color = Color(0xFF9497A1),
                     fontSize = 9.5.sp
                 )
                 Text(
-                    text = if (lang == AppLang.FA) {
-                        "${serverCount.coerceAtLeast(1)} نود فعال"
-                    } else {
-                        "${serverCount.coerceAtLeast(1)} Active Nodes"
-                    },
+                    text = "${serverCount.coerceAtLeast(1)} Active Nodes",
                     color = Color(0xFFC8CCD6),
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.SemiBold
@@ -716,25 +658,49 @@ private fun ServiceQualityUptimeCard(
 }
 
 /**
- * اسپلش و انیمیشن ورود خلوت و مدرن با لوگوی بهینه‌شده
+ * اسپلش و انیمیشن ورود بزرگ‌تر و پویا برای لوگو و نوشته‌ها در شروع اپ
  */
 @Composable
 private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
-    var entered by remember { mutableStateOf(false) }
+    val logoAnim = remember { Animatable(0f) }
+    val titleAnim = remember { Animatable(0f) }
+    val subAnim = remember { Animatable(0f) }
+    val footerAnim = remember { Animatable(0f) }
+
     LaunchedEffect(Unit) {
-        entered = true
-        delay(2200)
+        launch {
+            logoAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            )
+        }
+        launch {
+            delay(180)
+            titleAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+            )
+        }
+        launch {
+            delay(360)
+            subAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+            )
+        }
+        launch {
+            delay(540)
+            footerAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+            )
+        }
+        delay(2450)
         onFinished()
     }
-
-    val logoScale by animateFloatAsState(
-        targetValue = if (entered) 1f else 0.45f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "splashScale"
-    )
 
     val inf = rememberInfiniteTransition(label = "splashInf")
     val orbitAngle by inf.animateFloat(
@@ -744,8 +710,8 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
         label = "orbitAngle"
     )
     val glowPulse by inf.animateFloat(
-        initialValue = 10f,
-        targetValue = 22f,
+        initialValue = 12f,
+        targetValue = 26f,
         animationSpec = infiniteRepeatable(
             tween(1000, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
@@ -770,31 +736,40 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
-                modifier = Modifier.size(210.dp),
+                modifier = Modifier
+                    .size(252.dp)
+                    .graphicsLayer {
+                        val p = logoAnim.value
+                        alpha = p.coerceIn(0f, 1f)
+                        val sc = 0.42f + 0.58f * p
+                        scaleX = sc
+                        scaleY = sc
+                        translationY = (1f - p) * -42f
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val center = Offset(size.width / 2f, size.height / 2f)
-                    val arcR = size.minDimension * 0.42f
+                    val arcR = size.minDimension * 0.43f
                     val tl = Offset(center.x - arcR, center.y - arcR)
                     val sz = Size(arcR * 2f, arcR * 2f)
                     drawArc(
-                        color = Color(0xFFD8DCE6).copy(alpha = 0.75f),
+                        color = Color(0xFFD8DCE6).copy(alpha = 0.78f),
                         startAngle = orbitAngle,
-                        sweepAngle = 90f,
+                        sweepAngle = 95f,
                         useCenter = false,
                         topLeft = tl,
                         size = sz,
-                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
                     )
                     drawArc(
-                        color = Color(0xFF8E93A2).copy(alpha = 0.55f),
+                        color = Color(0xFFE6CFAF).copy(alpha = 0.62f),
                         startAngle = orbitAngle + 180f,
-                        sweepAngle = 90f,
+                        sweepAngle = 95f,
                         useCenter = false,
                         topLeft = tl,
                         size = sz,
-                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
 
@@ -802,42 +777,58 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                     painter = painterResource(id = R.drawable.penny_cat_logo),
                     contentDescription = "Penny VPN Logo",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .size(156.dp)
-                        .scale(logoScale)
+                    modifier = Modifier.size(198.dp)
                 )
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(18.dp))
 
             Text(
                 text = "PENNY VPN",
                 color = Color(0xFFF2F4F8),
-                fontSize = 28.sp,
+                fontSize = 34.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 3.sp,
+                letterSpacing = 4.sp,
                 style = TextStyle(
                     shadow = Shadow(
                         color = Color(0xFFD0D4DF),
                         offset = Offset(0f, 0f),
                         blurRadius = glowPulse
                     )
-                )
+                ),
+                modifier = Modifier.graphicsLayer {
+                    val p = titleAnim.value
+                    alpha = p
+                    translationY = (1f - p) * 32f
+                    val sc = 0.86f + 0.14f * p
+                    scaleX = sc
+                    scaleY = sc
+                }
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = Strings.splashTagline(lang),
-                color = Color(0xFFA6A9B4),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
+                color = Color(0xFFC8CCD6),
+                fontSize = 15.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.graphicsLayer {
+                    val p = subAnim.value
+                    alpha = p
+                    translationY = (1f - p) * 26f
+                }
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
             Text(
                 text = "powered by Omidss",
-                color = Color(0xFF7E818C),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp
+                color = Color(0xFFD8C7B0),
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp,
+                modifier = Modifier.graphicsLayer {
+                    val p = footerAnim.value
+                    alpha = p
+                    translationY = (1f - p) * 20f
+                }
             )
         }
     }
@@ -1228,9 +1219,9 @@ class MainActivity : HelperBaseComponentActivity() {
 
     // ── وضعیت UI ──
     private var showSplash by mutableStateOf(true)
-    private var appLang by mutableStateOf(AppLang.FA)
+    private var appLang by mutableStateOf(AppLang.EN)
     private var phase by mutableStateOf(Phase.IDLE)
-    private var statusMessage by mutableStateOf("آماده اتصال")
+    private var statusMessage by mutableStateOf("Ready to Connect")
     private var scanProgress by mutableStateOf(0f)
     private var lastScanTime by mutableStateOf(0L)
     private var vipLastScanTime by mutableStateOf(0L)
@@ -1275,7 +1266,7 @@ class MainActivity : HelperBaseComponentActivity() {
             if (it.resultCode == RESULT_OK) {
                 startSmartConnect()
             } else {
-                statusMessage = if (appLang == AppLang.FA) "مجوز VPN داده نشد!" else "VPN permission denied!"
+                statusMessage = "VPN permission denied!"
                 plog("VPN permission denied")
             }
         }
@@ -1378,12 +1369,10 @@ class MainActivity : HelperBaseComponentActivity() {
                 .putBoolean("vip_active", false)
                 .putBoolean("use_vip_servers", false)
                 .apply()
-            val msg = if (appLang == AppLang.FA) {
-                if (trafficExpired) "حجم ۵۰ گیگابایت اشتراک شما به پایان رسید."
-                else "مهلت ۱ ماهه اشتراک شما به پایان رسید."
+            val msg = if (trafficExpired) {
+                "Your 50 GB traffic quota has been reached."
             } else {
-                if (trafficExpired) "Your 50 GB traffic quota has been reached."
-                else "Your 1-month subscription has expired."
+                "Your 1-month subscription has expired."
             }
             statusMessage = msg
             plog("VIP expired: timeExpired=$timeExpired, trafficExpired=$trafficExpired")
@@ -1397,11 +1386,11 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun activateVipWithCode(inputCode: String): Pair<Boolean, String> {
         val serial = VipLicenseManager.verifyCode(inputCode)
-            ?: return false to (if (appLang == AppLang.FA) "کد واردشده معتبر نیست!" else "Invalid activation code!")
+            ?: return false to "Invalid activation code!"
 
         val usedSet = prefs.getStringSet("used_vip_serials", emptySet())?.toMutableSet() ?: mutableSetOf()
         if (serial in usedSet && vipCode != inputCode.uppercase(Locale.US).trim()) {
-            return false to (if (appLang == AppLang.FA) "این کد قبلاً استفاده شده و منقضی گردیده است." else "This code has already been used.")
+            return false to "This code has already been used."
         }
 
         val now = System.currentTimeMillis()
@@ -1424,10 +1413,7 @@ class MainActivity : HelperBaseComponentActivity() {
             .apply()
 
         plog("👑 1M/50GB Plan Activated with code $vipCode")
-        statusMessage = if (appLang == AppLang.FA)
-            "اشتراک ۱ ماه ۵۰ گیگ فعال شد 👑"
-        else
-            "1 Month 50 GB Plan Activated 👑"
+        statusMessage = "1 Month 50 GB Plan Activated 👑"
 
         return true to statusMessage
     }
@@ -1447,12 +1433,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         val isRunning = mainViewModel.uiState.value.isRunning
                         val tunnelAlive = isRunning && testThroughLocalProxy(TEST_URLS.first()) > 0
                         if (!tunnelAlive) {
-                            plog(
-                                if (appLang == AppLang.FA)
-                                    "🌐 تغییر شبکه یا افت ناگهانی تشخیص داده شد؛ اتصال مجدد خودکار به آخرین سرور سالم..."
-                                else
-                                    "🌐 Network change / drop detected; auto-reconnecting to last healthy server..."
-                            )
+                            plog("🌐 Network change / drop detected; auto-reconnecting to last healthy server...")
                             triggerAutoReconnect()
                         }
                     }
@@ -1493,20 +1474,13 @@ class MainActivity : HelperBaseComponentActivity() {
 
         ui {
             phase = Phase.CONNECTING
-            statusMessage = if (appLang == AppLang.FA)
-                "در حال اتصال مجدد خودکار به آخرین سرور سالم..."
-            else
-                "Auto-reconnecting to last healthy server..."
+            statusMessage = "Auto-reconnecting to last healthy server..."
         }
         try {
             failedGuids.clear()
             val connected = connectFromList(startAfter = null)
             ui {
-                statusMessage = if (connected != null) {
-                    if (appLang == AppLang.FA) "اتصال مجدد خودکار برقرار شد ✅" else "Auto-reconnected ✅"
-                } else {
-                    if (appLang == AppLang.FA) "اتصال مجدد ناموفق بود" else "Auto-reconnect failed"
-                }
+                statusMessage = if (connected != null) "Auto-reconnected ✅" else "Auto-reconnect failed"
             }
         } finally {
             withContext(NonCancellable + Dispatchers.Main) {
@@ -1517,15 +1491,8 @@ class MainActivity : HelperBaseComponentActivity() {
 
     // ═════════════════════════ ذخیره / بازیابی ═════════════════════════
 
-    private fun toggleLanguage() {
-        appLang = if (appLang == AppLang.FA) AppLang.EN else AppLang.FA
-        prefs.edit().putString("app_lang", appLang.code).apply()
-        statusMessage = Strings.ready(appLang)
-    }
-
     private fun loadSaved() {
-        val savedLang = prefs.getString("app_lang", "fa")
-        appLang = if (savedLang == "en") AppLang.EN else AppLang.FA
+        appLang = AppLang.EN
         statusMessage = Strings.ready(appLang)
         autoSwitch = prefs.getBoolean("auto_switch", true)
         autoReconnect = prefs.getBoolean("auto_reconnect", true)
@@ -1607,7 +1574,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun copyLogToClipboard() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("PennyVPN log", logLines.joinToString("\n")))
-        statusMessage = if (appLang == AppLang.FA) "لاگ کپی شد" else "Logs copied"
+        statusMessage = "Logs copied"
     }
 
     private suspend fun ui(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
@@ -1707,9 +1674,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 ?: currentList.firstOrNull { it.guid == lastConnectedGuid }
                 ?: currentList.firstOrNull()
 
-        val layoutDir = if (appLang == AppLang.FA) LayoutDirection.Rtl else LayoutDirection.Ltr
-
-        CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1815,7 +1780,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(12.dp))
 
-                    // ── کارت سرور مدرن بدون پرچم کشور (Data center A-1 / Server A-1) ──
+                    // ── کارت سرور مدرن با افکت Fade هنگام تغییر سرور ──
                     ModernServerCard(
                         server = current,
                         isConnected = mode == UiMode.CONNECTED,
@@ -1885,7 +1850,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // ── داک مدرن پایین صفحه (اشتراک ۱ ماه ۵۰ گیگ، تغییر زبان و منوی مدرن) ──
+                    // ── داک مدرن پایین صفحه (اشتراک ۱ ماه ۵۰ گیگ و منوی مدرن؛ فقط انگلیسی) ──
                     Surface(
                         color = Color(0xFF1A1A1F).copy(alpha = 0.94f),
                         shape = RoundedCornerShape(20.dp),
@@ -1920,11 +1885,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                     ) {
                                         Column {
                                             Text(
-                                                text = if (vipActive) {
-                                                    if (appLang == AppLang.FA) "👑 اشتراک ۱ ماه ۵۰ گیگ (فعال)" else "👑 1 Month 50 GB (Active)"
-                                                } else {
-                                                    if (appLang == AppLang.FA) "👑 اشتراک ۱ ماه ۵۰ گیگ" else "👑 1 Month 50 GB Plan"
-                                                },
+                                                text = if (vipActive) "👑 1 Month 50 GB (Active)" else "👑 1 Month 50 GB Plan",
                                                 color = if (vipActive) Color(0xFFF5E6D3) else Color(0xFFF5EFE6),
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.ExtraBold
@@ -1932,11 +1893,9 @@ class MainActivity : HelperBaseComponentActivity() {
                                             val subVipText = if (vipActive) {
                                                 val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
                                                 val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
-                                                if (appLang == AppLang.FA) "$remDays روز • ${fmtBytes(remBytes)} مانده"
-                                                else "${remDays}d • ${fmtBytes(remBytes)} left"
+                                                "${remDays}d • ${fmtBytes(remBytes)} left"
                                             } else {
-                                                if (appLang == AppLang.FA) "فعال‌سازی سرورهای ویژه با کد متغیر"
-                                                else "Activate dedicated servers with code"
+                                                "Activate dedicated servers with code"
                                             }
                                             Text(
                                                 text = subVipText,
@@ -1955,33 +1914,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                     }
                                 }
 
-                                // دکمه تغییر زبان در داک پایین
-                                Surface(
-                                    color = Color(0xFF25242B),
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .border(1.dp, Color(0xFF3E3D46), RoundedCornerShape(14.dp))
-                                        .clickable { toggleLanguage() }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = if (appLang == AppLang.FA) "EN" else "FA",
-                                            color = Color(0xFFE6CFAF),
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Text(
-                                            text = if (appLang == AppLang.FA) "زبان" else "Lang",
-                                            color = Color(0xFFA6A39E),
-                                            fontSize = 10.sp
-                                        )
-                                    }
-                                }
-
                                 // دکمه منوی مدرن در داک پایین
                                 Surface(
                                     color = Color(0xFF25242B),
@@ -1992,7 +1924,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                         .clickable { showMenu = true }
                                 ) {
                                     Column(
-                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Text(
@@ -2002,7 +1934,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = if (appLang == AppLang.FA) "منو" else "Menu",
+                                            text = "Menu",
                                             color = Color(0xFFA6A39E),
                                             fontSize = 10.sp
                                         )
@@ -2032,7 +1964,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ── کارت نمایش کیفیت کل سرویس و درصد آپ‌تایم (جایگزین کادر خالی پایین صفحه) ──
+                    // ── کارت نمایش کیفیت کل سرویس و درصد آپ‌تایم ──
                     Spacer(Modifier.height(10.dp))
                     ServiceQualityUptimeCard(
                         lang = appLang,
@@ -2061,7 +1993,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     )
                 }
 
-                // ── اسپلش خلاقانه ابتدای برنامه با لوگوی گربه VPN ──
+                // ── اسپلش بزرگ‌تر و متحرک ابتدای برنامه با لوگوی اختصاصی Penny VPN ──
                 AnimatedVisibility(
                     visible = showSplash,
                     enter = fadeIn(tween(300)) + scaleIn(tween(300)),
@@ -2082,7 +2014,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * منوی مدرن کارتی با تم نود و خاکستری شاینی
+     * منوی مدرن کارتی با تم نود و خاکستری شاینی (English Only)
      */
     @Composable
     private fun ModernMenuDialog(isVipMode: Boolean) {
@@ -2095,7 +2027,7 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             title = {
                 Text(
-                    text = if (appLang == AppLang.FA) "⚙ منوی تنظیمات و امکانات" else "⚙ Settings & Control Center",
+                    text = "⚙ Settings & Control Center",
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 17.sp
                 )
@@ -2121,7 +2053,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (appLang == AppLang.FA) "👑 اشتراک ۱ ماه ۵۰ گیگ" else "👑 1 Month 50 GB Plan",
+                                text = "👑 1 Month 50 GB Plan",
                                 color = Color(0xFFE6CFAF),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
@@ -2172,7 +2104,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (appLang == AppLang.FA) "🔄 تعویض خودکار هنگام قطعی" else "🔄 Auto-Switch on Drop",
+                                text = "🔄 Auto-Switch on Drop",
                                 fontSize = 13.sp,
                                 color = Color(0xFFF5EFE6),
                                 modifier = Modifier.weight(1f)
@@ -2201,7 +2133,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (appLang == AppLang.FA) "🌐 اتصال خودکار در تغییر شبکه" else "🌐 Auto-Reconnect on Net Change",
+                                text = "🌐 Auto-Reconnect on Net Change",
                                 fontSize = 13.sp,
                                 color = Color(0xFFF5EFE6),
                                 modifier = Modifier.weight(1f)
@@ -2263,7 +2195,7 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             title = {
                 Text(
-                    text = if (appLang == AppLang.FA) "👑 اشتراک ۱ ماه ۵۰ گیگ" else "👑 1 Month 50 GB Plan",
+                    text = "👑 1 Month 50 GB Plan",
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFFE6CFAF)
                 )
@@ -2284,27 +2216,21 @@ class MainActivity : HelperBaseComponentActivity() {
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    text = if (appLang == AppLang.FA) "وضعیت: فعال ✅ (بدون تبلیغات)" else "Status: Active ✅ (Ad-Free)",
+                                    text = "Status: Active ✅ (Ad-Free)",
                                     color = Color(0xFFF5E6D3),
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = if (appLang == AppLang.FA) "کد فعال: $vipCode" else "Active Code: $vipCode",
+                                    text = "Active Code: $vipCode",
                                     fontSize = 12.sp,
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = if (appLang == AppLang.FA)
-                                        "زمان باقی‌مانده: $remDays روز و $remHours ساعت (از ۳۰ روز)"
-                                    else
-                                        "Time Remaining: ${remDays}d ${remHours}h (of 30 days)",
+                                    text = "Time Remaining: ${remDays}d ${remHours}h (of 30 days)",
                                     fontSize = 12.sp
                                 )
                                 Text(
-                                    text = if (appLang == AppLang.FA)
-                                        "حجم باقی‌مانده: ${fmtBytes(remBytes)} (مصرف‌شده: ${fmtBytes(vipUsedBytes)} از 50 GB)"
-                                    else
-                                        "Traffic Remaining: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / 50 GB)",
+                                    text = "Traffic Remaining: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / 50 GB)",
                                     fontSize = 12.sp
                                 )
                             }
@@ -2316,7 +2242,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = if (appLang == AppLang.FA) "استفاده از سرورهای ویژه (۱ ماه ۵۰ گیگ)" else "Use Dedicated VIP Servers",
+                                text = "Use Dedicated VIP Servers",
                                 fontSize = 13.sp
                             )
                             Switch(
@@ -2329,10 +2255,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     } else {
                         Text(
-                            text = if (appLang == AppLang.FA)
-                                "کد متغیر اشتراک ۱ ماه ۵۰ گیگ خود را وارد کنید تا سرورهای اختصاصی پرسرعت و حالت بدون تبلیغ فعال شود:"
-                            else
-                                "Enter your variable activation code to unlock 1 Month / 50 GB dedicated servers and Ad-Free mode:",
+                            text = "Enter your variable activation code to unlock 1 Month / 50 GB dedicated servers and Ad-Free mode:",
                             fontSize = 13.sp
                         )
 
@@ -2361,7 +2284,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD8BE9B))
                         ) {
                             Text(
-                                text = if (appLang == AppLang.FA) "فعال‌سازی اشتراک ۱ ماه ۵۰ گیگ 👑" else "Activate 1 Month 50 GB 👑",
+                                text = "Activate 1 Month 50 GB 👑",
                                 color = Color(0xFF1A1714),
                                 fontWeight = FontWeight.Bold
                             )
@@ -2387,8 +2310,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         },
                         label = {
                             Text(
-                                if (appLang == AppLang.FA) "لینک سابسکریپشن سرورهای ویژه (اختیاری)"
-                                else "Custom VIP Subscription URL (Optional)",
+                                "Custom VIP Subscription URL (Optional)",
                                 fontSize = 11.sp
                             )
                         },
@@ -2402,11 +2324,11 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * دیالوگ مدرن بهترین کانفیگ‌ها بدون پرچم کشور (Data center A-1 / Server A-1) + ستاره‌ها جلوی نام سرور
+     * دیالوگ مدرن بهترین کانفیگ‌ها مرتب‌شده بر اساس پینگ، بدون ستاره و بدون عبارات 10G ULTRA
      */
     @Composable
     private fun BestConfigsDialog(selectedGuid: String?, isRunning: Boolean, isVipMode: Boolean) {
-        val listToShow = activeList.toList()
+        val listToShow = activeList.sortedBy { it.ms }
         AlertDialog(
             onDismissRequest = { showBest = false },
             confirmButton = {
@@ -2475,32 +2397,37 @@ class MainActivity : HelperBaseComponentActivity() {
                                             )
                                         }
                                         Spacer(Modifier.width(9.dp))
-                                        // نام سرور با فونت کوچک‌تر (12sp) + ستاره‌ها جلوی نام
+                                        // نام سرور بدون ستاره
+                                        Text(
+                                            text = s.label,
+                                            color = Color(0xFFF2F4F8),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        // نمایش پینگ بدون عبارات 10G ULTRA
                                         Row(
-                                            modifier = Modifier.weight(1f),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
-                                                text = s.label,
-                                                color = Color(0xFFF2F4F8),
+                                                text = "${s.ms} ms",
+                                                color = if (active) Color(0xFFE6CFAF) else Color(0xFFC8CCD6),
+                                                fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                fontFamily = FontFamily.Monospace
                                             )
-                                            StarsRow(s.stars, 11.sp)
-                                        }
-                                        Spacer(Modifier.width(6.dp))
-                                        if (active) {
-                                            Text("✓", color = Color(0xFFF2F4F8), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
-                                        } else {
-                                            Text(
-                                                text = "${s.ms}ms • ${s.tier.badgeText}",
-                                                color = Color(0xFF9EA1AB),
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
+                                            if (active) {
+                                                Text(
+                                                    text = "✓",
+                                                    color = Color(0xFFF2F4F8),
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 13.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2570,7 +2497,7 @@ class MainActivity : HelperBaseComponentActivity() {
         userWantsConnected = false
         prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
         LauncherManager.stopService(this)
-        statusMessage = if (appLang == AppLang.FA) "اتصال قطع شد" else "Disconnected"
+        statusMessage = "Disconnected"
         connectStartMs = 0L
         plog("Disconnected by user")
         showInterstitialAdIfReady()
@@ -2583,14 +2510,14 @@ class MainActivity : HelperBaseComponentActivity() {
         )
         phase = Phase.IDLE
         scanProgress = 0f
-        statusMessage = if (appLang == AppLang.FA) "لغو شد" else "Cancelled"
+        statusMessage = "Cancelled"
         plog("Operation cancelled by user")
     }
 
     private fun startSmartConnect() {
         if (phase != Phase.IDLE) return
         phase = Phase.CONNECTING
-        statusMessage = if (appLang == AppLang.FA) "در حال آماده‌سازی..." else "Preparing..."
+        statusMessage = "Preparing..."
         failedGuids.clear()
         if (Build.VERSION.SDK_INT >= 37) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
@@ -2613,10 +2540,9 @@ class MainActivity : HelperBaseComponentActivity() {
                 ui {
                     statusMessage = if (result != null) {
                         showInterstitialAdIfReady()
-                        if (appLang == AppLang.FA) "متصل شد" else "Connected"
+                        "Connected"
                     } else {
-                        if (appLang == AppLang.FA) "هیچ سرور سالمی پیدا نشد. لاگ برنامه را ببینید."
-                        else "No working server found. Check App Logs."
+                        "No working server found. Check App Logs."
                     }
                 }
                 if (result == null) LauncherManager.stopService(this@MainActivity)
@@ -2642,8 +2568,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 val ok = runScan()
                 ui {
                     statusMessage = if (ok) {
-                        if (appLang == AppLang.FA) "اسکن تمام شد: ${activeList.size} سرور آماده"
-                        else "Scan complete: ${activeList.size} servers ready"
+                        "Scan complete: ${activeList.size} servers ready"
                     } else statusMessage
                 }
             } catch (e: CancellationException) {
@@ -2663,7 +2588,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun switchNext() {
         if (phase != Phase.IDLE) return
         phase = Phase.CONNECTING
-        statusMessage = if (appLang == AppLang.FA) "در حال جستجوی سرور بعدی..." else "Switching to next server..."
+        statusMessage = "Switching to next server..."
         val current = mainViewModel.uiState.value.selectedGuid
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -2676,9 +2601,9 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 ui {
                     statusMessage = if (res != null) {
-                        if (appLang == AppLang.FA) "سرور جدید وصل شد" else "Switched to new server"
+                        "Switched to new server"
                     } else {
-                        if (appLang == AppLang.FA) "سرور سالم دیگری پیدا نشد." else "No other healthy server found."
+                        "No other healthy server found."
                     }
                 }
             } catch (e: CancellationException) {
@@ -2696,14 +2621,11 @@ class MainActivity : HelperBaseComponentActivity() {
         if (!mainViewModel.uiState.value.isRunning && SettingsManager.isVpnMode() &&
             VpnService.prepare(this) != null
         ) {
-            statusMessage = if (appLang == AppLang.FA)
-                "ابتدا یک بار روی دکمه اتصال بزنید تا مجوز VPN داده شود."
-            else
-                "Tap the main Connect button once to grant VPN permission."
+            statusMessage = "Tap the main Connect button once to grant VPN permission."
             return
         }
         phase = Phase.CONNECTING
-        statusMessage = if (appLang == AppLang.FA) "اتصال به ${entry.label}..." else "Connecting to ${entry.label}..."
+        statusMessage = "Connecting to ${entry.label}..."
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val ping = connectAndVerify(entry.guid)
@@ -2711,14 +2633,11 @@ class MainActivity : HelperBaseComponentActivity() {
                     markConnected(entry.guid, ping)
                     ui {
                         showInterstitialAdIfReady()
-                        statusMessage = if (appLang == AppLang.FA) "متصل شد" else "Connected"
+                        statusMessage = "Connected"
                     }
                 } else {
                     ui {
-                        statusMessage = if (appLang == AppLang.FA)
-                            "این سرور کار نکرد؛ سرور دیگری انتخاب کنید."
-                        else
-                            "Server did not respond; try another one."
+                        statusMessage = "Server did not respond; try another one."
                     }
                     plog("❌ ${entry.label} failed")
                 }
@@ -2776,15 +2695,15 @@ class MainActivity : HelperBaseComponentActivity() {
         if (current != null) failedGuids.add(current)
         ui {
             phase = Phase.CONNECTING
-            statusMessage = if (appLang == AppLang.FA) "اتصال قطع شد؛ تعویض خودکار..." else "Connection dropped; auto-switching..."
+            statusMessage = "Connection dropped; auto-switching..."
         }
         try {
             val r = connectFromList(startAfter = current)
             ui {
                 statusMessage = if (r != null) {
-                    if (appLang == AppLang.FA) "به سرور بهتر تعویض شد" else "Switched to healthier server"
+                    "Switched to healthier server"
                 } else {
-                    if (appLang == AppLang.FA) "سرور سالمی پیدا نشد؛ اسکن کنید" else "No healthy server found; please scan"
+                    "No healthy server found; please scan"
                 }
             }
         } finally {
@@ -2801,11 +2720,7 @@ class MainActivity : HelperBaseComponentActivity() {
         ui {
             phase = Phase.SCANNING
             scanProgress = 0.03f
-            statusMessage = if (appLang == AppLang.FA) {
-                if (scanningVip) "در حال دریافت سرورهای ویژه (۱ ماه ۵۰ گیگ)..." else "در حال دریافت لیست سرورها..."
-            } else {
-                if (scanningVip) "Fetching dedicated VIP servers..." else "Fetching server lists..."
-            }
+            statusMessage = if (scanningVip) "Fetching dedicated VIP servers..." else "Fetching server lists..."
         }
         plog("Scan started (VIP=$scanningVip)")
 
@@ -2817,17 +2732,14 @@ class MainActivity : HelperBaseComponentActivity() {
         if (contents.isEmpty()) {
             plog("No subscription sources downloaded")
             ui {
-                statusMessage = if (appLang == AppLang.FA)
-                    "خطا در دانلود سرورها! اینترنت یا فیلترشکن را بررسی کنید."
-                else
-                    "Failed to download servers! Check your connection."
+                statusMessage = "Failed to download servers! Check your connection."
             }
             return false
         }
 
         ui {
             scanProgress = 0.15f
-            statusMessage = if (appLang == AppLang.FA) "در حال پردازش کانفیگ‌ها..." else "Processing configs..."
+            statusMessage = "Processing configs..."
         }
         val before = MmkvManager.decodeServerList("").toSet()
         for (content in contents) {
@@ -2852,7 +2764,7 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("New configs: ${newGuids.size}")
         if (newGuids.isEmpty()) {
             ui {
-                statusMessage = if (appLang == AppLang.FA) "هیچ کانفیگ معتبری یافت نشد!" else "No valid configs found!"
+                statusMessage = "No valid configs found!"
             }
             return false
         }
@@ -2860,14 +2772,14 @@ class MainActivity : HelperBaseComponentActivity() {
         val tcpSampleCount = minOf(newGuids.size, MAX_TCP_CANDIDATES)
         ui {
             scanProgress = 0.25f
-            statusMessage = if (appLang == AppLang.FA) "تست اولیه $tcpSampleCount سرور..." else "TCP probing $tcpSampleCount servers..."
+            statusMessage = "TCP probing $tcpSampleCount servers..."
         }
         val tcpOk = tcpFilter(newGuids.shuffled().take(MAX_TCP_CANDIDATES))
         plog("Reachable (TCP): ${tcpOk.size}")
         if (tcpOk.isEmpty()) {
             MmkvManager.removeServers(newGuids, "")
             ui {
-                statusMessage = if (appLang == AppLang.FA) "هیچ سروری در دسترس نبود." else "No reachable servers found."
+                statusMessage = "No reachable servers found."
             }
             return false
         }
@@ -2886,7 +2798,7 @@ class MainActivity : HelperBaseComponentActivity() {
         MmkvManager.clearAllTestDelayResults(keep)
         ui {
             scanProgress = 0.35f
-            statusMessage = if (appLang == AppLang.FA) "تست واقعی سرورها (0/${keep.size})..." else "Real ping test (0/${keep.size})..."
+            statusMessage = "Real ping test (0/${keep.size})..."
         }
         withContext(Dispatchers.Main) {
             MessageHelper.sendMsg2TestService(
@@ -2904,7 +2816,7 @@ class MainActivity : HelperBaseComponentActivity() {
             val d = done
             ui {
                 scanProgress = 0.35f + 0.55f * d / keep.size
-                statusMessage = if (appLang == AppLang.FA) "تست واقعی سرورها ($d/${keep.size})..." else "Real ping test ($d/${keep.size})..."
+                statusMessage = "Real ping test ($d/${keep.size})..."
             }
             if (done >= keep.size) break
         }
@@ -2925,14 +2837,14 @@ class MainActivity : HelperBaseComponentActivity() {
         if (valid.isEmpty()) {
             MmkvManager.removeServers(keep.filter { it != selected }, "")
             ui {
-                statusMessage = if (appLang == AppLang.FA) "هیچ سرور سالمی در تست واقعی پیدا نشد." else "No healthy servers passed verification."
+                statusMessage = "No healthy servers passed verification."
             }
             return false
         }
 
         ui {
             scanProgress = 0.93f
-            statusMessage = if (appLang == AppLang.FA) "در حال ساخت لیست بهترین‌ها..." else "Building best servers list..."
+            statusMessage = "Building best servers list..."
         }
         val top = valid.take(BEST_LIST_SIZE)
         val entries = assignLabels(
@@ -2979,7 +2891,7 @@ class MainActivity : HelperBaseComponentActivity() {
             attempts++
             ui {
                 phase = Phase.CONNECTING
-                statusMessage = if (appLang == AppLang.FA) "در حال اتصال به ${s.label}..." else "Connecting to ${s.label}..."
+                statusMessage = "Connecting to ${s.label}..."
             }
             plog("Attempt $attempts: ${s.label}")
             val ping = connectAndVerify(s.guid)

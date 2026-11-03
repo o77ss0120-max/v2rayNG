@@ -32,8 +32,6 @@ import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
-import com.v2ray.ang.handler.SpeedtestManager
-import com.v2ray.ang.handler.V2rayConfigManager
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -45,6 +43,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.Socket
 import java.net.URL
 
@@ -52,11 +51,18 @@ class MainActivity : HelperBaseComponentActivity() {
 
     companion object {
         private const val TAG = "PennyVPN"
+
+        // فیلتر اولیه TCP
         private const val TCP_TIMEOUT_MS = 2500
-        private const val MAX_TCP_CANDIDATES = 300   // حداکثر سرور برای تست TCP
-        private const val REAL_PING_CANDIDATES = 30  // تعداد سرور برای تست واقعی
+        private const val MAX_TCP_CANDIDATES = 300
         private const val TCP_PARALLEL = 40
-        private const val REAL_PARALLEL = 5
+
+        // تعداد سروری که به‌ترتیب واقعاً وصل می‌شویم و تست می‌کنیم
+        private const val MAX_CONNECT_ATTEMPTS = 10
+
+        // پورت SOCKS محلی v2rayNG (پیش‌فرض 10808). اگر در تنظیمات تغییر داده‌اید اینجا هم عوض کنید.
+        private const val SOCKS_PORT = 10808
+        private const val TEST_URL = "http://cp.cloudflare.com/generate_204"
     }
 
     private val SUBSCRIPTION_SOURCES = listOf(
@@ -73,13 +79,13 @@ class MainActivity : HelperBaseComponentActivity() {
     private var activeServerInfo by mutableStateOf("")
     private var isFetching by mutableStateOf(false)
 
-    // سرورهایی که در "سرور بعدی" قبلاً امتحان شده‌اند
     private val triedGuids = mutableSetOf<String>()
 
+    // بعد از گرفتن مجوز VPN، جستجوی سرور شروع می‌شود
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == RESULT_OK) {
-                startV2RayService()
+                fetchAndConnectBestServer()
             } else {
                 statusMessage = "مجوز VPN داده نشد!"
             }
@@ -163,7 +169,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                 isRunning -> "CONNECTED"
                                 else -> "CONNECT"
                             },
-                            color = if (isRunning) Color.Black else Color.White,
+                            color = if (isRunning && !isFetching) Color.Black else Color.White,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -174,7 +180,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                 isRunning -> "قطع اتصال"
                                 else -> "اتصال هوشمند"
                             },
-                            color = if (isRunning) Color(0xFF1E293B) else Color(0xFFE2E8F0),
+                            color = if (isRunning && !isFetching) Color(0xFF1E293B) else Color(0xFFE2E8F0),
                             fontSize = 13.sp
                         )
                     }
@@ -204,7 +210,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             textAlign = TextAlign.Center
                         )
 
-                        if (activeServerInfo.isNotEmpty() && isRunning) {
+                        if (activeServerInfo.isNotEmpty() && isRunning && !isFetching) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = activeServerInfo,
@@ -214,11 +220,10 @@ class MainActivity : HelperBaseComponentActivity() {
                             )
                         }
 
-                        if (isRunning) {
+                        if (isRunning && !isFetching) {
                             Spacer(modifier = Modifier.height(14.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(
-                                    enabled = !isFetching,
                                     onClick = { switchNextBestServer() },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                                 ) {
@@ -245,9 +250,17 @@ class MainActivity : HelperBaseComponentActivity() {
             LauncherManager.stopService(this)
             statusMessage = "اتصال قطع شد"
             activeServerInfo = ""
-        } else {
-            fetchAndConnectBestServer()
+            return
         }
+        // اول مجوز VPN، بعد جستجوی سرور
+        if (SettingsManager.isVpnMode()) {
+            val intent = VpnService.prepare(this)
+            if (intent != null) {
+                requestVpnPermission.launch(intent)
+                return
+            }
+        }
+        fetchAndConnectBestServer()
     }
 
     // ───────────────────────── دانلود ─────────────────────────
@@ -303,19 +316,6 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    /** تست واقعی با هسته v2ray (ترافیک واقعاً از سرور رد می‌شود) */
-    private fun testServerRealPing(guid: String): Long {
-        return try {
-            val result = V2rayConfigManager.getV2rayConfig(this, guid)
-            if (!result.status) return -1L
-            SpeedtestManager.realPing(result.content)
-        } catch (e: Throwable) {
-            Log.w(TAG, "realPing خطا برای $guid: ${e.message}")
-            -1L
-        }
-    }
-
-    /** مرحله ۱: TCP روی تعداد زیادی سرور؛ خروجی: سرورهای قابل دسترس به ترتیب سرعت */
     private suspend fun tcpFilter(guids: List<String>): List<Pair<String, Long>> {
         val sem = Semaphore(TCP_PARALLEL)
         return withContext(Dispatchers.IO) {
@@ -325,14 +325,73 @@ class MainActivity : HelperBaseComponentActivity() {
         }.filter { it.second > 0 }.sortedBy { it.second }
     }
 
-    /** مرحله ۲: تست واقعی؛ خروجی: سرورهای سالم به ترتیب سرعت */
-    private suspend fun realPingFilter(guids: List<String>): List<Pair<String, Long>> {
-        val sem = Semaphore(REAL_PARALLEL)
-        return withContext(Dispatchers.IO) {
-            guids.map { guid ->
-                async { sem.withPermit { guid to testServerRealPing(guid) } }
-            }.awaitAll()
-        }.filter { it.second > 0 }.sortedBy { it.second }
+    /**
+     * تست واقعی: ترافیک HTTP از طریق پراکسی SOCKS محلی هسته (که روی سرور فعلی وصل است) عبور داده می‌شود.
+     * اگر پاسخ 204/200 برگشت یعنی سرور واقعاً کار می‌کند.
+     */
+    private fun testThroughLocalProxy(): Long {
+        return try {
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", SOCKS_PORT))
+            val start = System.currentTimeMillis()
+            val conn = URL(TEST_URL).openConnection(proxy) as HttpURLConnection
+            try {
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
+                conn.useCaches = false
+                val code = conn.responseCode
+                if (code == 204 || code == 200) {
+                    (System.currentTimeMillis() - start).coerceAtLeast(1L)
+                } else -1L
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "تست از طریق پراکسی ناموفق: ${e.message}")
+            -1L
+        }
+    }
+
+    /** به سرور وصل می‌شود، منتظر بالا آمدن هسته می‌ماند و سلامت را تست می‌کند. خروجی: پینگ یا -1 */
+    private suspend fun connectAndVerify(guid: String): Long {
+        withContext(Dispatchers.Main) {
+            MmkvManager.setSelectServer(guid)
+            mainViewModel.updateSelectedGuid(guid)
+            LauncherManager.restartService(this@MainActivity)
+        }
+        delay(1200)
+
+        var waited = 0
+        while (!mainViewModel.uiState.value.isRunning && waited < 8000) {
+            delay(300)
+            waited += 300
+        }
+        if (!mainViewModel.uiState.value.isRunning) {
+            Log.d(TAG, "سرویس بالا نیامد برای $guid")
+            return -1L
+        }
+        delay(1500) // فرصت برای آماده شدن هسته
+
+        repeat(2) {
+            val ping = withContext(Dispatchers.IO) { testThroughLocalProxy() }
+            if (ping > 0) return ping
+            delay(800)
+        }
+        return -1L
+    }
+
+    /** به‌ترتیب کاندیداها را امتحان می‌کند تا اولین سرور سالم. خروجی: (guid, ping) یا null */
+    private suspend fun connectFirstWorking(guids: List<String>): Pair<String, Long>? {
+        for ((index, guid) in guids.withIndex()) {
+            triedGuids.add(guid)
+            val name = MmkvManager.decodeServerConfig(guid)?.remarks ?: "Server"
+            withContext(Dispatchers.Main) {
+                statusMessage = "تست اتصال واقعی (${index + 1}/${guids.size}): $name"
+            }
+            val ping = connectAndVerify(guid)
+            Log.d(TAG, "تلاش ${index + 1}: $name -> ping=$ping")
+            if (ping > 0) return guid to ping
+        }
+        return null
     }
 
     // ───────────────────────── دریافت و اتصال ─────────────────────────
@@ -342,9 +401,14 @@ class MainActivity : HelperBaseComponentActivity() {
         triedGuids.clear()
         statusMessage = "در حال دریافت لیست سرورها..."
 
+        // مجوز شبکه محلی در اندروید جدید
+        if (Build.VERSION.SDK_INT >= 37) {
+            checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ۱) دانلود هر منبع به‌صورت جداگانه
+                // ۱) دانلود هر منبع جداگانه
                 val contents = SUBSCRIPTION_SOURCES.map { fetchWithFallback(it) }
                     .filter { it.isNotEmpty() }
 
@@ -358,23 +422,20 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 withContext(Dispatchers.Main) { statusMessage = "در حال پردازش کانفیگ‌ها..." }
 
-                // ۲) فقط بعد از دانلود موفق، لیست قدیمی پاک می‌شود
+                // ۲) پاک کردن لیست قدیمی فقط بعد از دانلود موفق
                 MmkvManager.removeAllServer()
 
-                // هر منبع جداگانه و با append=true تا base64 و متن ساده قاطی نشوند
-                var importedTotal = 0
                 for (content in contents) {
                     try {
                         val r = AngConfigManager.importBatchConfig(content, "", true)
                         Log.d(TAG, "importBatchConfig نتیجه: $r")
-                        importedTotal++
                     } catch (e: Exception) {
                         Log.e(TAG, "import خطا: ${e.message}", e)
                     }
                 }
 
                 val allGuids = MmkvManager.decodeServerList("")
-                Log.d(TAG, "منابع import شده: $importedTotal | تعداد سرورها: ${allGuids.size}")
+                Log.d(TAG, "تعداد سرورها: ${allGuids.size}")
 
                 if (allGuids.isEmpty()) {
                     withContext(Dispatchers.Main) {
@@ -384,70 +445,35 @@ class MainActivity : HelperBaseComponentActivity() {
                     return@launch
                 }
 
-                // ۳) فیلتر اولیه TCP روی تعداد زیاد
+                // ۳) فیلتر اولیه TCP
                 withContext(Dispatchers.Main) {
                     statusMessage = "تست اولیه ${minOf(allGuids.size, MAX_TCP_CANDIDATES)} سرور..."
                 }
                 val tcpOk = tcpFilter(allGuids.shuffled().take(MAX_TCP_CANDIDATES))
                 Log.d(TAG, "TCP موفق: ${tcpOk.size}")
 
-                val realCandidates = if (tcpOk.isNotEmpty()) {
-                    tcpOk.take(REAL_PING_CANDIDATES).map { it.first }
+                val candidates = if (tcpOk.isNotEmpty()) {
+                    tcpOk.take(MAX_CONNECT_ATTEMPTS).map { it.first }
                 } else {
-                    allGuids.shuffled().take(REAL_PING_CANDIDATES)
+                    allGuids.shuffled().take(MAX_CONNECT_ATTEMPTS)
                 }
 
-                // ۴) تست واقعی هسته
-                withContext(Dispatchers.Main) {
-                    statusMessage = "تست واقعی اتصال ${realCandidates.size} سرور..."
-                }
-                var realOk = realPingFilter(realCandidates)
-                Log.d(TAG, "Real ping موفق: ${realOk.size} -> $realOk")
-
-                // اگر هیچ‌کدام پاس نشد، بقیه سرورهای TCP-سالم را هم امتحان کن
-                if (realOk.isEmpty() && tcpOk.size > REAL_PING_CANDIDATES) {
-                    withContext(Dispatchers.Main) { statusMessage = "در حال جستجوی سرورهای بیشتر..." }
-                    val more = tcpOk.drop(REAL_PING_CANDIDATES).take(60).map { it.first }
-                    realOk = realPingFilter(more)
-                    Log.d(TAG, "Real ping مرحله دوم: ${realOk.size}")
-                }
-
-                val selectedGuid: String
-                val bestPing: Long
-                val verified: Boolean
-                if (realOk.isNotEmpty()) {
-                    selectedGuid = realOk.first().first
-                    bestPing = realOk.first().second
-                    verified = true
-                } else if (tcpOk.isNotEmpty()) {
-                    selectedGuid = tcpOk.first().first
-                    bestPing = tcpOk.first().second
-                    verified = false
-                } else {
-                    withContext(Dispatchers.Main) {
-                        isFetching = false
-                        statusMessage = "هیچ سرور سالمی پیدا نشد. فیلترشکن/اینترنت را بررسی و دوباره تلاش کنید."
-                    }
-                    return@launch
-                }
-
-                triedGuids.add(selectedGuid)
-                val selectedProfile = MmkvManager.decodeServerConfig(selectedGuid)
+                // ۴) اتصال واقعی و تأیید، به‌ترتیب سرعت
+                val working = connectFirstWorking(candidates)
 
                 withContext(Dispatchers.Main) {
                     isFetching = false
-                    MmkvManager.setSelectServer(selectedGuid)
-                    mainViewModel.updateSelectedGuid(selectedGuid)
-                    mainViewModel.onAction(MainAction.RefreshGroups)
-
-                    val name = selectedProfile?.remarks ?: "Fast Server"
-                    activeServerInfo = if (verified) {
-                        "سرور منتخب: $name (پینگ واقعی: ${bestPing}ms)"
+                    if (working != null) {
+                        val (guid, ping) = working
+                        val profile = MmkvManager.decodeServerConfig(guid)
+                        mainViewModel.onAction(MainAction.RefreshGroups)
+                        activeServerInfo =
+                            "سرور منتخب: ${profile?.remarks ?: "Fast Server"} (پینگ واقعی: ${ping}ms)"
+                        statusMessage = "متصل شد"
                     } else {
-                        "سرور منتخب: $name (تست واقعی انجام نشد)"
+                        LauncherManager.stopService(this@MainActivity)
+                        statusMessage = "هیچ سرور سالمی پیدا نشد. دوباره تلاش کنید."
                     }
-                    statusMessage = "بهترین سرور انتخاب شد. در حال اتصال..."
-                    checkAndStartVpn()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "fetchAndConnectBestServer خطا", e)
@@ -468,48 +494,41 @@ class MainActivity : HelperBaseComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val allGuids = MmkvManager.decodeServerList("")
-                val current = MmkvManager.getSelectServer()
-                if (current != null) triedGuids.add(current)
+                val current = mainViewModel.uiState.value.selectedGuid
+                if (!current.isNullOrEmpty()) triedGuids.add(current)
 
                 var pool = allGuids.filter { it !in triedGuids }
-                if (pool.isEmpty()) {          // همه امتحان شدند؛ از اول
+                if (pool.isEmpty()) {
                     triedGuids.clear()
-                    current?.let { triedGuids.add(it) }
+                    if (!current.isNullOrEmpty()) triedGuids.add(current)
                     pool = allGuids.filter { it != current }
                 }
 
                 val tcpOk = tcpFilter(pool.shuffled().take(MAX_TCP_CANDIDATES))
                 val candidates = if (tcpOk.isNotEmpty()) {
-                    tcpOk.take(REAL_PING_CANDIDATES).map { it.first }
+                    tcpOk.take(MAX_CONNECT_ATTEMPTS).map { it.first }
                 } else {
-                    pool.shuffled().take(REAL_PING_CANDIDATES)
+                    pool.shuffled().take(MAX_CONNECT_ATTEMPTS)
                 }
-                val realOk = realPingFilter(candidates)
-                Log.d(TAG, "سرور بعدی: real ok=${realOk.size}")
 
-                val best = realOk.firstOrNull()
+                val working = connectFirstWorking(candidates)
 
                 withContext(Dispatchers.Main) {
                     isFetching = false
-                    if (best == null) {
+                    if (working != null) {
+                        val (guid, ping) = working
+                        val profile = MmkvManager.decodeServerConfig(guid)
+                        activeServerInfo =
+                            "سرور جدید: ${profile?.remarks ?: "Fast Server"} (پینگ واقعی: ${ping}ms)"
+                        statusMessage = "متصل شد"
+                    } else {
                         statusMessage = "سرور سالم دیگری پیدا نشد."
-                        return@withContext
-                    }
-                    val (guid, ping) = best
-                    triedGuids.add(guid)
-                    val profile = MmkvManager.decodeServerConfig(guid)
-
-                    MmkvManager.setSelectServer(guid)
-                    mainViewModel.updateSelectedGuid(guid)
-                    activeServerInfo =
-                        "سرور جدید: ${profile?.remarks ?: "Fast Server"} (پینگ واقعی: ${ping}ms)"
-                    statusMessage = "در حال اتصال به سرور جدید..."
-
-                    // ابتدا توقف کامل، سپس استارت
-                    lifecycleScope.launch {
-                        LauncherManager.stopService(this@MainActivity)
-                        delay(1000)
-                        LauncherManager.restartService(this@MainActivity)
+                        // برگرد به سرور قبلی
+                        if (!current.isNullOrEmpty()) {
+                            MmkvManager.setSelectServer(current)
+                            mainViewModel.updateSelectedGuid(current)
+                            LauncherManager.restartService(this@MainActivity)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -520,28 +539,5 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             }
         }
-    }
-
-    // ───────────────────────── VPN ─────────────────────────
-
-    private fun checkAndStartVpn() {
-        if (!SettingsManager.isVpnMode()) {
-            startV2RayService()
-            return
-        }
-        val intent = VpnService.prepare(this)
-        if (intent == null) {
-            startV2RayService()
-        } else {
-            requestVpnPermission.launch(intent)
-        }
-    }
-
-    private fun startV2RayService() {
-        // ACCESS_LOCAL_NETWORK مربوط به اندروید جدید (API 37). اگر در SDK شما نیست، این بلوک را حذف کنید.
-        if (Build.VERSION.SDK_INT >= 37) {
-            checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
-        }
-        LauncherManager.restartService(this)
     }
 }

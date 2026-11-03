@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Cyber Shield Glow -->
+    <path
+        android:fillColor="#1600E676"
+        android:pathData="M54,18 C73.88,18 90,34.12 90,54 C90,73.88 73.88,90 54,90 C34.12,90 18,73.88 18,54 C18,34.12 34.12,18 54,18 Z" />
+    <!-- Cat Head Silhouette -->
+    <path
+        android:fillColor="#0F172A"
+        android:strokeColor="#00E676"
+        android:strokeWidth="3.2"
+        android:strokeLineJoin="round"
+        android:pathData="M30,49 L26,24 L44,36 Q54,33 64,36 L82,24 L78,49 Q85,70 54,80 Q23,70 30,49 Z" />
+    <!-- Left & Right Inner Ears -->
+    <path
+        android:fillColor="#6600E676"
+        android:pathData="M33,45 L30,30 L41,38 Z" />
+    <path
+        android:fillColor="#6600E676"
+        android:pathData="M75,45 L78,30 L67,38 Z" />
+    <!-- Glowing Cat Eyes -->
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M35,51 Q41,47 47,51 Q41,56 35,51 Z" />
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M61,51 Q67,47 73,51 Q67,56 61,51 Z" />
+    <!-- Cat Vertical Pupils -->
+    <path
+        android:fillColor="#020617"
+        android:pathData="M40.2,49 L41.8,49 L41.8,54 L40.2,54 Z" />
+    <path
+        android:fillColor="#020617"
+        android:pathData="M66.2,49 L67.8,49 L67.8,54 L66.2,54 Z" />
+    <!-- Cat Nose -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M50.5,61 L57.5,61 L54,65.5 Z" />
+    <!-- Whiskers -->
+    <path
+        android:strokeColor="#9938BDF8"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M21,59 L34,61 M22,65 L34,64 M87,59 L74,61 M86,65 L74,64" />
+</vector>

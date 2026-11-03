@@ -63,31 +63,28 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (it.resultCode == RESULT_OK)      // لینک Raw پنل گیت‌هاب (Gist) خودتان را اینجا بگذارید
-    private val PENNY_PANEL_URL = "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
+            if (it.resultCode == RESULT_OK)      private val PENNY_PANEL_URL = "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
 
     fun startV2Ray() {
         if (mainViewModel.isRunning.value == true) {
-            Utils.stopVService(this)
+            V2RayServiceManager.stopVService(this)
             return
         }
 
-        toast("در حال اتصال به بهترین سرور Penny VPN...")
+        toast("در حال دریافت سرورهای Penny VPN...")
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ۱. دریافت آخرین کانفیگ‌ها از پنل گیت‌هاب شما
                 val configText = java.net.URL(PENNY_PANEL_URL).readText().trim()
 
                 if (configText.isNotEmpty()) {
-                    // ۲. پاکسازی سرورهای قبلی و ایمپورت سرورهای جدید (پشتیبانی از لینک تکی و سابسکریپشن)
                     MmkvManager.removeAllServer()
-                    var count = AngConfigManager.importBatchConfig(configText, "", false)
-                    
-                    // اگر لینک سابسکریپشن مستقیم در فایل گذاشته باشید، محتوای آن را هم باز می‌کند
+                    var (count, _) = AngConfigManager.importBatchConfig(configText, "", false)
+
                     if (count == 0 && configText.startsWith("http")) {
                         val subContent = java.net.URL(configText).readText().trim()
-                        count = AngConfigManager.importBatchConfig(subContent, "", false)
+                        val result = AngConfigManager.importBatchConfig(subContent, "", false)
+                        count = result.first
                     }
 
                     withContext(Dispatchers.Main) {
@@ -96,26 +93,26 @@ class MainActivity : HelperBaseComponentActivity() {
                             val firstServer = mainViewModel.serverList.firstOrNull()
                             if (firstServer != null) {
                                 MmkvManager.setSelectServer(firstServer)
-                                // ۳. درخواست مجوز VPN و روشن کردن سرویس
                                 val intent = VpnService.prepare(this@MainActivity)
                                 if (intent == null) {
-                                    V2RayServiceManager.startV2Ray(this@MainActivity)
+                                    V2RayServiceManager.startVService(this@MainActivity)
                                 } else {
                                     requestVpnPermission.launch(intent)
                                 }
                             }
                         } else {
-                            toast("کانفیگ فعالی در پنل یافت نشد!")
+                            toast("کانفیگ فعالی یافت نشد!")
                         }
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    toast("خطا در دریافت سرورها. اینترنت خود را بررسی کنید.")
+                    toast("خطا در اتصال به سرور مادر")
                 }
             }
         }
     }
+
 
         }
 

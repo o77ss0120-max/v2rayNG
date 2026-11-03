@@ -1,5 +1,9 @@
 package com.v2ray.ang.ui.main
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +16,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -21,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,6 +40,7 @@ import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
+import com.v2ray.ang.ui.logcat.LogcatActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -41,28 +49,56 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+
+// ───────────────────────── مدل‌ها ─────────────────────────
+
+private class PennyCountry(val code: String, val name: String) {
+    val flag: String
+        get() = if (code.length == 2) {
+            code.uppercase().map { String(Character.toChars(0x1F1E6 + (it - 'A'))) }.joinToString("")
+        } else "🌐"
+    val label: String get() = "$flag $name"
+}
+
+private data class PennyServer(
+    val guid: String,
+    val country: PennyCountry,
+    val ping: Long,
+    val verified: Boolean
+)
+
+private val UNKNOWN_COUNTRY = PennyCountry("", "نامشخص")
 
 class MainActivity : HelperBaseComponentActivity() {
 
     companion object {
         private const val TAG = "PennyVPN"
 
-        // فیلتر اولیه TCP
         private const val TCP_TIMEOUT_MS = 2500
         private const val MAX_TCP_CANDIDATES = 300
         private const val TCP_PARALLEL = 40
-
-        // تعداد سروری که به‌ترتیب واقعاً وصل می‌شویم و تست می‌کنیم
         private const val MAX_CONNECT_ATTEMPTS = 10
+        private const val BEST_LIST_SIZE = 15
 
-        // پورت SOCKS محلی v2rayNG (پیش‌فرض 10808). اگر در تنظیمات تغییر داده‌اید اینجا هم عوض کنید.
+        // پورت SOCKS محلی v2rayNG (پیش‌فرض 10808)
         private const val SOCKS_PORT = 10808
-        private const val TEST_URL = "http://cp.cloudflare.com/generate_204"
+
+        // مهم: فقط https (http ساده در اندروید جدید مسدود است و تست همیشه شکست می‌خورد)
+        private val TEST_URLS = listOf(
+            "https://www.gstatic.com/generate_204",
+            "https://cp.cloudflare.com/generate_204"
+        )
     }
 
     private val SUBSCRIPTION_SOURCES = listOf(
@@ -79,15 +115,25 @@ class MainActivity : HelperBaseComponentActivity() {
     private var activeServerInfo by mutableStateOf("")
     private var isFetching by mutableStateOf(false)
 
-    private val triedGuids = mutableSetOf<String>()
+    private var showMenu by mutableStateOf(false)
+    private var showLog by mutableStateOf(false)
+    private var showBest by mutableStateOf(false)
 
-    // بعد از گرفتن مجوز VPN، جستجوی سرور شروع می‌شود
+    private val logLines = mutableStateListOf<String>()
+    private val bestList = mutableStateListOf<PennyServer>()
+
+    private val triedGuids = mutableSetOf<String>()
+    private val failedGuids = mutableSetOf<String>()
+    private val countryCache = ConcurrentHashMap<String, PennyCountry>()
+    private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
+
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == RESULT_OK) {
                 fetchAndConnectBestServer()
             } else {
                 statusMessage = "مجوز VPN داده نشد!"
+                plog("مجوز VPN داده نشد")
             }
         }
 
@@ -96,6 +142,25 @@ class MainActivity : HelperBaseComponentActivity() {
         mainViewModel.onAction(MainAction.Initialize)
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
+
+    // ───────────────────────── لاگ ─────────────────────────
+
+    private fun plog(msg: String) {
+        Log.d(TAG, msg)
+        val line = "${timeFmt.format(Date())}  $msg"
+        runOnUiThread {
+            logLines.add(line)
+            if (logLines.size > 400) logLines.removeAt(0)
+        }
+    }
+
+    private fun copyLogToClipboard() {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("PennyVPN log", logLines.joinToString("\n")))
+        statusMessage = "لاگ کپی شد"
+    }
+
+    // ───────────────────────── UI ─────────────────────────
 
     @Composable
     override fun ScreenContent() {
@@ -141,6 +206,30 @@ class MainActivity : HelperBaseComponentActivity() {
                     color = Color(0xFF94A3B8),
                     fontSize = 14.sp
                 )
+            }
+
+            // منو
+            Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                TextButton(onClick = { showMenu = true }) {
+                    Text("⋮", color = Color.White, fontSize = 28.sp)
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("بهترین کانفیگ‌ها") },
+                        onClick = { showMenu = false; showBest = true }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("لاگ برنامه") },
+                        onClick = { showMenu = false; showLog = true }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("لاگ هسته (Logcat)") },
+                        onClick = {
+                            showMenu = false
+                            startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
+                        }
+                    )
+                }
             }
 
             Box(
@@ -215,7 +304,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             Text(
                                 text = activeServerInfo,
                                 color = Color(0xFF94A3B8),
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 textAlign = TextAlign.Center
                             )
                         }
@@ -241,6 +330,77 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             }
         }
+
+        if (showBest) BestConfigsDialog()
+        if (showLog) LogDialog()
+    }
+
+    @Composable
+    private fun BestConfigsDialog() {
+        AlertDialog(
+            onDismissRequest = { showBest = false },
+            confirmButton = { TextButton(onClick = { showBest = false }) { Text("بستن") } },
+            title = { Text("بهترین کانفیگ‌ها") },
+            text = {
+                if (bestList.isEmpty()) {
+                    Text("هنوز لیستی ساخته نشده. ابتدا یک بار روی دکمه اتصال بزنید.")
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
+                        items(bestList.toList()) { s ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isFetching) {
+                                        showBest = false
+                                        connectToEntry(s)
+                                    }
+                                    .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(s.country.label, fontSize = 16.sp)
+                                Text(
+                                    if (s.verified) "✅ ${s.ping}ms" else "${s.ping}ms",
+                                    fontSize = 14.sp
+                                )
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    @Composable
+    private fun LogDialog() {
+        AlertDialog(
+            onDismissRequest = { showLog = false },
+            title = { Text("لاگ برنامه") },
+            text = {
+                if (logLines.isEmpty()) {
+                    Text("هنوز لاگی ثبت نشده.")
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
+                        items(logLines.toList().asReversed()) { line ->
+                            Text(
+                                text = line,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { copyLogToClipboard() }) { Text("کپی") }
+                    TextButton(onClick = { logLines.clear() }) { Text("پاک کردن") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { showLog = false }) { Text("بستن") } }
+        )
     }
 
     // ───────────────────────── اکشن اصلی ─────────────────────────
@@ -250,9 +410,9 @@ class MainActivity : HelperBaseComponentActivity() {
             LauncherManager.stopService(this)
             statusMessage = "اتصال قطع شد"
             activeServerInfo = ""
+            plog("اتصال توسط کاربر قطع شد")
             return
         }
-        // اول مجوز VPN، بعد جستجوی سرور
         if (SettingsManager.isVpnMode()) {
             val intent = VpnService.prepare(this)
             if (intent != null) {
@@ -284,23 +444,109 @@ class MainActivity : HelperBaseComponentActivity() {
             "https://ghproxy.net/$urlStr",
             "https://mirror.ghproxy.com/$urlStr"
         )
-        for (mirror in mirrors) {
+        for ((i, mirror) in mirrors.withIndex()) {
             try {
                 val content = downloadUrl(mirror)
                 if (content.isNotEmpty()) {
-                    Log.d(TAG, "دانلود موفق: $mirror (${content.length} کاراکتر)")
+                    plog("دانلود موفق (مسیر ${i + 1}): ${content.length} کاراکتر")
                     return content
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "دانلود ناموفق: $mirror -> ${e.message}")
+                plog("دانلود ناموفق (مسیر ${i + 1}): ${e.message}")
             }
         }
         return ""
     }
 
+    // ───────────────────────── کشور ─────────────────────────
+
+    private val isoCodes: Set<String> by lazy { Locale.getISOCountries().toSet() }
+
+    private val englishNameRegexes: List<Pair<Regex, String>> by lazy {
+        val list = mutableListOf<Pair<Regex, String>>()
+        for (code in Locale.getISOCountries()) {
+            val name = Locale.Builder().setRegion(code).build()
+                .getDisplayCountry(Locale.ENGLISH).lowercase()
+            if (name.length >= 4) {
+                list.add(Regex("\\b" + Regex.escape(name) + "\\b") to code)
+            }
+        }
+        list.add(Regex("\\busa\\b") to "US")
+        list.add(Regex("\\buk\\b") to "GB")
+        list.add(Regex("\\buae\\b") to "AE")
+        list
+    }
+
+    private fun countryName(code: String): String {
+        val n = Locale.Builder().setRegion(code).build()
+            .getDisplayCountry(Locale.forLanguageTag("fa"))
+        return if (n.isBlank()) code else n
+    }
+
+    private fun countryFromRemarks(remarks: String): String? {
+        if (remarks.isEmpty()) return null
+        // ۱) ایموجی پرچم
+        var i = 0
+        while (i < remarks.length) {
+            val cp = remarks.codePointAt(i)
+            val n = Character.charCount(cp)
+            if (cp in 0x1F1E6..0x1F1FF && i + n < remarks.length) {
+                val cp2 = remarks.codePointAt(i + n)
+                if (cp2 in 0x1F1E6..0x1F1FF) {
+                    val code = "${'A' + (cp - 0x1F1E6)}${'A' + (cp2 - 0x1F1E6)}"
+                    if (code in isoCodes) return code
+                }
+            }
+            i += n
+        }
+        // ۲) نام انگلیسی کشور
+        val lower = remarks.lowercase()
+        for ((regex, code) in englishNameRegexes) {
+            if (regex.containsMatchIn(lower)) return code
+        }
+        return null
+    }
+
+    private fun countryFromGeo(host: String?): String? {
+        if (host.isNullOrBlank()) return null
+        return try {
+            val ip = InetAddress.getByName(host.trim()).hostAddress ?: return null
+            val conn = URL("https://ipwho.is/$ip?fields=success,country_code")
+                .openConnection() as HttpURLConnection
+            try {
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                val text = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(text)
+                val code = json.optString("country_code")
+                if (json.optBoolean("success", true) && code.length == 2) code.uppercase() else null
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun resolveCountry(guid: String): PennyCountry {
+        countryCache[guid]?.let { return it }
+        val profile = MmkvManager.decodeServerConfig(guid)
+        var code = countryFromRemarks(profile?.remarks.orEmpty())
+        if (code == null) code = countryFromGeo(profile?.server)
+        val info = if (code != null) PennyCountry(code, countryName(code)) else UNKNOWN_COUNTRY
+        countryCache[guid] = info
+        return info
+    }
+
+    private suspend fun resolveCountries(guids: List<String>) {
+        val sem = Semaphore(5)
+        withContext(Dispatchers.IO) {
+            guids.map { g -> async { sem.withPermit { resolveCountry(g) } } }.awaitAll()
+        }
+    }
+
     // ───────────────────────── تست سرور ─────────────────────────
 
-    /** تست سریع TCP (فقط فیلتر اولیه؛ معیار سلامت نیست) */
     private fun testServerTcpPing(guid: String): Long {
         val profile = MmkvManager.decodeServerConfig(guid) ?: return -1L
         val host = profile.server?.trim()?.takeIf { it.isNotEmpty() } ?: return -1L
@@ -325,73 +571,115 @@ class MainActivity : HelperBaseComponentActivity() {
         }.filter { it.second > 0 }.sortedBy { it.second }
     }
 
-    /**
-     * تست واقعی: ترافیک HTTP از طریق پراکسی SOCKS محلی هسته (که روی سرور فعلی وصل است) عبور داده می‌شود.
-     * اگر پاسخ 204/200 برگشت یعنی سرور واقعاً کار می‌کند.
-     */
-    private fun testThroughLocalProxy(): Long {
+    private fun isLocalPortOpen(): Boolean {
+        return try {
+            Socket().use { it.connect(InetSocketAddress("127.0.0.1", SOCKS_PORT), 800) }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** ترافیک https را از پراکسی SOCKS محلی عبور می‌دهد؛ اگر 204/200 آمد یعنی سرور واقعاً کار می‌کند */
+    private fun testThroughLocalProxy(testUrl: String): Long {
         return try {
             val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", SOCKS_PORT))
             val start = System.currentTimeMillis()
-            val conn = URL(TEST_URL).openConnection(proxy) as HttpURLConnection
+            val conn = URL(testUrl).openConnection(proxy) as HttpURLConnection
             try {
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
+                conn.connectTimeout = 7000
+                conn.readTimeout = 7000
                 conn.useCaches = false
                 val code = conn.responseCode
                 if (code == 204 || code == 200) {
                     (System.currentTimeMillis() - start).coerceAtLeast(1L)
-                } else -1L
+                } else {
+                    plog("تست پراکسی: کد پاسخ $code")
+                    -1L
+                }
             } finally {
                 conn.disconnect()
             }
         } catch (e: Exception) {
-            Log.d(TAG, "تست از طریق پراکسی ناموفق: ${e.message}")
+            plog("تست پراکسی ناموفق: ${e.javaClass.simpleName}: ${e.message}")
             -1L
         }
     }
 
-    /** به سرور وصل می‌شود، منتظر بالا آمدن هسته می‌ماند و سلامت را تست می‌کند. خروجی: پینگ یا -1 */
+    /** اتصال واقعی به سرور + تأیید سلامت. خروجی: پینگ یا -1 */
     private suspend fun connectAndVerify(guid: String): Long {
+        val wasRunning = mainViewModel.uiState.value.isRunning
         withContext(Dispatchers.Main) {
             MmkvManager.setSelectServer(guid)
             mainViewModel.updateSelectedGuid(guid)
-            LauncherManager.restartService(this@MainActivity)
+            // نکته کلیدی: اگر سرویس روشن نیست باید startService زده شود، نه restartService
+            if (wasRunning) LauncherManager.restartService(this@MainActivity)
+            else LauncherManager.startService(this@MainActivity)
         }
-        delay(1200)
+        plog(if (wasRunning) "restartService صدا زده شد" else "startService صدا زده شد")
 
+        delay(if (wasRunning) 3000L else 1500L)
         var waited = 0
-        while (!mainViewModel.uiState.value.isRunning && waited < 8000) {
+        while (!mainViewModel.uiState.value.isRunning && waited < 10000) {
             delay(300)
             waited += 300
         }
         if (!mainViewModel.uiState.value.isRunning) {
-            Log.d(TAG, "سرویس بالا نیامد برای $guid")
+            plog("سرویس بالا نیامد (isRunning=false بعد از ${waited}ms)")
             return -1L
         }
-        delay(1500) // فرصت برای آماده شدن هسته
+        delay(2000) // آماده شدن هسته
+
+        val portOpen = withContext(Dispatchers.IO) { isLocalPortOpen() }
+        if (!portOpen) {
+            plog("هشدار: پورت SOCKS $SOCKS_PORT باز نیست (شاید در تنظیمات پورت فرق دارد)")
+        }
 
         repeat(2) {
-            val ping = withContext(Dispatchers.IO) { testThroughLocalProxy() }
-            if (ping > 0) return ping
-            delay(800)
+            for (url in TEST_URLS) {
+                val ping = withContext(Dispatchers.IO) { testThroughLocalProxy(url) }
+                if (ping > 0) return ping
+            }
+            delay(1500)
         }
         return -1L
     }
 
-    /** به‌ترتیب کاندیداها را امتحان می‌کند تا اولین سرور سالم. خروجی: (guid, ping) یا null */
     private suspend fun connectFirstWorking(guids: List<String>): Pair<String, Long>? {
+        resolveCountries(guids)
         for ((index, guid) in guids.withIndex()) {
             triedGuids.add(guid)
-            val name = MmkvManager.decodeServerConfig(guid)?.remarks ?: "Server"
+            val country = resolveCountry(guid)
             withContext(Dispatchers.Main) {
-                statusMessage = "تست اتصال واقعی (${index + 1}/${guids.size}): $name"
+                statusMessage = "تست اتصال واقعی (${index + 1}/${guids.size}): ${country.label}"
             }
+            plog("تلاش ${index + 1}/${guids.size}: ${country.label}")
             val ping = connectAndVerify(guid)
-            Log.d(TAG, "تلاش ${index + 1}: $name -> ping=$ping")
-            if (ping > 0) return guid to ping
+            if (ping > 0) {
+                plog("✅ موفق: ${country.label} (${ping}ms)")
+                return guid to ping
+            }
+            failedGuids.add(guid)
+            plog("❌ ناموفق: ${country.label}")
         }
         return null
+    }
+
+    private suspend fun buildBestList(
+        tcpOk: List<Pair<String, Long>>,
+        verifiedGuid: String?,
+        verifiedPing: Long
+    ) {
+        val top = tcpOk.filter { it.first !in failedGuids }.take(BEST_LIST_SIZE)
+        resolveCountries(top.map { it.first })
+        val entries = top.map { (guid, ping) ->
+            if (guid == verifiedGuid) PennyServer(guid, resolveCountry(guid), verifiedPing, true)
+            else PennyServer(guid, resolveCountry(guid), ping, false)
+        }.sortedWith(compareByDescending<PennyServer> { it.verified }.thenBy { it.ping })
+        withContext(Dispatchers.Main) {
+            bestList.clear()
+            bestList.addAll(entries)
+        }
     }
 
     // ───────────────────────── دریافت و اتصال ─────────────────────────
@@ -399,20 +687,21 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun fetchAndConnectBestServer() {
         isFetching = true
         triedGuids.clear()
+        failedGuids.clear()
         statusMessage = "در حال دریافت لیست سرورها..."
+        plog("شروع جستجو")
 
-        // مجوز شبکه محلی در اندروید جدید
         if (Build.VERSION.SDK_INT >= 37) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ۱) دانلود هر منبع جداگانه
                 val contents = SUBSCRIPTION_SOURCES.map { fetchWithFallback(it) }
                     .filter { it.isNotEmpty() }
 
                 if (contents.isEmpty()) {
+                    plog("هیچ منبعی دانلود نشد")
                     withContext(Dispatchers.Main) {
                         isFetching = false
                         statusMessage = "خطا در دانلود سرورها! اینترنت یا فیلترشکن خود را بررسی کنید."
@@ -422,20 +711,18 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 withContext(Dispatchers.Main) { statusMessage = "در حال پردازش کانفیگ‌ها..." }
 
-                // ۲) پاک کردن لیست قدیمی فقط بعد از دانلود موفق
                 MmkvManager.removeAllServer()
-
                 for (content in contents) {
                     try {
                         val r = AngConfigManager.importBatchConfig(content, "", true)
-                        Log.d(TAG, "importBatchConfig نتیجه: $r")
+                        plog("import نتیجه: $r")
                     } catch (e: Exception) {
-                        Log.e(TAG, "import خطا: ${e.message}", e)
+                        plog("import خطا: ${e.message}")
                     }
                 }
 
                 val allGuids = MmkvManager.decodeServerList("")
-                Log.d(TAG, "تعداد سرورها: ${allGuids.size}")
+                plog("تعداد کل سرورها: ${allGuids.size}")
 
                 if (allGuids.isEmpty()) {
                     withContext(Dispatchers.Main) {
@@ -445,12 +732,11 @@ class MainActivity : HelperBaseComponentActivity() {
                     return@launch
                 }
 
-                // ۳) فیلتر اولیه TCP
                 withContext(Dispatchers.Main) {
                     statusMessage = "تست اولیه ${minOf(allGuids.size, MAX_TCP_CANDIDATES)} سرور..."
                 }
                 val tcpOk = tcpFilter(allGuids.shuffled().take(MAX_TCP_CANDIDATES))
-                Log.d(TAG, "TCP موفق: ${tcpOk.size}")
+                plog("سرورهای قابل دسترس (TCP): ${tcpOk.size}")
 
                 val candidates = if (tcpOk.isNotEmpty()) {
                     tcpOk.take(MAX_CONNECT_ATTEMPTS).map { it.first }
@@ -458,25 +744,24 @@ class MainActivity : HelperBaseComponentActivity() {
                     allGuids.shuffled().take(MAX_CONNECT_ATTEMPTS)
                 }
 
-                // ۴) اتصال واقعی و تأیید، به‌ترتیب سرعت
                 val working = connectFirstWorking(candidates)
+                buildBestList(tcpOk, working?.first, working?.second ?: -1L)
 
                 withContext(Dispatchers.Main) {
                     isFetching = false
                     if (working != null) {
                         val (guid, ping) = working
-                        val profile = MmkvManager.decodeServerConfig(guid)
                         mainViewModel.onAction(MainAction.RefreshGroups)
-                        activeServerInfo =
-                            "سرور منتخب: ${profile?.remarks ?: "Fast Server"} (پینگ واقعی: ${ping}ms)"
+                        activeServerInfo = "${resolveCountry(guid).label} • ${ping}ms"
                         statusMessage = "متصل شد"
                     } else {
                         LauncherManager.stopService(this@MainActivity)
-                        statusMessage = "هیچ سرور سالمی پیدا نشد. دوباره تلاش کنید."
+                        statusMessage = "هیچ سرور سالمی پیدا نشد. لاگ برنامه را از منو ببینید."
+                        plog("هیچ سرور سالمی پیدا نشد")
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "fetchAndConnectBestServer خطا", e)
+                plog("خطای کلی: ${e.javaClass.simpleName}: ${e.message}")
                 withContext(Dispatchers.Main) {
                     isFetching = false
                     statusMessage = "خطا: ${e.localizedMessage ?: "مشکل در ارتباط"}"
@@ -490,6 +775,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun switchNextBestServer() {
         isFetching = true
         statusMessage = "در حال جستجوی سرور پرسرعت بعدی..."
+        plog("جستجوی سرور بعدی")
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -500,6 +786,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 var pool = allGuids.filter { it !in triedGuids }
                 if (pool.isEmpty()) {
                     triedGuids.clear()
+                    failedGuids.clear()
                     if (!current.isNullOrEmpty()) triedGuids.add(current)
                     pool = allGuids.filter { it != current }
                 }
@@ -512,18 +799,16 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
 
                 val working = connectFirstWorking(candidates)
+                buildBestList(tcpOk, working?.first, working?.second ?: -1L)
 
                 withContext(Dispatchers.Main) {
                     isFetching = false
                     if (working != null) {
                         val (guid, ping) = working
-                        val profile = MmkvManager.decodeServerConfig(guid)
-                        activeServerInfo =
-                            "سرور جدید: ${profile?.remarks ?: "Fast Server"} (پینگ واقعی: ${ping}ms)"
+                        activeServerInfo = "${resolveCountry(guid).label} • ${ping}ms"
                         statusMessage = "متصل شد"
                     } else {
                         statusMessage = "سرور سالم دیگری پیدا نشد."
-                        // برگرد به سرور قبلی
                         if (!current.isNullOrEmpty()) {
                             MmkvManager.setSelectServer(current)
                             mainViewModel.updateSelectedGuid(current)
@@ -532,10 +817,42 @@ class MainActivity : HelperBaseComponentActivity() {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "switchNextBestServer خطا", e)
+                plog("خطا در سرور بعدی: ${e.javaClass.simpleName}: ${e.message}")
                 withContext(Dispatchers.Main) {
                     isFetching = false
                     statusMessage = "خطا: ${e.localizedMessage ?: "مشکل در ارتباط"}"
+                }
+            }
+        }
+    }
+
+    // ───────────────────────── اتصال به آیتم لیست «بهترین کانفیگ‌ها» ─────────────────────────
+
+    private fun connectToEntry(entry: PennyServer) {
+        if (!mainViewModel.uiState.value.isRunning && SettingsManager.isVpnMode() &&
+            VpnService.prepare(this) != null
+        ) {
+            statusMessage = "ابتدا یک بار روی دکمه اتصال بزنید تا مجوز VPN داده شود."
+            return
+        }
+        isFetching = true
+        statusMessage = "اتصال به ${entry.country.label}..."
+        plog("اتصال دستی به ${entry.country.label}")
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ping = connectAndVerify(entry.guid)
+            withContext(Dispatchers.Main) {
+                isFetching = false
+                if (ping > 0) {
+                    activeServerInfo = "${entry.country.label} • ${ping}ms"
+                    statusMessage = "متصل شد"
+                    plog("✅ ${entry.country.label} (${ping}ms)")
+                    val idx = bestList.indexOfFirst { it.guid == entry.guid }
+                    if (idx >= 0) bestList[idx] = entry.copy(ping = ping, verified = true)
+                } else {
+                    statusMessage = "این سرور کار نکرد؛ سرور دیگری انتخاب کنید."
+                    plog("❌ ${entry.country.label}")
+                    bestList.removeAll { it.guid == entry.guid }
                 }
             }
         }

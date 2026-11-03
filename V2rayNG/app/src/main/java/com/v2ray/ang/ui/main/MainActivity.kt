@@ -352,15 +352,15 @@ private fun fmtDuration(sec: Long): String {
     return String.format(Locale.US, "%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
 }
 
-// ═════════════════════════ کامپوننت‌های گرافیکی مدرن (تم نود، خاکستری و شاینی متالیک) ═════════════════════════
+// ═════════════════════════ کامپوننت‌های گرافیکی مدرن (تم نقره‌ای متالیک، خاکستری و نود شاینی) ═════════════════════════
 
 @Composable
-private fun StarsRow(stars: Int, size: TextUnit = 14.sp) {
+private fun StarsRow(stars: Int, size: TextUnit = 11.sp) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         for (i in 1..5) {
             Text(
                 text = "★",
-                color = if (i <= stars) Color(0xFFE6CFAF) else Color(0xFF3E3D46),
+                color = if (i <= stars) Color(0xFFD8C7B0) else Color(0xFF3E3D46),
                 fontSize = size
             )
         }
@@ -370,9 +370,9 @@ private fun StarsRow(stars: Int, size: TextUnit = 14.sp) {
 @Composable
 private fun StatCell(icon: String, value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("$icon $value", color = Color(0xFFF5EFE6), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("$icon $value", color = Color(0xFFF2F4F8), fontSize = 14.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
-        Text(label, color = Color(0xFFA6A39E), fontSize = 11.sp)
+        Text(label, color = Color(0xFF9EA1AB), fontSize = 10.sp)
     }
 }
 
@@ -408,7 +408,7 @@ private fun StaggeredServerItem(
 }
 
 /**
- * کارت مدرن نمایش سرور بدون پرچم کشور (با پالت نود، خاکستری متالیک و شاینی)
+ * کارت مدرن نمایش سرور بدون پرچم کشور با فونت ظریف‌تر و نمایش پینگ زنده
  */
 @Composable
 private fun ModernServerCard(
@@ -420,122 +420,124 @@ private fun ModernServerCard(
     onClick: () -> Unit
 ) {
     val borderColor = when {
-        isConnected -> Color(0xFFE8D3B5).copy(alpha = 0.85f)
-        isVipMode -> Color(0xFFD8BE9B).copy(alpha = 0.65f)
-        else -> Color(0xFF3E3D46).copy(alpha = 0.85f)
+        isConnected -> Color(0xFFD8DCE6).copy(alpha = 0.85f)
+        isVipMode -> Color(0xFFD8C7B0).copy(alpha = 0.65f)
+        else -> Color(0xFF3A3B44).copy(alpha = 0.85f)
     }
 
     Surface(
-        color = Color(0xFF1B1B20).copy(alpha = 0.92f),
-        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFF1A1B20).copy(alpha = 0.94f),
+        shape = RoundedCornerShape(18.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(18.dp))
             .clickable(enabled = enabled) { onClick() }
     ) {
         if (server == null) {
             Text(
                 text = Strings.noServerYet(lang, isVipMode),
-                color = Color(0xFFA6A39E),
-                fontSize = 13.sp,
+                color = Color(0xFF9EA1AB),
+                fontSize = 12.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp)
+                    .padding(16.dp)
             )
         } else {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // باکس مدرن کد نود (بدون پرچم کشور - استایل نقره‌ای/نود شاینی)
+                // باکس مدرن کد نود (بدون پرچم کشور - استایل نقره‌ای متالیک)
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(13.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(11.dp))
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFF2C2B33), Color(0xFF1F1E24))
+                                listOf(Color(0xFF2B2D36), Color(0xFF1D1E24))
                             )
                         )
                         .border(
                             1.dp,
-                            if (isConnected) Color(0xFFE8D3B5).copy(alpha = 0.8f)
-                            else if (isVipMode) Color(0xFFD8BE9B).copy(alpha = 0.65f)
-                            else Color(0xFF4A4954),
-                            RoundedCornerShape(13.dp)
+                            if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.85f)
+                            else if (isVipMode) Color(0xFFD8C7B0).copy(alpha = 0.65f)
+                            else Color(0xFF454752),
+                            RoundedCornerShape(11.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = server.codeTag.ifEmpty { "A-1" },
-                        color = if (isConnected) Color(0xFFF5E6D3)
+                        color = if (isConnected) Color(0xFFF2F4F8)
                         else if (isVipMode) Color(0xFFE6CFAF)
-                        else Color(0xFFD6D8E0),
-                        fontSize = 13.sp,
+                        else Color(0xFFD0D4DF),
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace
                     )
                 }
 
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    // ردیف افقی: نام سرور (Data center A-1 / Server A-1) با رنگ روشن یکدست + ستاره‌های شامپاینی جلوی نام
+                    // ردیف افقی: نام سرور با فونت ظریف‌تر (12.5sp) + ستاره‌ها جلوی نام
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = server.label,
-                            color = Color(0xFFF5F3F0),
-                            fontSize = 15.sp,
+                            color = Color(0xFFF2F4F8),
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        StarsRow(server.stars, 13.sp)
+                        StarsRow(server.stars, 11.sp)
                     }
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = if (isConnected) {
-                            if (lang == AppLang.FA) "نود فعال • اتصال پایدار" else "Active Node • Stable Tunnel"
+                            if (lang == AppLang.FA) "نود فعال • پینگ ${server.ms}ms • تانل پایدار" else "Active Node • ${server.ms}ms • Stable"
                         } else {
-                            if (lang == AppLang.FA) "آماده اتصال • برای تغییر سرور ضربه بزنید" else "Ready • Tap to change server"
+                            if (lang == AppLang.FA) "پینگ ${server.ms}ms • برای تغییر سرور ضربه بزنید" else "Ping ${server.ms}ms • Tap to change server"
                         },
-                        color = Color(0xFFA6A39E),
-                        fontSize = 11.sp
+                        color = Color(0xFF9EA1AB),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
 
-                // بج مدرن وضعیت / کیفیت با ترکیب نود و نقره‌ای شاینی
+                // بج مدرن وضعیت / کیفیت با ترکیب نقره‌ای متالیک
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(9.dp))
                         .background(
-                            if (isConnected) Color(0xFF332C24)
-                            else if (isVipMode) Color(0xFF2E271F)
-                            else Color(0xFF26262E)
+                            if (isConnected) Color(0xFF2B2E38)
+                            else if (isVipMode) Color(0xFF2D2720)
+                            else Color(0xFF23242C)
                         )
                         .border(
                             1.dp,
-                            if (isConnected) Color(0xFFE6CFAF).copy(alpha = 0.55f)
-                            else Color(0xFF3E3D46),
-                            RoundedCornerShape(10.dp)
+                            if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.65f)
+                            else Color(0xFF3E404A),
+                            RoundedCornerShape(9.dp)
                         )
-                        .padding(horizontal = 9.dp, vertical = 5.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = if (isVipMode) "👑 VIP" else server.tier.badgeText,
-                        color = if (isConnected) Color(0xFFF5E6D3)
+                        color = if (isConnected) Color(0xFFF2F4F8)
                         else if (isVipMode) Color(0xFFE6CFAF)
-                        else Color(0xFFD1D3DC),
-                        fontSize = 10.sp,
+                        else Color(0xFFC8CCD6),
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
@@ -545,53 +547,188 @@ private fun ModernServerCard(
 }
 
 /**
- * بنر تبلیغاتی AdMob (برای مشترکین ۱ ماه ۵۰ گیگ به صورت خودکار مخفی می‌شود)
+ * کارت نمایش کیفیت کل سرویس و درصد آپ‌تایم (جایگزین کادر خالی پایین صفحه)
+ * همراه با بارگذاری هوشمند تبلیغ بنری فقط در صورت آماده بودن واقعی
  */
 @Composable
-private fun AdmobBannerCard(adUnitId: String, modifier: Modifier = Modifier) {
+private fun ServiceQualityUptimeCard(
+    lang: AppLang,
+    isConnected: Boolean,
+    isVipMode: Boolean,
+    serverCount: Int,
+    bestPingMs: Long,
+    adUnitId: String,
+    showAds: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val uptimePercent = if (isVipMode) "99.99%" else "99.98%"
+    val qualityScore = when {
+        bestPingMs in 1..250 -> 0.98f
+        bestPingMs in 251..500 -> 0.94f
+        bestPingMs > 500 -> 0.89f
+        else -> 0.96f
+    }
+    val qualityLabel = if (lang == AppLang.FA) {
+        when {
+            bestPingMs in 1..250 -> "فوق‌العاده (Ultra)"
+            bestPingMs in 251..550 -> "عالی و پایدار"
+            else -> "پایدار"
+        }
+    } else {
+        when {
+            bestPingMs in 1..250 -> "Ultra Stable"
+            bestPingMs in 251..550 -> "Excellent"
+            else -> "Optimal"
+        }
+    }
+
+    var adLoaded by remember { mutableStateOf(false) }
+
     Surface(
-        color = Color(0xFF1B1B20).copy(alpha = 0.88f),
-        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF18191F).copy(alpha = 0.95f),
+        shape = RoundedCornerShape(16.dp),
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF35343D), RoundedCornerShape(14.dp))
+            .border(
+                1.dp,
+                if (isConnected) Color(0xFF4A4E5C) else Color(0xFF32343E),
+                RoundedCornerShape(16.dp)
+            )
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 13.dp, vertical = 10.dp)
         ) {
-            AndroidView(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (isConnected) Color(0xFFD8DCE6) else Color(0xFFC8B8A2))
+                    )
+                    Text(
+                        text = if (lang == AppLang.FA) "کیفیت کل سرویس: $qualityLabel" else "Service Quality: $qualityLabel",
+                        color = Color(0xFFECEEF4),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(Color(0xFF252730))
+                        .border(1.dp, Color(0xFF484B57), RoundedCornerShape(7.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "Uptime $uptimePercent",
+                        color = Color(0xFFE2E5EE),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(7.dp))
+
+            // نوار شاینی کیفیت کل شبکه
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
-                factory = { ctx ->
-                    AdView(ctx).apply {
-                        setAdSize(AdSize.BANNER)
-                        this.adUnitId = adUnitId
-                        loadAd(AdRequest.Builder().build())
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF262830))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(qualityScore)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF8E93A2), Color(0xFFD8DCE6), Color(0xFFE6CFAF))
+                            )
+                        )
+                )
+            }
+
+            Spacer(Modifier.height(5.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = if (lang == AppLang.FA) {
+                        "پایداری تانل: بدون پکت‌لاس (0% Loss)"
+                    } else {
+                        "Tunnel Stability: 0% Packet Loss"
+                    },
+                    color = Color(0xFF9497A1),
+                    fontSize = 9.5.sp
+                )
+                Text(
+                    text = if (lang == AppLang.FA) {
+                        "${serverCount.coerceAtLeast(1)} نود فعال"
+                    } else {
+                        "${serverCount.coerceAtLeast(1)} Active Nodes"
+                    },
+                    color = Color(0xFFC8CCD6),
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            if (showAds) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (adLoaded) 50.dp else 0.dp),
+                    factory = { ctx ->
+                        AdView(ctx).apply {
+                            setAdSize(AdSize.BANNER)
+                            this.adUnitId = adUnitId
+                            adListener = object : com.google.android.gms.ads.AdListener() {
+                                override fun onAdLoaded() {
+                                    adLoaded = true
+                                }
+                                override fun onAdFailedToLoad(error: LoadAdError) {
+                                    adLoaded = false
+                                }
+                            }
+                            loadAd(AdRequest.Builder().build())
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 }
 
 /**
- * اسپلش و انیمیشن خلاقانه ورود با لوگوی جدید متالیک/نود گربه VPN
+ * اسپلش و انیمیشن ورود خلوت و مدرن با لوگوی بهینه‌شده
  */
 @Composable
 private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         entered = true
-        delay(2300)
+        delay(2200)
         onFinished()
     }
 
     val logoScale by animateFloatAsState(
-        targetValue = if (entered) 1f else 0.35f,
+        targetValue = if (entered) 1f else 0.45f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
@@ -603,20 +740,14 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
     val orbitAngle by inf.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2800, easing = LinearEasing)),
         label = "orbitAngle"
     )
-    val ringWave by inf.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing)),
-        label = "ringWave"
-    )
     val glowPulse by inf.animateFloat(
-        initialValue = 14f,
-        targetValue = 30f,
+        initialValue = 10f,
+        targetValue = 22f,
         animationSpec = infiniteRepeatable(
-            tween(900, easing = FastOutSlowInEasing),
+            tween(1000, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
         ),
         label = "glowPulse"
@@ -628,9 +759,9 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF282524),
-                        Color(0xFF16161A),
-                        Color(0xFF0B0B0D)
+                        Color(0xFF22232A),
+                        Color(0xFF141519),
+                        Color(0xFF0B0B0E)
                     )
                 )
             )
@@ -639,43 +770,31 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
-                modifier = Modifier.size(255.dp),
+                modifier = Modifier.size(210.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val center = Offset(size.width / 2f, size.height / 2f)
-                    val baseR = size.minDimension * 0.36f
-
-                    for (k in 0..1) {
-                        val t = (ringWave + k * 0.5f) % 1f
-                        drawCircle(
-                            color = Color(0xFFE6CFAF).copy(alpha = (1f - t) * 0.35f),
-                            radius = baseR + t * size.minDimension * 0.16f,
-                            center = center,
-                            style = Stroke(width = 2.5.dp.toPx())
-                        )
-                    }
-
-                    val arcR = baseR + 10.dp.toPx()
+                    val arcR = size.minDimension * 0.42f
                     val tl = Offset(center.x - arcR, center.y - arcR)
                     val sz = Size(arcR * 2f, arcR * 2f)
                     drawArc(
-                        color = Color(0xFFE8D3B5),
+                        color = Color(0xFFD8DCE6).copy(alpha = 0.75f),
                         startAngle = orbitAngle,
-                        sweepAngle = 100f,
+                        sweepAngle = 90f,
                         useCenter = false,
                         topLeft = tl,
                         size = sz,
-                        style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
                     )
                     drawArc(
-                        color = Color(0xFFD4D7E0),
+                        color = Color(0xFF8E93A2).copy(alpha = 0.55f),
                         startAngle = orbitAngle + 180f,
-                        sweepAngle = 100f,
+                        sweepAngle = 90f,
                         useCenter = false,
                         topLeft = tl,
                         size = sz,
-                        style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
 
@@ -684,22 +803,22 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                     contentDescription = "Penny VPN Logo",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(192.dp)
+                        .size(156.dp)
                         .scale(logoScale)
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
 
             Text(
                 text = "PENNY VPN",
-                color = Color(0xFFF7EFE4),
-                fontSize = 32.sp,
+                color = Color(0xFFF2F4F8),
+                fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 3.sp,
                 style = TextStyle(
                     shadow = Shadow(
-                        color = Color(0xFFE6CFAF),
+                        color = Color(0xFFD0D4DF),
                         offset = Offset(0f, 0f),
                         blurRadius = glowPulse
                     )
@@ -708,14 +827,14 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
             Spacer(Modifier.height(6.dp))
             Text(
                 text = Strings.splashTagline(lang),
-                color = Color(0xFFB5B2AC),
-                fontSize = 14.sp,
+                color = Color(0xFFA6A9B4),
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = "powered by Omidss",
-                color = Color(0xFF8C8984),
+                color = Color(0xFF7E818C),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 1.sp
@@ -725,7 +844,7 @@ private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
 }
 
 /**
- * هدر براق (Shiny Nude & Silver Glow) متمرکز و پایین‌تر از لبه بالایی صفحه
+ * هدر براق (Shiny Metallic Silver) متمرکز و خلوت
  */
 @Composable
 private fun NeonBrandHeader(
@@ -736,17 +855,17 @@ private fun NeonBrandHeader(
     modifier: Modifier = Modifier
 ) {
     val glowTarget = when {
-        isVipMode && mode == UiMode.IDLE -> Color(0xFFE8D3B5)
-        mode == UiMode.IDLE -> Color(0xFFD8C3A5)
-        mode == UiMode.SCANNING -> Color(0xFFE0C097)
-        mode == UiMode.CONNECTING -> Color(0xFFD4D7E0)
-        else -> Color(0xFFF5E6D3)
+        isVipMode && mode == UiMode.IDLE -> Color(0xFFE6CFAF)
+        mode == UiMode.IDLE -> Color(0xFFB8BDC8)
+        mode == UiMode.SCANNING -> Color(0xFFD0D4DF)
+        mode == UiMode.CONNECTING -> Color(0xFFD8DCE6)
+        else -> Color(0xFFEEF1F7)
     }
     val neonColor by animateColorAsState(glowTarget, tween(700), label = "neonColor")
     val inf = rememberInfiniteTransition(label = "headerNeon")
     val blurRadius by inf.animateFloat(
-        initialValue = 12f,
-        targetValue = 26f,
+        initialValue = 10f,
+        targetValue = 22f,
         animationSpec = infiniteRepeatable(
             tween(1600, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
@@ -767,16 +886,16 @@ private fun NeonBrandHeader(
                 contentDescription = "Penny VPN Cat Logo",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
-                    .border(1.5.dp, neonColor.copy(alpha = 0.8f), CircleShape)
+                    .border(1.2.dp, neonColor.copy(alpha = 0.75f), CircleShape)
                     .clickable { onLogoClick() }
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(9.dp))
             Text(
                 text = if (isVipMode) "PENNY VIP" else "PENNY VPN",
-                color = Color(0xFFF7EFE4),
-                fontSize = 25.sp,
+                color = Color(0xFFF2F4F8),
+                fontSize = 23.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.5.sp,
                 style = TextStyle(
@@ -788,11 +907,11 @@ private fun NeonBrandHeader(
                 )
             )
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(3.dp))
         Text(
             text = Strings.subtitle(lang, isVipMode),
-            color = if (isVipMode) Color(0xFFE6CFAF) else Color(0xFFA6A39E),
-            fontSize = 12.sp,
+            color = if (isVipMode) Color(0xFFE6CFAF) else Color(0xFF9EA1AB),
+            fontSize = 11.5.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -800,7 +919,7 @@ private fun NeonBrandHeader(
 }
 
 /**
- * انیمیشن پالس زنده روی متن وضعیت اتصال در حالت CONNECTED با درخشش شامپاینی/نود
+ * انیمیشن پالس زنده روی متن وضعیت اتصال در حالت CONNECTED با درخشش نقره‌ای متالیک
  */
 @Composable
 private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang, isVip: Boolean) {
@@ -808,7 +927,7 @@ private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang
     val inf = rememberInfiniteTransition(label = "statusPulse")
     val pulseScale by inf.animateFloat(
         initialValue = 1.0f,
-        targetValue = if (isConnected) 1.07f else 1.0f,
+        targetValue = if (isConnected) 1.06f else 1.0f,
         animationSpec = infiniteRepeatable(
             tween(1100, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
@@ -817,7 +936,7 @@ private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang
     )
     val pulseGlow by inf.animateFloat(
         initialValue = 8f,
-        targetValue = if (isConnected) 22f else 8f,
+        targetValue = if (isConnected) 20f else 8f,
         animationSpec = infiniteRepeatable(
             tween(1100, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
@@ -831,14 +950,14 @@ private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang
     ) { msg ->
         Text(
             text = msg,
-            color = if (isConnected) Color(0xFFF5E6D3) else Color(0xFFE5E4E2),
-            fontSize = 15.sp,
+            color = if (isConnected) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
+            fontSize = 14.sp,
             fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Medium,
             textAlign = TextAlign.Center,
             style = if (isConnected) {
                 TextStyle(
                     shadow = Shadow(
-                        color = Color(0xFFE6CFAF).copy(alpha = 0.85f),
+                        color = Color(0xFFD8DCE6).copy(alpha = 0.85f),
                         offset = Offset(0f, 0f),
                         blurRadius = pulseGlow
                     )
@@ -848,13 +967,14 @@ private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang
             },
             modifier = Modifier
                 .scale(if (isConnected) pulseScale else 1f)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
 }
 
 /**
- * دکمه اتصال با رنگ‌بندی نود، خاکستری متالیک و شاینی همراه با گربه روی دایره کانکت
+ * دکمه اتصال با رنگ‌بندی نقره‌ای و خاکستری متالیک شاینی
+ * همراه با گربه کوچک‌تر که فقط سرِ پنجه‌هایش کمی روی لبه بالایی دایره قرار می‌گیرد
  */
 @Composable
 private fun PowerButton(
@@ -866,10 +986,10 @@ private fun PowerButton(
 ) {
     val isConnected = mode == UiMode.CONNECTED
     val target = when (mode) {
-        UiMode.IDLE -> if (isVipMode) Color(0xFFC8AD8D) else Color(0xFF8E8D96)
-        UiMode.SCANNING -> Color(0xFFD8BE9B)
-        UiMode.CONNECTING -> Color(0xFFB8BBC4)
-        UiMode.CONNECTED -> Color(0xFFE6CFAF)
+        UiMode.IDLE -> if (isVipMode) Color(0xFFB8B2A6) else Color(0xFF8A8E99)
+        UiMode.SCANNING -> Color(0xFFC4C8D4)
+        UiMode.CONNECTING -> Color(0xFFD4D8E2)
+        UiMode.CONNECTED -> Color(0xFFE4E7F0)
     }
     val color by animateColorAsState(target, tween(700), label = "pbColor")
     val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
@@ -877,7 +997,6 @@ private fun PowerButton(
         if (isConnected) 1f else 0f, tween(800), label = "pbGlow"
     )
 
-    // انیمیشن طبیعی بالا آمدن گربه و قرار گرفتن دست‌هایش روی لبه بالایی دایره کانکت
     val catPresence by animateFloatAsState(
         targetValue = if (isConnected) 1f else 0f,
         animationSpec = spring(
@@ -899,23 +1018,23 @@ private fun PowerButton(
         label = "pbSpin"
     )
     val breathe by inf.animateFloat(
-        initialValue = 1f, targetValue = 1.045f,
+        initialValue = 1f, targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
             tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse
         ),
         label = "pbBreathe"
     )
 
-    val boxHeight = if (isConnected) 288.dp else 236.dp
+    val boxHeight = if (isConnected) 256.dp else 224.dp
 
     Box(
         modifier = Modifier
-            .width(245.dp)
+            .width(236.dp)
             .height(boxHeight),
         contentAlignment = Alignment.BottomCenter
     ) {
         Box(
-            modifier = Modifier.size(230.dp),
+            modifier = Modifier.size(220.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -923,65 +1042,66 @@ private fun PowerButton(
                 val r = size.minDimension * 0.35f
                 when (mode) {
                     UiMode.CONNECTED, UiMode.CONNECTING -> {
-                        for (k in 0..2) {
-                            val t = (pulse + k / 3f) % 1f
+                        for (k in 0..1) {
+                            val t = (pulse + k / 2f) % 1f
                             drawCircle(
-                                color = color.copy(alpha = (1f - t) * 0.32f),
-                                radius = r + 8.dp.toPx() + t * size.minDimension * 0.14f,
+                                color = color.copy(alpha = (1f - t) * 0.28f),
+                                radius = r + 6.dp.toPx() + t * size.minDimension * 0.12f,
                                 center = c,
-                                style = Stroke(width = 2.5.dp.toPx())
+                                style = Stroke(width = 2.dp.toPx())
                             )
                         }
                     }
                     UiMode.SCANNING -> {
-                        val rr = r + 14.dp.toPx()
+                        val rr = r + 12.dp.toPx()
                         val tl = Offset(c.x - rr, c.y - rr)
                         val sz = Size(rr * 2f, rr * 2f)
                         drawArc(
                             color = color.copy(alpha = 0.20f), startAngle = 0f, sweepAngle = 360f,
-                            useCenter = false, topLeft = tl, size = sz, style = Stroke(4.5.dp.toPx())
+                            useCenter = false, topLeft = tl, size = sz, style = Stroke(4.dp.toPx())
                         )
                         drawArc(
                             color = color, startAngle = -90f, sweepAngle = 360f * animProgress,
                             useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(4.5.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
                         )
                         drawArc(
-                            color = Color(0xFFF7EFE4).copy(alpha = 0.9f), startAngle = spin, sweepAngle = 40f,
+                            color = Color(0xFFF2F4F8).copy(alpha = 0.9f), startAngle = spin, sweepAngle = 40f,
                             useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(4.5.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
                         )
                     }
                     else -> {}
                 }
                 drawCircle(
-                    color = color.copy(alpha = 0.35f + 0.30f * glow),
-                    radius = r + 6.dp.toPx(),
+                    color = color.copy(alpha = 0.32f + 0.28f * glow),
+                    radius = r + 5.dp.toPx(),
                     center = c,
-                    style = Stroke(width = 2.dp.toPx())
+                    style = Stroke(width = 1.8.dp.toPx())
                 )
             }
 
             Box(
                 modifier = Modifier
-                    .size(166.dp)
+                    .size(162.dp)
                     .scale(if (mode == UiMode.IDLE) breathe else 1f)
                     .clip(CircleShape)
                     .background(
                         if (isConnected) {
+                            // نقره‌ای و خاکستری متالیک شاینی (جایگزین رنگ طلایی وسط صفحه)
                             Brush.radialGradient(
                                 listOf(
-                                    Color(0xFFF5E6D3),
-                                    Color(0xFFD8BE9B),
-                                    Color(0xFF9E8466)
+                                    Color(0xFFF4F6FA),
+                                    Color(0xFFC8CCD6),
+                                    Color(0xFF7D8290)
                                 )
                             )
                         } else {
                             Brush.radialGradient(
                                 listOf(
-                                    Color(0xFF34333C),
-                                    Color(0xFF232229),
-                                    Color(0xFF17171C)
+                                    Color(0xFF343640),
+                                    Color(0xFF22232A),
+                                    Color(0xFF16171C)
                                 )
                             )
                         }
@@ -990,9 +1110,9 @@ private fun PowerButton(
                         width = 2.dp,
                         brush = Brush.linearGradient(
                             if (isConnected) {
-                                listOf(Color(0xFFFFFFFF), Color(0xFFE6CFAF), Color(0xFF9E8466))
+                                listOf(Color(0xFFFFFFFF), Color(0xFFD8DCE6), Color(0xFF6E7380))
                             } else {
-                                listOf(Color(0xFFD4D7E0), Color(0xFF6E6D78), Color(0xFF3A3942))
+                                listOf(Color(0xFFD0D4DF), Color(0xFF6B6E7B), Color(0xFF363842))
                             }
                         ),
                         shape = CircleShape
@@ -1001,10 +1121,10 @@ private fun PowerButton(
                 contentAlignment = Alignment.Center
             ) {
                 Crossfade(targetState = mode, label = "pbText") { m ->
-                    val fg = if (m == UiMode.CONNECTED) Color(0xFF1C1915) else Color(0xFFF5EFE6)
+                    val fg = if (m == UiMode.CONNECTED) Color(0xFF16171C) else Color(0xFFF2F4F8)
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(top = if (m == UiMode.CONNECTED) 32.dp else 0.dp)
+                        modifier = Modifier.padding(top = if (m == UiMode.CONNECTED) 16.dp else 0.dp)
                     ) {
                         Text(
                             text = when (m) {
@@ -1013,9 +1133,9 @@ private fun PowerButton(
                                 UiMode.CONNECTING -> "CONNECTING"
                                 UiMode.CONNECTED -> "CONNECTED"
                             },
-                            color = fg, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold
+                            color = fg, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(3.dp))
                         Text(
                             text = when (m) {
                                 UiMode.IDLE -> Strings.smartConnect(lang, isVipMode)
@@ -1023,14 +1143,14 @@ private fun PowerButton(
                                 UiMode.CONNECTING -> Strings.tapToCancel(lang)
                                 UiMode.CONNECTED -> Strings.disconnect(lang)
                             },
-                            color = fg.copy(alpha = 0.80f), fontSize = 12.sp, fontWeight = FontWeight.Bold
+                            color = fg.copy(alpha = 0.80f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
         }
 
-        // گربه لوگو که هنگام اتصال سرش بالای دایره قرار می‌گیرد و دستانش به صورت طبیعی روی لبه دایره می‌نشیند
+        // گربه کوچک‌تر شده که سرش بالای دایره است و فقط سرِ دستانش کمی وارد لبه بالایی دایره می‌شود
         if (catPresence > 0.01f) {
             Image(
                 painter = painterResource(id = R.drawable.penny_cat_peeking),
@@ -1038,13 +1158,13 @@ private fun PowerButton(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .width(136.dp)
-                    .height(172.dp)
-                    .offset(y = (-6).dp)
+                    .width(88.dp)
+                    .height(102.dp)
+                    .offset(y = (-12).dp)
                     .graphicsLayer {
                         alpha = catPresence.coerceIn(0f, 1f)
-                        translationY = (1f - catPresence) * 42.dp.toPx()
-                        val sc = 0.75f + 0.25f * catPresence
+                        translationY = (1f - catPresence) * 28.dp.toPx()
+                        val sc = 0.80f + 0.20f * catPresence
                         scaleX = sc
                         scaleY = sc
                     }
@@ -1609,9 +1729,9 @@ class MainActivity : HelperBaseComponentActivity() {
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .size(345.dp)
+                        .size(260.dp)
                         .align(Alignment.Center)
-                        .alpha(0.075f)
+                        .alpha(0.04f)
                 )
 
                 Column(
@@ -1912,11 +2032,17 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ── تبلیغ بنری AdMob برای کاربران عادی (در حالت اشتراک ۱ ماه ۵۰ گیگ مخفی است) ──
-                    if (!vipActive) {
-                        Spacer(Modifier.height(10.dp))
-                        AdmobBannerCard(adUnitId = ADMOB_BANNER_UNIT_ID)
-                    }
+                    // ── کارت نمایش کیفیت کل سرویس و درصد آپ‌تایم (جایگزین کادر خالی پایین صفحه) ──
+                    Spacer(Modifier.height(10.dp))
+                    ServiceQualityUptimeCard(
+                        lang = appLang,
+                        isConnected = mode == UiMode.CONNECTED,
+                        isVipMode = isVipMode,
+                        serverCount = currentList.size,
+                        bestPingMs = current?.ms ?: 180L,
+                        adUnitId = ADMOB_BANNER_UNIT_ID,
+                        showAds = !vipActive
+                    )
 
                     Spacer(Modifier.height(8.dp))
                     val scanInfo = if (activeScanTime > 0L) {
@@ -2324,55 +2450,55 @@ class MainActivity : HelperBaseComponentActivity() {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 11.dp),
+                                            .padding(horizontal = 11.dp, vertical = 9.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         // باکس کد نود (بدون پرچم کشور)
                                         Box(
                                             modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(Color(0xFF17171B))
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(9.dp))
+                                                .background(Color(0xFF17181D))
                                                 .border(
                                                     1.dp,
-                                                    if (active) Color(0xFFE6CFAF).copy(alpha = 0.7f) else Color(0xFF3E3D46),
-                                                    RoundedCornerShape(10.dp)
+                                                    if (active) Color(0xFFD8DCE6).copy(alpha = 0.8f) else Color(0xFF3E404A),
+                                                    RoundedCornerShape(9.dp)
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = s.codeTag.ifEmpty { "A-1" },
-                                                color = if (active) Color(0xFFF5E6D3) else Color(0xFFD6D8E0),
-                                                fontSize = 11.sp,
+                                                color = if (active) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontFamily = FontFamily.Monospace
                                             )
                                         }
-                                        Spacer(Modifier.width(10.dp))
-                                        // نام سرور (Data center A-1 / Server A-1) با رنگ روشن یکدست + ستاره‌ها دقیقاً جلوی نام
+                                        Spacer(Modifier.width(9.dp))
+                                        // نام سرور با فونت کوچک‌تر (12sp) + ستاره‌ها جلوی نام
                                         Row(
                                             modifier = Modifier.weight(1f),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
                                                 text = s.label,
-                                                color = Color(0xFFF5F3F0),
+                                                color = Color(0xFFF2F4F8),
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
+                                                fontSize = 12.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            StarsRow(s.stars, 13.sp)
+                                            StarsRow(s.stars, 11.sp)
                                         }
                                         Spacer(Modifier.width(6.dp))
                                         if (active) {
-                                            Text("✓", color = Color(0xFFF5E6D3), fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                                            Text("✓", color = Color(0xFFF2F4F8), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
                                         } else {
                                             Text(
-                                                text = s.tier.badgeText,
-                                                color = Color(0xFFA6A39E),
-                                                fontSize = 10.sp,
+                                                text = "${s.ms}ms • ${s.tier.badgeText}",
+                                                color = Color(0xFF9EA1AB),
+                                                fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }

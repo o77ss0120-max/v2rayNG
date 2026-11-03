@@ -18,15 +18,11 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Download Libv2ray Core
+      - name: Download Libv2ray Core Directly
         run: |
           mkdir -p V2rayNG/app/libs
-          curl -s https://api.github.com/repos/2dust/AndroidLibXrayLite/releases/latest \
-          | grep "browser_download_url.*libv2ray.aar" \
-          | cut -d : -f 2,3 \
-          | tr -d \" \
-          | wget -qi - -O V2rayNG/app/libs/libv2ray.aar
-          ls -lh V2rayNG/app/libs/
+          curl -L --retry 5 -o V2rayNG/app/libs/libv2ray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
+          ls -lh V2rayNG/app/libs/libv2ray.aar
 
       - name: Grant execute permission for gradlew
         run: |
@@ -36,10 +32,10 @@ jobs:
       - name: Build Debug APK
         run: |
           cd V2rayNG
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assemblePlaystoreDebug --no-daemon
 
       - name: Upload Penny VPN APK
         uses: actions/upload-artifact@v4
         with:
           name: Penny-VPN-Installer
-          path: V2rayNG/app/build/outputs/apk/**/*.apk
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*.apk

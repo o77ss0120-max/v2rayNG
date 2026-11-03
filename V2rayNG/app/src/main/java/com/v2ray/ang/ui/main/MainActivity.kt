@@ -50,12 +50,13 @@ import com.v2ray.ang.ui.userasset.UserAssetActivity
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.lifecycleScope
-
 
 class MainActivity : HelperBaseComponentActivity() {
+
+    private val PENNY_PANEL_URL = "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
 
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModel.Factory(application, MainRepository(application as AngApplication))
@@ -63,57 +64,9 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (it.resultCode == RESULT_OK)      private val PENNY_PANEL_URL = "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
-
-    fun startV2Ray() {
-        if (mainViewModel.isRunning.value == true) {
-            V2RayServiceManager.stopVService(this)
-            return
-        }
-
-        toast("در حال دریافت سرورهای Penny VPN...")
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val configText = java.net.URL(PENNY_PANEL_URL).readText().trim()
-
-                if (configText.isNotEmpty()) {
-                    MmkvManager.removeAllServer()
-                    var (count, _) = AngConfigManager.importBatchConfig(configText, "", false)
-
-                    if (count == 0 && configText.startsWith("http")) {
-                        val subContent = java.net.URL(configText).readText().trim()
-                        val result = AngConfigManager.importBatchConfig(subContent, "", false)
-                        count = result.first
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        if (count > 0) {
-                            mainViewModel.reloadServerList()
-                            val firstServer = mainViewModel.serverList.firstOrNull()
-                            if (firstServer != null) {
-                                MmkvManager.setSelectServer(firstServer)
-                                val intent = VpnService.prepare(this@MainActivity)
-                                if (intent == null) {
-                                    V2RayServiceManager.startVService(this@MainActivity)
-                                } else {
-                                    requestVpnPermission.launch(intent)
-                                }
-                            }
-                        } else {
-                            toast("کانفیگ فعالی یافت نشد!")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    toast("خطا در اتصال به سرور مادر")
-                }
+            if (it.resultCode == RESULT_OK) {
+                startV2Ray()
             }
-        }
-    }
-
-
         }
 
     private val profileEditorLauncher =
@@ -191,7 +144,6 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun openSubscriptionLink(url: String) {
-        // Links come from a remote panel, so only http(s) and tg:// are ever handed to ACTION_VIEW.
         val safeUrl = SubscriptionInfoParser.sanitizeLink(url) ?: return
         Utils.openUri(this, safeUrl)
     }
@@ -222,7 +174,38 @@ class MainActivity : HelperBaseComponentActivity() {
         if (mainViewModel.uiState.value.isRunning) {
             LauncherManager.stopService(this)
         } else {
-            requestServiceStart()
+            fetchPennyConfigsAndStart()
+        }
+    }
+
+    private fun fetchPennyConfigsAndStart() {
+        toast("در حال دریافت سرورهای Penny VPN...")
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                var configText = java.net.URL(PENNY_PANEL_URL).readText().trim()
+                if (configText.startsWith("http")) {
+                    configText = java.net.URL(configText).readText().trim()
+                }
+                withContext(Dispatchers.Main) {
+                    if (configText.isNotEmpty()) {
+                        MmkvManager.removeAllServer()
+                        mainViewModel.onAction(MainAction.ImportBatchConfig(configText))
+                        delay(600)
+                        val firstGuid = MmkvManager.decodeServerList().firstOrNull()
+                        if (firstGuid != null) {
+                            mainViewModel.updateSelectedGuid(firstGuid)
+                        }
+                        requestServiceStart()
+                    } else {
+                        toast("کانفیگ فعالی در پنل یافت نشد!")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    toast("خطا در دریافت سرورها، اتصال با سرور فعلی...")
+                    requestServiceStart()
+                }
+            }
         }
     }
 
@@ -243,11 +226,15 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun startV2Ray() {
         if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
-            toast(R.string.title_file_chooser)
-            return
+            val firstGuid = MmkvManager.decodeServerList().firstOrNull()
+            if (firstGuid != null) {
+                mainViewModel.updateSelectedGuid(firstGuid)
+            } else {
+                toast(R.string.title_file_chooser)
+                return
+            }
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
-        ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
         }
         LauncherManager.startService(this)

@@ -61,7 +61,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == RESULT_OK) {
-                startV2Ray()
+                startV2RayService()
             } else {
                 statusMessage = "مجوز VPN داده نشد!"
             }
@@ -338,7 +338,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         "سرور منتخب: ${selectedProfile?.remarks ?: "Auto Server"}"
                     }
                     statusMessage = "بهترین سرور انتخاب شد (${bestPing}ms). در حال اتصال..."
-                    requestServiceStart()
+                    checkAndStartVpn()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -385,27 +385,24 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    private fun requestServiceStart() {
+    private fun checkAndStartVpn() {
         if (!SettingsManager.isVpnMode()) {
-            startV2Ray()
+            startV2RayService()
             return
         }
         val intent = VpnService.prepare(this)
-        if (intent == null) startV2Ray() else requestVpnPermission.launch(intent)
+        if (intent == null) {
+            startV2RayService()
+        } else {
+            requestVpnPermission.launch(intent)
+        }
     }
 
-    private fun startV2Ray() {
-        val currentGuid = mainViewModel.uiState.value.selectedGuid
-        if (currentGuid.isNullOrEmpty()) {
-            val firstGuid = MmkvManager.decodeServerList("").firstOrNull()
-            if (firstGuid != null) {
-                MmkvManager.setSelectServer(firstGuid)
-                mainViewModel.updateSelectedGuid(firstGuid)
-            }
-        }
+    private fun startV2RayService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
         }
-        LauncherManager.startService(this)
+        // استفاده از دستور رسمی رفرش و استارت سرویس v2rayNG
+        LauncherManager.restartService(this)
     }
 }

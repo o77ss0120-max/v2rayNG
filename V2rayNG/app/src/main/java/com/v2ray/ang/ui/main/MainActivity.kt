@@ -91,15 +91,15 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val MAX_CONNECT_ATTEMPTS = 10
         private const val BEST_LIST_SIZE = 15
 
-        // پورت SOCKS محلی v2rayNG (پیش‌فرض 10808)
-        private const val SOCKS_PORT = 10808
-
         // مهم: فقط https (http ساده در اندروید جدید مسدود است و تست همیشه شکست می‌خورد)
         private val TEST_URLS = listOf(
             "https://www.gstatic.com/generate_204",
             "https://cp.cloudflare.com/generate_204"
         )
     }
+
+    /** پورت SOCKS واقعی هسته از تنظیمات خود برنامه (پشتیبانی از پورت پویا) */
+    private val socksPort: Int get() = SettingsManager.getSocksPort()
 
     private val SUBSCRIPTION_SOURCES = listOf(
         "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt",
@@ -573,7 +573,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun isLocalPortOpen(): Boolean {
         return try {
-            Socket().use { it.connect(InetSocketAddress("127.0.0.1", SOCKS_PORT), 800) }
+            Socket().use { it.connect(InetSocketAddress("127.0.0.1", socksPort), 800) }
             true
         } catch (_: Exception) {
             false
@@ -583,7 +583,7 @@ class MainActivity : HelperBaseComponentActivity() {
     /** ترافیک https را از پراکسی SOCKS محلی عبور می‌دهد؛ اگر 204/200 آمد یعنی سرور واقعاً کار می‌کند */
     private fun testThroughLocalProxy(testUrl: String): Long {
         return try {
-            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", SOCKS_PORT))
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
             val start = System.currentTimeMillis()
             val conn = URL(testUrl).openConnection(proxy) as HttpURLConnection
             try {
@@ -632,7 +632,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         val portOpen = withContext(Dispatchers.IO) { isLocalPortOpen() }
         if (!portOpen) {
-            plog("هشدار: پورت SOCKS $SOCKS_PORT باز نیست (شاید در تنظیمات پورت فرق دارد)")
+            plog("هشدار: پورت SOCKS $socksPort باز نیست (هسته بالا نیامده است)")
         }
 
         repeat(2) {

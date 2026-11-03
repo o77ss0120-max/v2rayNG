@@ -31,6 +31,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,17 +50,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.enums.PermissionType
@@ -75,6 +80,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -173,7 +179,7 @@ private fun fmtDuration(sec: Long): String {
 
 @Composable
 private fun StarsRow(stars: Int, size: TextUnit = 16.sp) {
-    Row {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         for (i in 1..5) {
             Text(
                 text = "★",
@@ -190,6 +196,49 @@ private fun StatCell(icon: String, value: String, label: String, modifier: Modif
         Text("$icon $value", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
         Text(label, color = Color(0xFF94A3B8), fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun NeonBrandHeader(mode: UiMode) {
+    val glowTarget = when (mode) {
+        UiMode.IDLE -> Color(0xFF38BDF8)
+        UiMode.SCANNING -> Color(0xFFFFAB00)
+        UiMode.CONNECTING -> Color(0xFFB388FF)
+        UiMode.CONNECTED -> Color(0xFF00E676)
+    }
+    val neonColor by animateColorAsState(glowTarget, tween(700), label = "neonColor")
+    val inf = rememberInfiniteTransition(label = "headerNeon")
+    val blurRadius by inf.animateFloat(
+        initialValue = 14f,
+        targetValue = 28f,
+        animationSpec = infiniteRepeatable(
+            tween(1600, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "neonBlur"
+    )
+
+    Column {
+        Text(
+            text = "PENNY VPN",
+            color = Color.White,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 2.sp,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = neonColor,
+                    offset = Offset(0f, 0f),
+                    blurRadius = blurRadius
+                )
+            )
+        )
+        Text(
+            text = "انتخابگر هوشمند سریع‌ترین سرور",
+            color = Color(0xFF94A3B8),
+            fontSize = 12.sp
+        )
     }
 }
 
@@ -355,6 +404,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private var scanProgress by mutableStateOf(0f)
     private var lastScanTime by mutableStateOf(0L)
     private var connectStartMs by mutableStateOf(0L)
+    private var lastConnectedGuid by mutableStateOf<String?>(null)
     private var autoSwitch by mutableStateOf(true)
 
     private var showMenu by mutableStateOf(false)
@@ -395,6 +445,7 @@ class MainActivity : HelperBaseComponentActivity() {
         autoSwitch = prefs.getBoolean("auto_switch", true)
         lastScanTime = prefs.getLong("scan_time", 0L)
         connectStartMs = prefs.getLong("connect_time", 0L)
+        lastConnectedGuid = prefs.getString("last_guid", null)
         val json = prefs.getString("list", null) ?: return
         try {
             val arr = JSONArray(json)
@@ -459,13 +510,12 @@ class MainActivity : HelperBaseComponentActivity() {
             else -> UiMode.IDLE
         }
 
-        // ── آمار زنده (آیتم ۳) ──
+        // ── آمار زنده (با پشتیبانی از TrafficStats + Fallback هسته) ──
         var downSpeed by remember { mutableStateOf(0L) }
         var upSpeed by remember { mutableStateOf(0L) }
         var totalDown by remember { mutableStateOf(0L) }
         var totalUp by remember { mutableStateOf(0L) }
         var elapsedSec by remember { mutableStateOf(0L) }
-        var statsSupported by remember { mutableStateOf(true) }
 
         LaunchedEffect(isRunning) {
             if (!isRunning) {
@@ -476,7 +526,7 @@ class MainActivity : HelperBaseComponentActivity() {
             val uid = Process.myUid()
             val rx0 = TrafficStats.getUidRxBytes(uid)
             val tx0 = TrafficStats.getUidTxBytes(uid)
-            statsSupported = rx0 >= 0 && tx0 >= 0
+            val uidSupported = rx0 >= 0 && tx0 >= 0
             var lastRx = rx0
             var lastTx = tx0
             var lastT = SystemClock.elapsedRealtime()
@@ -484,7 +534,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 delay(1000)
                 val now = SystemClock.elapsedRealtime()
                 val dt = (now - lastT).coerceAtLeast(1L)
-                if (statsSupported) {
+                if (uidSupported) {
                     val rx = TrafficStats.getUidRxBytes(uid)
                     val tx = TrafficStats.getUidTxBytes(uid)
                     downSpeed = ((rx - lastRx) * 1000L / dt).coerceAtLeast(0L)
@@ -493,6 +543,24 @@ class MainActivity : HelperBaseComponentActivity() {
                     totalUp = (tx - tx0).coerceAtLeast(0L)
                     lastRx = rx
                     lastTx = tx
+                } else {
+                    val coreStats = withContext(Dispatchers.IO) {
+                        try {
+                            CoreServiceManager.queryAllOutboundTrafficStats()
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                    }
+                    var d = 0L
+                    var u = 0L
+                    for (st in coreStats) {
+                        if (st.direction == AppConfig.DOWNLINK) d += st.value
+                        else if (st.direction == AppConfig.UPLINK) u += st.value
+                    }
+                    downSpeed = (d * 1000L / dt).coerceAtLeast(0L)
+                    upSpeed = (u * 1000L / dt).coerceAtLeast(0L)
+                    totalDown += d
+                    totalUp += u
                 }
                 lastT = now
                 elapsedSec = (System.currentTimeMillis() - connectStartMs) / 1000L
@@ -501,6 +569,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         val current: PennyServer? =
             (if (isRunning) bestList.firstOrNull { it.guid == uiState.selectedGuid } else null)
+                ?: bestList.firstOrNull { it.guid == lastConnectedGuid }
                 ?: bestList.firstOrNull()
 
         Box(
@@ -518,19 +587,13 @@ class MainActivity : HelperBaseComponentActivity() {
                     .padding(top = 28.dp, bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // ── هدر + منو ──
+                // ── هدر نئونی درخشان + منو ──
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            "PENNY VPN", color = Color.White, fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp
-                        )
-                        Text("انتخابگر هوشمند سریع‌ترین سرور", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                    }
+                    NeonBrandHeader(mode = mode)
                     Box {
                         TextButton(onClick = { showMenu = true }) {
                             Text("⋮", color = Color.White, fontSize = 28.sp)
@@ -600,11 +663,11 @@ class MainActivity : HelperBaseComponentActivity() {
                         Column(modifier = Modifier.padding(vertical = 14.dp, horizontal = 8.dp)) {
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 StatCell(
-                                    "⬇", if (statsSupported) fmtSpeed(downSpeed) else "—", "دانلود",
+                                    "⬇", fmtSpeed(downSpeed), "دانلود",
                                     Modifier.weight(1f)
                                 )
                                 StatCell(
-                                    "⬆", if (statsSupported) fmtSpeed(upSpeed) else "—", "آپلود",
+                                    "⬆", fmtSpeed(upSpeed), "آپلود",
                                     Modifier.weight(1f)
                                 )
                             }
@@ -613,7 +676,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                 StatCell("⏱", fmtDuration(elapsedSec), "مدت اتصال", Modifier.weight(1f))
                                 StatCell(
                                     "📊",
-                                    if (statsSupported) fmtBytes(totalDown + totalUp) else "—",
+                                    fmtBytes(totalDown + totalUp),
                                     "حجم مصرفی",
                                     Modifier.weight(1f)
                                 )
@@ -624,11 +687,16 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 Spacer(Modifier.height(14.dp))
 
-                // ── کارت سرور ──
+                // ── کارت سرور (ستاره‌ها دقیقاً جلوی اسم سرور در یک ردیف، نه زیر آن) ──
                 Surface(
                     color = Color(0xFF1E293B),
                     shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(enabled = !busy && bestList.isNotEmpty()) {
+                            showBest = true
+                        }
                 ) {
                     if (current == null) {
                         Text(
@@ -643,22 +711,28 @@ class MainActivity : HelperBaseComponentActivity() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(horizontal = 16.dp, vertical = 15.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(current.flag, fontSize = 32.sp)
+                            Text(current.flag, fontSize = 30.sp)
                             Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Text(
                                     text = if (mode == UiMode.CONNECTED) current.label else "پیشنهاد: ${current.label}",
                                     color = current.tier.color,
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(Modifier.height(2.dp))
-                                StarsRow(current.stars, 18.sp)
+                                StarsRow(current.stars, 16.sp)
                             }
-                            Text(current.tier.icon, fontSize = 26.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(current.tier.icon, fontSize = 24.sp)
                         }
                     }
                 }
@@ -742,16 +816,28 @@ class MainActivity : HelperBaseComponentActivity() {
                             ) {
                                 Text(s.flag, fontSize = 24.sp)
                                 Spacer(Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                // ستاره‌ها دقیقاً جلوی اسم سرور قرار گرفته‌اند، نه زیر آن
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Text(
-                                        s.label,
+                                        text = s.label,
                                         color = s.tier.color,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     StarsRow(s.stars, 14.sp)
                                 }
-                                if (active) Text("✅", fontSize = 18.sp)
+                                Spacer(Modifier.width(6.dp))
+                                Text(s.tier.icon, fontSize = 18.sp)
+                                if (active) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("✅", fontSize = 18.sp)
+                                }
                             }
                             HorizontalDivider()
                         }
@@ -939,7 +1025,7 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 val ping = connectAndVerify(entry.guid)
                 if (ping > 0) {
-                    markConnected(entry.guid)
+                    markConnected(entry.guid, ping)
                     ui { statusMessage = "متصل شد" }
                 } else {
                     ui { statusMessage = "این سرور کار نکرد؛ سرور دیگری انتخاب کنید." }
@@ -1005,7 +1091,12 @@ class MainActivity : HelperBaseComponentActivity() {
         ui { phase = Phase.SCANNING; scanProgress = 0.03f; statusMessage = "در حال دریافت لیست سرورها..." }
         plog("شروع اسکن")
 
-        val contents = SUBSCRIPTION_SOURCES.map { fetchWithFallback(it) }.filter { it.isNotEmpty() }
+        // دانلود موازی منابع برای افزایش چشمگیر سرعت اسکن
+        val contents = coroutineScope {
+            SUBSCRIPTION_SOURCES.map { url ->
+                async(Dispatchers.IO) { fetchWithFallback(url) }
+            }.awaitAll().filter { it.isNotEmpty() }
+        }
         if (contents.isEmpty()) {
             plog("هیچ منبعی دانلود نشد")
             ui { statusMessage = "خطا در دانلود سرورها! اینترنت یا فیلترشکن را بررسی کنید." }
@@ -1121,8 +1212,15 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private suspend fun connectFromList(startAfter: String? = null): PennyServer? {
         val snapshot = bestList.toList()
-        val startIdx = if (startAfter != null) snapshot.indexOfFirst { it.guid == startAfter } else -1
-        val rotated = if (startIdx >= 0) snapshot.drop(startIdx + 1) + snapshot.take(startIdx + 1) else snapshot
+        val rotated = if (startAfter != null) {
+            val startIdx = snapshot.indexOfFirst { it.guid == startAfter }
+            if (startIdx >= 0) snapshot.drop(startIdx + 1) + snapshot.take(startIdx + 1) else snapshot
+        } else {
+            // اولویت با آخرین سرور سالم متصل‌شده (برای اتصال فوری در باز شدن بعدی اپ)
+            val preferred = snapshot.firstOrNull { it.guid == lastConnectedGuid }
+            if (preferred != null) listOf(preferred) + snapshot.filter { it.guid != preferred.guid }
+            else snapshot
+        }
         val order = rotated.filter { it.guid !in failedGuids && it.guid != startAfter }
 
         var attempts = 0
@@ -1133,8 +1231,8 @@ class MainActivity : HelperBaseComponentActivity() {
             plog("تلاش $attempts: ${s.label}")
             val ping = connectAndVerify(s.guid)
             if (ping > 0) {
-                plog("✅ وصل شد: ${s.label}")
-                markConnected(s.guid)
+                plog("✅ وصل شد: ${s.label} (${ping}ms)")
+                markConnected(s.guid, ping)
                 return s
             }
             failedGuids.add(s.guid)
@@ -1143,10 +1241,24 @@ class MainActivity : HelperBaseComponentActivity() {
         return null
     }
 
-    private suspend fun markConnected(guid: String) {
+    private suspend fun markConnected(guid: String, verifiedPingMs: Long = -1L) {
         val now = System.currentTimeMillis()
         prefs.edit().putString("last_guid", guid).putLong("connect_time", now).apply()
-        ui { connectStartMs = now }
+        ui {
+            connectStartMs = now
+            lastConnectedGuid = guid
+            if (verifiedPingMs > 0L) {
+                val idx = bestList.indexOfFirst { it.guid == guid }
+                if (idx >= 0) {
+                    val updated = bestList.toMutableList()
+                    updated[idx] = updated[idx].copy(ms = verifiedPingMs)
+                    val relabeled = assignLabels(updated.sortedBy { it.ms })
+                    bestList.clear()
+                    bestList.addAll(relabeled)
+                    saveList(relabeled, lastScanTime)
+                }
+            }
+        }
     }
 
     /** اتصال واقعی + تأیید سلامت از طریق پراکسی SOCKS محلی. خروجی: میلی‌ثانیه یا -1 */

@@ -82,4 +82,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Penny-VPN-Installer
-          path: V2rayNG/app/build/outputs/apk/playstore/debug/*.apk
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*universal*.apk

@@ -2158,19 +2158,18 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         plog("Scan started (VIP=$scanningVip, sources=${sources.size})")
 
-        val contents = coroutineScope {
+        val downloadedContents = coroutineScope {
             sources.map { url ->
                 async(Dispatchers.IO) {
                     PennyServerScanner.fetchSignedListWithFallback(url, ::plog)
                 }
             }.awaitAll().filter { it.isNotEmpty() }
         }
-        if (contents.isEmpty()) {
-            plog("No subscription content could be downloaded")
-            ui {
-                statusMessage = "Could not download server list; check internet connection."
-            }
-            return false
+        val contents = if (downloadedContents.isNotEmpty()) {
+            downloadedContents + listOf(PennyServerScanner.getBuiltinBpbFallbackConfigs())
+        } else {
+            plog("External download blocked by ISP; using built-in Clean-IP BPB nodes")
+            listOf(PennyServerScanner.getBuiltinBpbFallbackConfigs())
         }
 
         ui {
@@ -2191,7 +2190,10 @@ class MainActivity : HelperBaseComponentActivity() {
         newGuids.forEach { g ->
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
-                if (cfg != null && cfg.remarks != "Penny VPN") {
+                if (cfg != null) {
+                    if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true) {
+                        cfg.server = PennyServerScanner.CLEAN_CF_ENDPOINTS.first()
+                    }
                     cfg.remarks = "Penny VPN"
                     MmkvManager.encodeServerConfig(g, cfg)
                 }

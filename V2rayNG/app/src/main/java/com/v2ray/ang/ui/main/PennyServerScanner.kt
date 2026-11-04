@@ -23,6 +23,8 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 import kotlin.math.min
 
 /**
@@ -166,17 +168,33 @@ internal object PennyServerScanner {
     const val MAX_TCP_CANDIDATES = 300
     const val TCP_PARALLEL = 40
 
-    // لینک ساب اختصاصی BPB شما به عنوان منبع اصلی سرورها + منبع پشتیبان Gist
+    const val BPB_HOST = "h1bq9ybcr6av6637iy1pyhiet.pages.dev"
+    const val BPB_MIXED_SNI = "H1bQ9ybcr6AV6637iy1pyhIET.pageS.dEv"
+
+    // آی‌پی‌ها و دامنه‌های تمیز کلودفلر که مسمومیت DNS مخابرات/ایرانسل (10.10.34.36) را دور می‌زنند
+    val CLEAN_CF_ENDPOINTS = listOf(
+        "172.66.44.58",
+        "172.66.47.198",
+        "104.17.147.22",
+        "172.64.155.209",
+        "104.18.2.115",
+        "www.speedtest.net",
+        "www.visa.com"
+    )
+
+    // لینک ساب اختصاصی BPB شما به عنوان منبع اصلی سرورها + منابع پشتیبان
     const val DEDICATED_BPB_SUB_URL =
         "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/normal?app=xray#%F0%9F%92%A6%20BPB%20Normal"
 
     val SIGNED_STANDARD_SUBSCRIPTION_SOURCES = listOf(
         DEDICATED_BPB_SUB_URL,
+        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
         "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
     )
 
     val SIGNED_VIP_SUBSCRIPTION_SOURCES = listOf(
         DEDICATED_BPB_SUB_URL,
+        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
         "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
     )
 
@@ -187,6 +205,26 @@ internal object PennyServerScanner {
 
     private fun urlEncode(value: String): String {
         return URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
+    }
+
+    /**
+     * نودهای اختصاصی BPB با آی‌پی‌های تمیز کلودفلر برای مواقعی که اینترنت کاربر قبل از اتصال VPN
+     * دانلود مستقیم لینک‌ها را مسدود کرده باشد.
+     */
+    fun getBuiltinBpbFallbackConfigs(): String {
+        val nodes = mutableListOf<String>()
+        for (ip in CLEAN_CF_ENDPOINTS) {
+            nodes.add(
+                "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:443?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FqMJQ6U5MxKrwokJeqchPl%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#PennyVPN"
+            )
+            nodes.add(
+                "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:443?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FAElO3svXo1z79wnybrjziVJkWqNzoM%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#PennyVPN"
+            )
+            nodes.add(
+                "trojan://ODXencHfxA%2CT3yBpD@$ip:443?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#PennyVPN"
+            )
+        }
+        return nodes.joinToString("\n")
     }
 
     /**
@@ -202,50 +240,147 @@ internal object PennyServerScanner {
         return clean
     }
 
-    fun downloadHttpsUrl(urlStr: String): String {
+    private fun toMixedCaseSni(domain: String): String {
+        val sb = StringBuilder(domain.length)
+        for ((idx, ch) in domain.withIndex()) {
+            sb.append(if (idx % 2 == 0) ch.uppercaseChar() else ch.lowercaseChar())
+        }
+        return sb.toString()
+    }
+
+    /**
+     * دانلود مستقیم از طریق آی‌پی‌های تمیز کلودفلر + SNI ترکیبی (Mixed-Case)
+     * برای دور زدن کامل مسمومیت DNS ایران (10.10.34.36) روی دامنه‌های *.pages.dev
+     */
+    private fun downloadViaCleanIpTls(cleanUrl: String, onLog: (String) -> Unit): String {
+        val parsed = URL(cleanUrl)
+        val originalHost = parsed.host
+        val pathAndQuery = if (parsed.query.isNullOrEmpty()) parsed.path else "${parsed.path}?${parsed.query}"
+        val sniHost = if (originalHost.equals(BPB_HOST, ignoreCase = true)) {
+            BPB_MIXED_SNI
+        } else {
+            toMixedCaseSni(originalHost)
+        }
+        val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
+
+        for (endpoint in CLEAN_CF_ENDPOINTS) {
+            var rawSocket: Socket? = null
+            var sslSocket: SSLSocket? = null
+            try {
+                rawSocket = Socket()
+                rawSocket.connect(InetSocketAddress(endpoint, 443), 5000)
+                rawSocket.soTimeout = 7000
+                sslSocket = sslFactory.createSocket(rawSocket, sniHost, 443, true) as SSLSocket
+                sslSocket.startHandshake()
+
+                val req = buildString {
+                    append("GET ").append(pathAndQuery).append(" HTTP/1.0\r\n")
+                    append("Host: ").append(originalHost).append("\r\n")
+                    append("User-Agent: v2rayNG/1.9.30 PennyVPN/2.5\r\n")
+                    append("Accept: */*\r\n")
+                    append("Connection: close\r\n\r\n")
+                }
+                val out = sslSocket.outputStream
+                out.write(req.toByteArray(StandardCharsets.UTF_8))
+                out.flush()
+
+                val input = sslSocket.inputStream
+                val rawBuf = ByteArrayOutputStream()
+                val buf = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > MAX_DOWNLOAD_BYTES) {
+                        throw IllegalStateException("Exceeded 4 MB download limit")
+                    }
+                    rawBuf.write(buf, 0, n)
+                }
+                val fullText = rawBuf.toString(StandardCharsets.UTF_8.name())
+                val splitIdx = fullText.indexOf("\r\n\r\n")
+                if (splitIdx <= 0) continue
+                val headerBlock = fullText.substring(0, splitIdx)
+                val body = fullText.substring(splitIdx + 4).trim()
+                val statusLine = headerBlock.lineSequence().firstOrNull().orEmpty()
+                if (statusLine.contains(" 200 ") && body.isNotEmpty()) {
+                    onLog("Bypassed DNS poisoning via Clean IP ($endpoint): ${body.length} chars")
+                    return body
+                }
+            } catch (_: Exception) {
+            } finally {
+                try { sslSocket?.close() } catch (_: Exception) {}
+                try { rawSocket?.close() } catch (_: Exception) {}
+            }
+        }
+        return ""
+    }
+
+    fun downloadHttpsUrl(urlStr: String, onLog: ((String) -> Unit)? = null): String {
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
         require(cleanUrl.startsWith("https://", ignoreCase = true)) {
             "Only HTTPS URLs are permitted"
         }
+
+        // اگر دامنه از نوع pages.dev است، ابتدا یا در صورت مسمومیت DNS (10.10.34.36) از Clean IP مستقیم استفاده کن
+        val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true)
         val sep = if ('?' in cleanUrl) '&' else '?'
-        val url = URL("${cleanUrl}${sep}t=${System.currentTimeMillis()}")
-        val conn = url.openConnection() as HttpURLConnection
+        val urlWithTs = "${cleanUrl}${sep}t=${System.currentTimeMillis()}"
+
         try {
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-            conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.5")
-            val code = conn.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
-                throw IllegalStateException("HTTP $code")
+            val url = URL(urlWithTs)
+            // بررسی مسمومیت DNS ایران (10.10.34.x) قبل از باز کردن HttpURLConnection
+            val resolvedIp = runCatching { InetAddress.getByName(url.host).hostAddress.orEmpty() }.getOrDefault("")
+            if (resolvedIp.startsWith("10.10.") || resolvedIp == "127.0.0.1" || resolvedIp == "0.0.0.0") {
+                onLog?.invoke("Detected ISP DNS poisoning ($resolvedIp) for ${url.host}; switching to Clean IP TLS")
+                val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
+                if (bypassed.isNotEmpty()) return bypassed
             }
-            val contentLen = conn.contentLengthLong
-            if (contentLen > MAX_DOWNLOAD_BYTES) {
-                throw IllegalStateException("Response too large ($contentLen bytes)")
-            }
-            conn.inputStream.use { input ->
-                val out = ByteArrayOutputStream()
-                val buf = ByteArray(8192)
-                var total = 0
-                while (true) {
-                    val read = input.read(buf)
-                    if (read < 0) break
-                    total += read
-                    if (total > MAX_DOWNLOAD_BYTES) {
-                        throw IllegalStateException("Exceeded 4 MB download limit")
-                    }
-                    out.write(buf, 0, read)
+
+            val conn = url.openConnection() as HttpURLConnection
+            try {
+                conn.connectTimeout = 7000
+                conn.readTimeout = 7000
+                conn.instanceFollowRedirects = true
+                conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.5")
+                val code = conn.responseCode
+                if (code != HttpURLConnection.HTTP_OK) {
+                    throw IllegalStateException("HTTP $code")
                 }
-                return out.toString(StandardCharsets.UTF_8.name()).trim()
+                val contentLen = conn.contentLengthLong
+                if (contentLen > MAX_DOWNLOAD_BYTES) {
+                    throw IllegalStateException("Response too large ($contentLen bytes)")
+                }
+                conn.inputStream.use { input ->
+                    val out = ByteArrayOutputStream()
+                    val buf = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val read = input.read(buf)
+                        if (read < 0) break
+                        total += read
+                        if (total > MAX_DOWNLOAD_BYTES) {
+                            throw IllegalStateException("Exceeded 4 MB download limit")
+                        }
+                        out.write(buf, 0, read)
+                    }
+                    return out.toString(StandardCharsets.UTF_8.name()).trim()
+                }
+            } finally {
+                conn.disconnect()
             }
-        } finally {
-            conn.disconnect()
+        } catch (e: Exception) {
+            if (isPagesDev) {
+                val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
+                if (bypassed.isNotEmpty()) return bypassed
+            }
+            throw e
         }
     }
 
     /**
-     * تبدیل خودکار خروجی JSON پنل‌های BPB (?app=xray) به لینک‌های استاندارد vless://, trojan://, ss://
-     * تا هسته v2rayNG آدرس، پورت، SNI، Host و Path تمام سرورها را بدون خطا استخراج و تست پینگ کند.
+     * تبدیل خودکار خروجی JSON پنل‌های BPB (?app=xray) به لینک‌های استاندارد vless://, trojan://
+     * + جایگزینی دامنه‌های مسموم‌شده (*.pages.dev) با آی‌پی‌های تمیز کلودفلر
      */
     fun extractPlayableConfigs(rawContent: String, onLog: (String) -> Unit): String {
         val trimmed = rawContent.trim()
@@ -327,7 +462,7 @@ internal object PennyServerScanner {
 
                         if (proto == "vless") {
                             val vnext = settings.optJSONArray("vnext")?.optJSONObject(0)
-                            val addr = vnext?.optString("address", "")?.takeIf { it.isNotEmpty() }
+                            val rawAddr = vnext?.optString("address", "")?.takeIf { it.isNotEmpty() }
                                 ?: settings.optString("address", "")
                             val port = vnext?.optInt("port", 0)?.takeIf { it > 0 }
                                 ?: settings.optInt("port", 0)
@@ -337,39 +472,54 @@ internal object PennyServerScanner {
                             val enc = user?.optString("encryption", "none")?.ifEmpty { "none" } ?: "none"
                             val flow = user?.optString("flow", "") ?: settings.optString("flow", "")
 
-                            if (addr.isEmpty() || port <= 0 || uid.isEmpty()) continue
+                            if (rawAddr.isEmpty() || port <= 0 || uid.isEmpty()) continue
                             val vlessQuery = mutableListOf("encryption=${urlEncode(enc)}")
                             if (flow.isNotEmpty()) vlessQuery.add("flow=${urlEncode(flow)}")
                             vlessQuery.addAll(queryPairs)
 
-                            val dedupKey = "vless:$uid@$addr:$port:$path:$sni"
-                            if (seenKeys.add(dedupKey)) {
-                                extractedUris.add(
-                                    "vless://${urlEncode(uid)}@$addr:$port?${vlessQuery.joinToString("&")}#PennyVPN"
-                                )
+                            // اگر آدرس نود خودش pages.dev است، به دلیل مسمومیت DNS در ایران (10.10.34.36) آن را به آی‌پی‌های تمیز بسط می‌دهیم
+                            val targetAddresses = if (rawAddr.endsWith(".pages.dev", ignoreCase = true)) {
+                                CLEAN_CF_ENDPOINTS
+                            } else {
+                                listOf(rawAddr)
+                            }
+                            for (addr in targetAddresses) {
+                                val dedupKey = "vless:$uid@$addr:$port:$path"
+                                if (seenKeys.add(dedupKey)) {
+                                    extractedUris.add(
+                                        "vless://${urlEncode(uid)}@$addr:$port?${vlessQuery.joinToString("&")}#PennyVPN"
+                                    )
+                                }
                             }
                         } else if (proto == "trojan") {
                             val srv = settings.optJSONArray("servers")?.optJSONObject(0)
-                            val addr = srv?.optString("address", "")?.takeIf { it.isNotEmpty() }
+                            val rawAddr = srv?.optString("address", "")?.takeIf { it.isNotEmpty() }
                                 ?: settings.optString("address", "")
                             val port = srv?.optInt("port", 0)?.takeIf { it > 0 }
                                 ?: settings.optInt("port", 0)
                             val pwd = srv?.optString("password", "")?.takeIf { it.isNotEmpty() }
                                 ?: settings.optString("password", "")
 
-                            if (addr.isEmpty() || port <= 0 || pwd.isEmpty()) continue
-                            val dedupKey = "trojan:$pwd@$addr:$port:$path:$sni"
-                            if (seenKeys.add(dedupKey)) {
-                                extractedUris.add(
-                                    "trojan://${urlEncode(pwd)}@$addr:$port?${queryPairs.joinToString("&")}#PennyVPN"
-                                )
+                            if (rawAddr.isEmpty() || port <= 0 || pwd.isEmpty()) continue
+                            val targetAddresses = if (rawAddr.endsWith(".pages.dev", ignoreCase = true)) {
+                                CLEAN_CF_ENDPOINTS
+                            } else {
+                                listOf(rawAddr)
+                            }
+                            for (addr in targetAddresses) {
+                                val dedupKey = "trojan:$pwd@$addr:$port:$path"
+                                if (seenKeys.add(dedupKey)) {
+                                    extractedUris.add(
+                                        "trojan://${urlEncode(pwd)}@$addr:$port?${queryPairs.joinToString("&")}#PennyVPN"
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 if (extractedUris.isNotEmpty()) {
-                    onLog("Extracted ${extractedUris.size} VLESS/Trojan nodes from BPB Xray JSON subscription")
+                    onLog("Extracted ${extractedUris.size} clean-IP VLESS/Trojan nodes from BPB subscription")
                     return extractedUris.joinToString("\n")
                 }
             } catch (e: Exception) {
@@ -380,11 +530,13 @@ internal object PennyServerScanner {
     }
 
     /**
-     * دریافت لیست سرورها با پشتیبانی هم‌زمان از:
-     * ۱. لینک ساب اختصاصی BPB (خروجی JSON آرایه Xray و لینک‌های استاندارد)
-     * ۲. لیست‌های امضاشده با کلید ECDSA P-256 (#PENNY-SIG:)
+     * دریافت لیست سرورها با پشتیبانی از:
+     * ۱. لینک ساب اختصاصی BPB با دور زدن مسمومیت DNS (10.10.34.36)
+     * ۲. دنبال کردن خودکار لینک‌های اشاره‌گر (مثل Gist حاوی لینک https://... دیگر)
+     * ۳. لیست‌های امضاشده با کلید ECDSA P-256 (#PENNY-SIG:)
      */
-    fun fetchSignedListWithFallback(urlStr: String, onLog: (String) -> Unit): String {
+    fun fetchSignedListWithFallback(urlStr: String, onLog: (String) -> Unit, depth: Int = 0): String {
+        if (depth > 2) return ""
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
         val isGithubUrl = cleanUrl.contains("github.com", ignoreCase = true) ||
             cleanUrl.contains("githubusercontent.com", ignoreCase = true)
@@ -396,7 +548,7 @@ internal object PennyServerScanner {
 
         for ((i, mirror) in mirrors.withIndex()) {
             try {
-                val rawContent = downloadHttpsUrl(mirror)
+                val rawContent = downloadHttpsUrl(mirror, onLog)
                 if (rawContent.isNotEmpty()) {
                     val bodyToParse = if (rawContent.trimStart().startsWith("#PENNY-SIG:", ignoreCase = true)) {
                         val (sigOk, verifiedBody) = VipLicenseManager.verifySignedServerList(rawContent)
@@ -410,6 +562,23 @@ internal object PennyServerScanner {
                     } else {
                         onLog("Downloaded subscription (source ${i + 1}): ${rawContent.length} chars")
                         rawContent
+                    }
+
+                    // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است (مثل Gist 70 کاراکتری)، آن را دنبال کن
+                    val nonCommentLines = bodyToParse.lines()
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() && !it.startsWith("#") }
+                    if (nonCommentLines.isNotEmpty() && nonCommentLines.all { it.startsWith("https://", ignoreCase = true) }) {
+                        val nestedResults = mutableListOf<String>()
+                        for (nestedUrl in nonCommentLines.take(3)) {
+                            onLog("Following nested subscription URL: $nestedUrl")
+                            val nested = fetchSignedListWithFallback(nestedUrl, onLog, depth + 1)
+                            if (nested.isNotEmpty()) nestedResults.add(nested)
+                        }
+                        if (nestedResults.isNotEmpty()) {
+                            return nestedResults.joinToString("\n")
+                        }
+                        continue
                     }
 
                     val playable = extractPlayableConfigs(bodyToParse, onLog)
@@ -463,10 +632,23 @@ internal object PennyServerScanner {
         }
 
         if (host.isEmpty() || port <= 0) return -1L
+
+        // محافظت در برابر مسمومیت DNS ایران (10.10.34.36) هنگام تست پینگ سرورها
+        if (host.endsWith(".pages.dev", ignoreCase = true)) {
+            host = CLEAN_CF_ENDPOINTS.first()
+            profile.server = host
+            MmkvManager.encodeServerConfig(guid, profile)
+        }
+
         return try {
+            val addr = InetAddress.getByName(host)
+            val ipStr = addr.hostAddress.orEmpty()
+            if (ipStr.startsWith("10.10.") || addr.isLoopbackAddress || addr.isAnyLocalAddress) {
+                return -1L
+            }
             val start = System.currentTimeMillis()
             Socket().use { socket ->
-                socket.connect(InetSocketAddress(host, port), TCP_TIMEOUT_MS)
+                socket.connect(InetSocketAddress(addr, port), TCP_TIMEOUT_MS)
             }
             (System.currentTimeMillis() - start).coerceAtLeast(1L)
         } catch (_: Exception) {

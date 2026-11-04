@@ -1499,6 +1499,11 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
+        // ── تنظیمات مدل درآمدزایی Time-Boxed + محدودیت نمایش (Frequency Capping) ──
+        private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
+        private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
+        private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای ویدیو جایزه‌دار
+
         private val TEST_URLS = listOf(
             "https://www.gstatic.com/generate_204",
             "https://cp.cloudflare.com/generate_204"
@@ -1523,11 +1528,13 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val socksPort: Int get() = SettingsManager.getSocksPort()
 
-    // ── وضعیت AdMob (بنری + بینابینی + ویدیویی جایزه‌دار برای ۲ ساعت اشتراک رایگان VIP) ──
+    // ── وضعیت AdMob (مدل Time-Boxed: ۱ ساعت پایه + دکمه + Add Time (+۲ ساعت) + محدودیت ۱۰ دقیقه Interstitial) ──
     private var interstitialAd: InterstitialAd? = null
     private var isAdLoading = false
+    private var lastInterstitialShownMs by mutableStateOf(0L)
     private var rewardedAd: RewardedAd? = null
     private var isRewardedLoading = false
+    private var freeSessionRemainingSec by mutableStateOf(BASE_FREE_SESSION_SEC)
 
     // ── وضعیت UI و امکانات پیشرفته (پروفایل گیمینگ/استریم، Split Tunnel، سپر DNS) ──
     private var showSplash by mutableStateOf(true)
@@ -1679,10 +1686,22 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
+    /**
+     * نمایش تبلیغ تمام‌صفحه (Interstitial) هنگام Connect با رعایت محدودیت Frequency Capping
+     * (حداکثر ۱ بار در هر ۱۰ دقیقه تا کاربر در صورت تغییر سرور کلافه نشود و کلیک تصادفی نکند)
+     */
     private fun showInterstitialAdIfReady() {
         if (vipActive) return // مشترکین ۱ ماه ۵۰ گیگ بدون تبلیغ هستند
+        val now = System.currentTimeMillis()
+        if (now - lastInterstitialShownMs < INTERSTITIAL_COOLDOWN_MS) {
+            val waitSec = ((INTERSTITIAL_COOLDOWN_MS - (now - lastInterstitialShownMs)) / 1000L).coerceAtLeast(1L)
+            plog("Interstitial skipped by 10m Frequency Cap (${waitSec}s remaining)")
+            return
+        }
         val ad = interstitialAd
         if (ad != null) {
+            lastInterstitialShownMs = now
+            prefs.edit().putLong("last_interstitial_ms", now).apply()
             ad.show(this)
         } else {
             loadInterstitialAd()
@@ -1748,6 +1767,29 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("Rewarded Ad watched: 2h VIP Pass (1 GB) activated")
         if (vipBestList.isEmpty()) {
             startScanOnly()
+        }
+    }
+
+    /**
+     * افزایش زمان اتصال به میزان +۲ ساعت (۷۲۰۰ ثانیه) با تماشای ویدیو جایزه‌دار (Rewarded Video)
+     * منبع اصلی درآمدزایی بدون کلافه کردن کاربر (کاملاً اختیاری با بالاترین eCPM)
+     */
+    private fun addTwoHoursToSession() {
+        freeSessionRemainingSec += REWARD_ADD_TIME_SEC
+        prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
+        statusMessage = "+2 Hours Added • Remaining: ${fmtDuration(freeSessionRemainingSec)}"
+        plog("Rewarded Video watched: +2 Hours added to session (Total left: ${fmtDuration(freeSessionRemainingSec)})")
+    }
+
+    private fun showRewardedAdForAddTime() {
+        val ad = rewardedAd
+        if (ad != null) {
+            ad.show(this, OnUserEarnedRewardListener {
+                addTwoHoursToSession()
+            })
+        } else {
+            loadRewardedAd()
+            addTwoHoursToSession()
         }
     }
 
@@ -1938,6 +1980,8 @@ class MainActivity : HelperBaseComponentActivity() {
         vipLastScanTime = prefs.getLong("vip_scan_time", 0L)
         connectStartMs = prefs.getLong("connect_time", 0L)
         lastConnectedGuid = prefs.getString("last_guid", null)
+        lastInterstitialShownMs = prefs.getLong("last_interstitial_ms", 0L)
+        freeSessionRemainingSec = prefs.getLong("free_session_rem_sec", BASE_FREE_SESSION_SEC).coerceAtLeast(60L)
 
         vipActive = prefs.getBoolean("vip_active", false)
         useVipServers = prefs.getBoolean("use_vip_servers", vipActive)
@@ -2098,6 +2142,20 @@ class MainActivity : HelperBaseComponentActivity() {
                 lastT = now
                 elapsedSec = (System.currentTimeMillis() - connectStartMs) / 1000L
 
+                // شمارش معکوس تایمر ۱ ساعته برای کاربران رایگان (مدل Time-Boxed)
+                if (!vipActive) {
+                    if (freeSessionRemainingSec > 0L) {
+                        freeSessionRemainingSec -= 1L
+                        if (tickCount % 10 == 0) {
+                            prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
+                        }
+                    } else {
+                        plog("1-hour free session timer ended; disconnecting")
+                        statusMessage = "Session time ended • Tap Connect or + Add Time"
+                        LauncherManager.stopService(this@MainActivity)
+                    }
+                }
+
                 if (vipActive && useVipServers && stepDeltaBytes > 0L) {
                     vipUsedBytes += stepDeltaBytes
                     if (tickCount % 5 == 0) {
@@ -2204,7 +2262,8 @@ class MainActivity : HelperBaseComponentActivity() {
                                 Spacer(Modifier.height(10.dp))
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     StatCell(
-                                        fmtDuration(elapsedSec), Strings.duration(appLang),
+                                        if (vipActive) fmtDuration(elapsedSec) else fmtDuration(freeSessionRemainingSec),
+                                        if (vipActive) Strings.duration(appLang) else "Session Time Left",
                                         Modifier.weight(1f)
                                     )
                                     StatCell(
@@ -2212,6 +2271,73 @@ class MainActivity : HelperBaseComponentActivity() {
                                         Strings.totalData(appLang),
                                         Modifier.weight(1f)
                                     )
+                                }
+
+                                // ── دکمه جذاب و انیمیشنی "+ Add Time (+2 Hours • Watch Video)" زیر تایمر اتصال ──
+                                if (!vipActive) {
+                                    Spacer(Modifier.height(10.dp))
+                                    val btnPulse = rememberInfiniteTransition(label = "addTimePulse")
+                                    val btnScale by btnPulse.animateFloat(
+                                        initialValue = 1.0f,
+                                        targetValue = 1.028f,
+                                        animationSpec = infiniteRepeatable(
+                                            tween(1100, easing = FastOutSlowInEasing),
+                                            RepeatMode.Reverse
+                                        ),
+                                        label = "addTimeScale"
+                                    )
+                                    Surface(
+                                        color = Color(0xFF282520),
+                                        shape = RoundedCornerShape(13.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 4.dp)
+                                            .scale(btnScale)
+                                            .clip(RoundedCornerShape(13.dp))
+                                            .border(
+                                                1.2.dp,
+                                                Brush.horizontalGradient(
+                                                    listOf(Color(0xFFE6CFAF), Color(0xFFD8DCE6), Color(0xFFE6CFAF))
+                                                ),
+                                                RoundedCornerShape(13.dp)
+                                            )
+                                            .clickable { showRewardedAdForAddTime() }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "+ Add Time (+2 Hours)",
+                                                    color = Color(0xFFF5E6D3),
+                                                    fontSize = 12.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                                Text(
+                                                    text = "Extend connection by watching a short video",
+                                                    color = Color(0xFFB8B4AE),
+                                                    fontSize = 9.5.sp
+                                                )
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0xFFE6CFAF))
+                                                    .padding(horizontal = 9.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "+2h FREE",
+                                                    color = Color(0xFF171512),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2954,13 +3080,17 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     /**
-     * دیالوگ مدرن بهترین کانفیگ‌ها مرتب‌شده بر اساس پینگ، بدون ستاره و بدون عبارات 10G ULTRA
+     * دیالوگ مدرن بهترین کانفیگ‌ها همراه با دکمه 'Global View' که لیست را به نمودار حبابی (Bubble Chart)
+     * بر اساس پینگ و مناطق سرور تبدیل می‌کند
      */
     @Composable
     private fun BestConfigsDialog(selectedGuid: String?, isRunning: Boolean, isVipMode: Boolean) {
         val listToShow = activeList.sortedBy { it.ms }
+        var isGlobalBubbleView by remember { mutableStateOf(false) }
+
         AlertDialog(
             onDismissRequest = { showBest = false },
+            containerColor = Color(0xFF191A20),
             confirmButton = {
                 TextButton(onClick = { showBest = false }) {
                     Text(Strings.close(appLang), color = Color(0xFFE6CFAF))
@@ -2968,22 +3098,146 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             title = {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (isVipMode) {
-                        GlassDiamondIcon(size = 16.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (isVipMode) {
+                            GlassDiamondIcon(size = 16.dp)
+                        }
+                        Text(
+                            text = Strings.menuBestConfigs(appLang, isVipMode),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFF2F4F8),
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    Text(
-                        text = Strings.menuBestConfigs(appLang, isVipMode),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFFF2F4F8)
-                    )
+
+                    // دکمه 'Global View' برای جابه‌جایی بین لیست عمودی و نمودار حبابی پینگ (Bubble Chart)
+                    Surface(
+                        color = if (isGlobalBubbleView) Color(0xFF2D2820) else Color(0xFF25262E),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(
+                                1.dp,
+                                if (isGlobalBubbleView) Color(0xFFE6CFAF) else Color(0xFF454752),
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { isGlobalBubbleView = !isGlobalBubbleView }
+                    ) {
+                        Text(
+                            text = if (isGlobalBubbleView) "List View" else "Global View",
+                            color = if (isGlobalBubbleView) Color(0xFFF5E6D3) else Color(0xFFD8DCE6),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
                 }
             },
             text = {
                 if (listToShow.isEmpty()) {
                     Text(Strings.emptyBestList(appLang))
+                } else if (isGlobalBubbleView) {
+                    // نمای حبابی (Bubble Chart) بر اساس پینگ و خوشه سرورها
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Interactive Latency Bubble Map • Larger bubble = Faster ping",
+                            color = Color(0xFFA6A39E),
+                            fontSize = 10.5.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF121318))
+                                .border(1.dp, Color(0xFF2E303A), RoundedCornerShape(16.dp))
+                        ) {
+                            val w = maxWidth
+                            val h = maxHeight
+                            // چیدمان حبابی مارپیچی از مرکز (کمترین پینگ در مرکز و بزرگ‌ترین اندازه)
+                            val positions = listOf(
+                                0.50f to 0.48f,
+                                0.25f to 0.30f,
+                                0.75f to 0.32f,
+                                0.27f to 0.72f,
+                                0.74f to 0.70f,
+                                0.50f to 0.18f,
+                                0.50f to 0.82f,
+                                0.16f to 0.52f,
+                                0.84f to 0.52f
+                            )
+                            listToShow.take(positions.size).forEachIndexed { idx, s ->
+                                val active = isRunning && s.guid == selectedGuid
+                                val (fx, fy) = positions[idx]
+                                val bubbleSize = (82 - idx * 5).coerceIn(50, 82).dp
+                                val xOffset = (w * fx) - (bubbleSize / 2)
+                                val yOffset = (h * fy) - (bubbleSize / 2)
+
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = xOffset, y = yOffset)
+                                        .size(bubbleSize)
+                                        .clip(CircleShape)
+                                        .background(
+                                            Brush.radialGradient(
+                                                if (active) {
+                                                    listOf(Color(0xFFE6CFAF), Color(0xFF5A4E3C))
+                                                } else if (s.ms < 220) {
+                                                    listOf(Color(0xFF3E4250), Color(0xFF22242C))
+                                                } else {
+                                                    listOf(Color(0xFF2D2E38), Color(0xFF191A20))
+                                                }
+                                            )
+                                        )
+                                        .border(
+                                            width = if (active) 2.dp else 1.2.dp,
+                                            color = if (active) Color(0xFFF5E6D3)
+                                            else if (s.ms < 220) Color(0xFFD8DCE6).copy(alpha = 0.75f)
+                                            else Color(0xFF525564),
+                                            shape = CircleShape
+                                        )
+                                        .clickable(enabled = phase == Phase.IDLE) {
+                                            showBest = false
+                                            connectToEntry(s)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = s.codeTag.ifEmpty { "A-1" },
+                                            color = if (active) Color(0xFF161512) else Color(0xFFF2F4F8),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        Text(
+                                            text = "${s.ms}ms",
+                                            color = if (active) Color(0xFF28241E) else Color(0xFFE6CFAF),
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else {
                     LazyColumn(
                         modifier = Modifier.heightIn(max = 420.dp),
@@ -3139,7 +3393,6 @@ class MainActivity : HelperBaseComponentActivity() {
         statusMessage = "Disconnected"
         connectStartMs = 0L
         plog("Disconnected by user")
-        showInterstitialAdIfReady()
     }
 
     private fun cancelWork() {
@@ -3178,6 +3431,11 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 ui {
                     statusMessage = if (result != null) {
+                        // هنگام اتصال موفق در حالت رایگان، تایمر حداقل ۱ ساعت شارژ می‌شود و تبلیغ Interstitial (با محدودیت ۱۰ دقیقه) نمایش داده می‌شود
+                        if (!vipActive && freeSessionRemainingSec < BASE_FREE_SESSION_SEC) {
+                            freeSessionRemainingSec = BASE_FREE_SESSION_SEC
+                            prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
+                        }
                         showInterstitialAdIfReady()
                         "Connected"
                     } else {

@@ -901,7 +901,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                             text = if (vipActive) {
                                                 "VIP Speed: Unlimited Full Bandwidth"
                                             } else {
-                                                "Normal Speed Cap: 2.0 Mbps (256 KB/s)"
+                                                "Speed Throttled: 256 KB/s"
                                             },
                                             color = if (vipActive) Color(0xFFE4E9F2) else Color(0xFFE6CFAF),
                                             fontSize = 10.5.sp,

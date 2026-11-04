@@ -858,31 +858,66 @@ internal fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLan
         label = "statusGlow"
     )
 
-    Crossfade(
-        targetState = if (isConnected) Strings.connectedBadge(lang, isVip) else statusMessage,
-        label = "status"
-    ) { msg ->
-        Text(
-            text = msg,
-            color = if (isConnected) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
-            fontSize = 14.sp,
-            fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            style = if (isConnected) {
-                TextStyle(
-                    shadow = Shadow(
-                        color = Color(0xFFD8DCE6).copy(alpha = 0.85f),
-                        offset = Offset(0f, 0f),
-                        blurRadius = pulseGlow
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Crossfade(
+            targetState = if (isConnected) Strings.connectedBadge(lang, isVip) else statusMessage,
+            label = "status"
+        ) { msg ->
+            Text(
+                text = msg,
+                color = if (isConnected) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
+                fontSize = 14.sp,
+                fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                style = if (isConnected) {
+                    TextStyle(
+                        shadow = Shadow(
+                            color = Color(0xFFD8DCE6).copy(alpha = 0.85f),
+                            offset = Offset(0f, 0f),
+                            blurRadius = pulseGlow
+                        )
                     )
+                } else {
+                    TextStyle.Default
+                },
+                modifier = Modifier
+                    .scale(if (isConnected) pulseScale else 1f)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+
+        if (isConnected && !isVip) {
+            Spacer(Modifier.height(4.dp))
+            Surface(
+                color = Color(0xFF231F1B),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.border(
+                    1.dp,
+                    Color(0xFFE6CFAF).copy(alpha = 0.45f),
+                    RoundedCornerShape(8.dp)
                 )
-            } else {
-                TextStyle.Default
-            },
-            modifier = Modifier
-                .scale(if (isConnected) pulseScale else 1f)
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-        )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE6CFAF))
+                    )
+                    Text(
+                        text = "Speed Throttled: 256 KB/s",
+                        color = Color(0xFFE6CFAF),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
     }
 }
 

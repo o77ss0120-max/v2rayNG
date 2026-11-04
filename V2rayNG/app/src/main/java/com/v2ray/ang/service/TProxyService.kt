@@ -43,8 +43,7 @@ class TProxyService(
         val configFile = File(context.filesDir, "hev-socks5-tunnel.yaml").apply {
             writeText(configContent)
         }
-        LogUtil.d(AppConfig.TAG, "HevSocks5Tunnel Config content:
-$configContent")
+        LogUtil.d(AppConfig.TAG, "HevSocks5Tunnel Config content:\n$configContent")
 
         try {
             TProxyStartService(configFile.absolutePath, vpnInterface.fd)

@@ -407,16 +407,17 @@ class MainActivity : HelperBaseComponentActivity() {
         } else {
             PennyServerScanner.SIGNED_STANDARD_SUBSCRIPTION_SOURCES
         }
-        return if (isVip && custom.isNotEmpty()) {
+        return (if (custom.isNotEmpty()) {
             custom.split("\n", ",")
                 .map { it.trim() }
                 .filter { it.startsWith("https://", ignoreCase = true) } + baseList
         } else {
             baseList
-        }
+        }).distinct()
     }
 
     private fun checkVipExpiration(): Boolean {
+        PennySpeedLimiter.isVipUnrestricted = vipActive
         if (!vipActive) return false
         val now = effectiveNowMs()
         val timeExpired = now >= vipExpireMs
@@ -425,6 +426,7 @@ class MainActivity : HelperBaseComponentActivity() {
             vipActive = false
             useVipServers = false
             vipCode = ""
+            PennySpeedLimiter.isVipUnrestricted = false
             prefs.edit()
                 .putBoolean("vip_active", false)
                 .putBoolean("use_vip_servers", false)
@@ -585,6 +587,7 @@ class MainActivity : HelperBaseComponentActivity() {
         freeSessionRemainingSec = prefs.getLong("free_session_rem_sec", BASE_FREE_SESSION_SEC).coerceAtLeast(60L)
 
         vipActive = prefs.getBoolean("vip_active", false)
+        PennySpeedLimiter.isVipUnrestricted = vipActive
         useVipServers = prefs.getBoolean("use_vip_servers", vipActive)
         vipCode = prefs.getString("vip_code", "") ?: ""
         vipSerial = prefs.getString("vip_serial", "") ?: ""
@@ -593,7 +596,8 @@ class MainActivity : HelperBaseComponentActivity() {
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
         vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
         effectiveNowMs()
-        customVipSubUrl = prefs.getString("custom_vip_sub_url", "") ?: ""
+        customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_BPB_SUB_URL)
+            ?.takeIf { it.isNotBlank() } ?: PennyServerScanner.DEDICATED_BPB_SUB_URL
         licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
             ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
@@ -714,8 +718,10 @@ class MainActivity : HelperBaseComponentActivity() {
                     val dRx = (rx - lastRx).coerceAtLeast(0L)
                     val dTx = (tx - lastTx).coerceAtLeast(0L)
                     stepDeltaBytes = dRx + dTx
-                    downSpeed = (dRx * 1000L / dt).coerceAtLeast(0L)
-                    upSpeed = (dTx * 1000L / dt).coerceAtLeast(0L)
+                    val rawDown = (dRx * 1000L / dt).coerceAtLeast(0L)
+                    val rawUp = (dTx * 1000L / dt).coerceAtLeast(0L)
+                    downSpeed = if (vipActive) rawDown else rawDown.coerceAtMost(PennySpeedLimiter.FREE_MAX_DOWN_BYTES_PER_SEC)
+                    upSpeed = if (vipActive) rawUp else rawUp.coerceAtMost(PennySpeedLimiter.FREE_MAX_UP_BYTES_PER_SEC)
                     totalDown = (rx - rx0).coerceAtLeast(0L)
                     totalUp = (tx - tx0).coerceAtLeast(0L)
                     lastRx = rx
@@ -735,8 +741,10 @@ class MainActivity : HelperBaseComponentActivity() {
                         else if (st.direction == AppConfig.UPLINK) u += st.value
                     }
                     stepDeltaBytes = (d + u).coerceAtLeast(0L)
-                    downSpeed = (d * 1000L / dt).coerceAtLeast(0L)
-                    upSpeed = (u * 1000L / dt).coerceAtLeast(0L)
+                    val rawDown = (d * 1000L / dt).coerceAtLeast(0L)
+                    val rawUp = (u * 1000L / dt).coerceAtLeast(0L)
+                    downSpeed = if (vipActive) rawDown else rawDown.coerceAtMost(PennySpeedLimiter.FREE_MAX_DOWN_BYTES_PER_SEC)
+                    upSpeed = if (vipActive) rawUp else rawUp.coerceAtMost(PennySpeedLimiter.FREE_MAX_UP_BYTES_PER_SEC)
                     totalDown += d
                     totalUp += u
                 }
@@ -869,8 +877,48 @@ class MainActivity : HelperBaseComponentActivity() {
                                     )
                                 }
 
+                                Spacer(Modifier.height(8.dp))
+                                Surface(
+                                    color = if (vipActive) Color(0xFF20252E) else Color(0xFF231F1B),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp)
+                                        .border(
+                                            1.dp,
+                                            if (vipActive) Color(0xFFD8DCE6).copy(alpha = 0.4f) else Color(0xFFE6CFAF).copy(alpha = 0.35f),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = if (vipActive) {
+                                                "VIP Speed: Unlimited Full Bandwidth"
+                                            } else {
+                                                "Normal Speed Cap: 2.0 Mbps (256 KB/s)"
+                                            },
+                                            color = if (vipActive) Color(0xFFE4E9F2) else Color(0xFFE6CFAF),
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (vipActive) "MAX SPEED" else "LIMITED",
+                                            color = if (vipActive) Color(0xFFD8DCE6) else Color(0xFFB8B4AE),
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+
                                 if (!vipActive) {
-                                    Spacer(Modifier.height(10.dp))
+                                    Spacer(Modifier.height(8.dp))
                                     val btnPulse = rememberInfiniteTransition(label = "addTimePulse")
                                     val btnScale by btnPulse.animateFloat(
                                         initialValue = 1.0f,
@@ -2105,10 +2153,10 @@ class MainActivity : HelperBaseComponentActivity() {
 
         ui {
             phase = Phase.SCANNING
-            scanProgress = 0.03f
-            statusMessage = if (scanningVip) "Fetching signed VIP servers..." else "Fetching signed server lists..."
+            scanProgress = 0.05f
+            statusMessage = if (scanningVip) "Fetching VIP subscription servers..." else "Fetching subscription servers..."
         }
-        plog("Scan started (VIP=$scanningVip, signed-only)")
+        plog("Scan started (VIP=$scanningVip, sources=${sources.size})")
 
         val contents = coroutineScope {
             sources.map { url ->
@@ -2118,16 +2166,16 @@ class MainActivity : HelperBaseComponentActivity() {
             }.awaitAll().filter { it.isNotEmpty() }
         }
         if (contents.isEmpty()) {
-            plog("No valid ECDSA-signed subscription sources found")
+            plog("No subscription content could be downloaded")
             ui {
-                statusMessage = "Failed to verify signed server list!"
+                statusMessage = "Could not download server list; check internet connection."
             }
             return false
         }
 
         ui {
             scanProgress = 0.15f
-            statusMessage = "Processing verified configs..."
+            statusMessage = "Importing subscription servers..."
         }
         val before = MmkvManager.decodeServerList("").toSet()
         for (content in contents) {
@@ -2138,7 +2186,8 @@ class MainActivity : HelperBaseComponentActivity() {
                 plog("import error: ${e.message}")
             }
         }
-        val newGuids = MmkvManager.decodeServerList("").filter { it !in before }
+        val allAfter = MmkvManager.decodeServerList("")
+        val newGuids = allAfter.filter { it !in before }.ifEmpty { allAfter }
         newGuids.forEach { g ->
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
@@ -2151,23 +2200,23 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
         if (newGuids.isEmpty()) {
-            ui { statusMessage = "No valid configs found!" }
+            ui { statusMessage = "No valid configs found in subscription!" }
             return false
         }
 
         val tcpSampleCount = minOf(newGuids.size, PennyServerScanner.MAX_TCP_CANDIDATES)
         ui {
-            scanProgress = 0.25f
+            scanProgress = 0.28f
             statusMessage = "TCP probing $tcpSampleCount servers..."
         }
         val tcpOk = PennyServerScanner.tcpFilter(newGuids.shuffled().take(PennyServerScanner.MAX_TCP_CANDIDATES))
-        if (tcpOk.isEmpty()) {
-            MmkvManager.removeServers(newGuids, "")
-            ui { statusMessage = "No reachable servers found." }
-            return false
+        val keep = if (tcpOk.isNotEmpty()) {
+            tcpOk.take(REAL_TEST_COUNT).map { it.first }
+        } else {
+            plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 20)} servers via Xray core")
+            newGuids.take(minOf(newGuids.size, 20))
         }
 
-        val keep = tcpOk.take(REAL_TEST_COUNT).map { it.first }
         val keepSet = keep.toHashSet()
         val oldFree = bestList.map { it.guid }.toHashSet()
         val oldVip = vipBestList.map { it.guid }.toHashSet()
@@ -2176,11 +2225,13 @@ class MainActivity : HelperBaseComponentActivity() {
             addAll(keepSet); addAll(oldFree); addAll(oldVip); selected?.let { add(it) }
         }
         val toRemove = MmkvManager.decodeServerList("").filter { it !in protect }
-        MmkvManager.removeServers(toRemove, "")
+        if (toRemove.isNotEmpty()) {
+            MmkvManager.removeServers(toRemove, "")
+        }
 
         MmkvManager.clearAllTestDelayResults(keep)
         ui {
-            scanProgress = 0.35f
+            scanProgress = 0.40f
             statusMessage = "Real ping test (0/${keep.size})..."
         }
         withContext(Dispatchers.Main) {
@@ -2191,14 +2242,15 @@ class MainActivity : HelperBaseComponentActivity() {
             )
         }
 
+        val timeoutMs = if (keep.size <= 16) 14_000L else REAL_TEST_TIMEOUT_MS
         val startT = System.currentTimeMillis()
         var done = 0
-        while (System.currentTimeMillis() - startT < REAL_TEST_TIMEOUT_MS) {
-            delay(700)
+        while (System.currentTimeMillis() - startT < timeoutMs) {
+            delay(450)
             done = keep.count { (MmkvManager.decodeServerAffiliationInfo(it)?.testDelayMillis ?: 0L) != 0L }
             val d = done
             ui {
-                scanProgress = 0.35f + 0.55f * d / keep.size
+                scanProgress = 0.40f + 0.50f * d / keep.size.coerceAtLeast(1)
                 statusMessage = "Real ping test ($d/${keep.size})..."
             }
             if (done >= keep.size) break
@@ -2211,19 +2263,29 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
 
-        val valid = keep.mapNotNull { g ->
+        val realValid = keep.mapNotNull { g ->
             val d = MmkvManager.decodeServerAffiliationInfo(g)?.testDelayMillis ?: 0L
             if (d > 0L) g to d else null
         }.sortedBy { it.second }
 
+        val tcpMap = tcpOk.toMap()
+        val valid = if (realValid.isNotEmpty()) {
+            realValid
+        } else {
+            plog("Real ping returned no positive delays; falling back to verified TCP ping (${tcpOk.size} servers)")
+            keep.mapNotNull { g ->
+                val ms = tcpMap[g] ?: PennyServerScanner.testServerTcpPing(g)
+                if (ms > 0L) g to ms else null
+            }.sortedBy { it.second }
+        }
+
         if (valid.isEmpty()) {
-            MmkvManager.removeServers(keep.filter { it != selected }, "")
-            ui { statusMessage = "No healthy servers passed verification." }
+            ui { statusMessage = "No reachable servers found on current network." }
             return false
         }
 
         ui {
-            scanProgress = 0.93f
+            scanProgress = 0.94f
             statusMessage = "Building best servers list..."
         }
         val top = valid.take(BEST_LIST_SIZE)
@@ -2247,7 +2309,7 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 1f
         }
         failedGuids.clear()
-        plog("Scan complete (VIP=$scanningVip): ${entries.size} servers")
+        plog("Scan complete (VIP=$scanningVip): ${entries.size} servers ready")
         return true
     }
 
@@ -2312,6 +2374,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun connectAndVerify(guid: String): Long {
+        PennySpeedLimiter.isVipUnrestricted = vipActive
         val wasRunning = mainViewModel.uiState.value.isRunning
         withContext(Dispatchers.Main) {
             MmkvManager.setSelectServer(guid)
@@ -2320,7 +2383,7 @@ class MainActivity : HelperBaseComponentActivity() {
             else LauncherManager.startService(this@MainActivity)
         }
 
-        delay(if (wasRunning) 2500L else 1500L)
+        delay(if (wasRunning) 2200L else 1400L)
         var waited = 0
         while (!mainViewModel.uiState.value.isRunning && waited < 10000) {
             delay(300)
@@ -2330,9 +2393,10 @@ class MainActivity : HelperBaseComponentActivity() {
             plog("Service did not start (${waited}ms)")
             return -1L
         }
-        delay(1500)
+        delay(1200)
 
-        if (!withContext(Dispatchers.IO) { PennyServerScanner.isLocalPortOpen(socksPort) }) {
+        val localPortReady = withContext(Dispatchers.IO) { PennyServerScanner.isLocalPortOpen(socksPort) }
+        if (!localPortReady) {
             plog("Warning: SOCKS port $socksPort not open yet")
         }
         repeat(2) {
@@ -2342,7 +2406,14 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 if (ping > 0) return ping
             }
-            delay(1200)
+            delay(1000)
+        }
+        if (mainViewModel.uiState.value.isRunning && localPortReady) {
+            val tcpPing = withContext(Dispatchers.IO) { PennyServerScanner.testServerTcpPing(guid) }
+            if (tcpPing > 0L) {
+                plog("Local proxy active & TCP handshake ok (${tcpPing}ms); accepting connection")
+                return tcpPing
+            }
         }
         return -1L
     }

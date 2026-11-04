@@ -1,13 +1,18 @@
-name: Build Penny VPN APK
+name: Build Penny VPN Release APK
 
 on:
   push:
     branches: [ "master", "main" ]
   workflow_dispatch:
 
+env:
+  LIBV2RAY_TAG: "v26.10.31"
+  LIBV2RAY_SHA256: "2efdf731b1ed624eb1cb0d5a4d0aa95c0672e89f9702226d1ba2dc90308630b6"
+
 jobs:
   build:
     runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -27,20 +32,16 @@ jobs:
         with:
           ndk-version: r27c
 
-      # اگر پوشه hev-socks5-tunnel خالی بود (ساب‌ماژول در ریپو ثبت نشده)، مستقیم کلون می‌شود
-      - name: Ensure hev-socks5-tunnel source
+      - name: Ensure hev-socks5-tunnel source (Pinned Commit)
         run: |
           if [ ! -f hev-socks5-tunnel/Android.mk ]; then
-            echo "hev-socks5-tunnel خالی است؛ در حال کلون..."
             rm -rf hev-socks5-tunnel
             git clone --recursive https://github.com/heiher/hev-socks5-tunnel.git hev-socks5-tunnel
             git -C hev-socks5-tunnel checkout 64cc609f945253b0e9ebc56317d544268f3c68c1
             git -C hev-socks5-tunnel submodule update --init --recursive
           fi
-          ls hev-socks5-tunnel
           test -f hev-socks5-tunnel/Android.mk
 
-      # این مرحله libhev-socks5-tunnel.so را برای 4 معماری می‌سازد و در <root>/libs/<abi>/ می‌گذارد
       - name: Build hev-socks5-tunnel
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -49,37 +50,65 @@ jobs:
           bash compile-hevtun.sh
           find libs -name "*.so" | sort
 
-      # علت اصلی کرش UnsatisfiedLinkError: Gradle فقط V2rayNG/app/libs را برای .so می‌خواند
       - name: Copy native libs into app module
         run: |
           mkdir -p V2rayNG/app/libs
           cp -r libs/* V2rayNG/app/libs/
-          find V2rayNG/app/libs -name "*.so" | sort
           test -f V2rayNG/app/libs/arm64-v8a/libhev-socks5-tunnel.so
 
-      - name: Download Libv2ray Core Directly
+      - name: Download Pinned Libv2ray Core & Verify SHA-256 Checksum
         run: |
-          curl -L --fail --retry 5 -o V2rayNG/app/libs/libv2ray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
+          curl -L --fail --retry 5 -o V2rayNG/app/libs/libv2ray.aar \
+            "https://github.com/2dust/AndroidLibXrayLite/releases/download/${LIBV2RAY_TAG}/libv2ray.aar"
+          echo "${LIBV2RAY_SHA256}  V2rayNG/app/libs/libv2ray.aar" | sha256sum -c -
           ls -lh V2rayNG/app/libs/libv2ray.aar
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x V2rayNG/gradlew
-
-      - name: Build Debug APK
-        working-directory: V2rayNG
-        run: ./gradlew assemblePlaystoreDebug --no-daemon
-
-      # اگر کتابخانه‌ها داخل APK نباشند، build عمداً شکست می‌خورد
-      - name: Verify native libs in APK
+      - name: Prepare External Release Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ls -lh V2rayNG/app/build/outputs/apk/playstore/debug/
-          for f in V2rayNG/app/build/outputs/apk/playstore/debug/*.apk; do
-            echo "== $f"
-            unzip -l "$f" | grep "libhev-socks5-tunnel.so" || { echo "libhev-socks5-tunnel.so در $f نیست"; exit 1; }
+          KS_FILE="/tmp/penny-release-keystore.jks"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using production Release Keystore from GitHub Secrets..."
+            echo "$KEYSTORE_BASE64" | base64 -d > "$KS_FILE"
+            echo "PENNY_KEYSTORE_FILE=$KS_FILE" >> $GITHUB_ENV
+            echo "PENNY_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+            echo "PENNY_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
+            echo "PENNY_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
+          else
+            echo "::warning::KEYSTORE_BASE64 secret not set in GitHub repo; generating ephemeral release keystore in /tmp (set KEYSTORE_BASE64 in GitHub Secrets for consistent upgrade signatures)"
+            PASS="PennyReleaseKey2026!"
+            keytool -genkeypair -v \
+              -keystore "$KS_FILE" \
+              -alias pennyvpn \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" \
+              -dname "CN=Penny VPN, OU=Security, O=Omidss, L=Global, S=Global, C=US"
+            echo "PENNY_KEYSTORE_FILE=$KS_FILE" >> $GITHUB_ENV
+            echo "PENNY_KEYSTORE_PASSWORD=$PASS" >> $GITHUB_ENV
+            echo "PENNY_KEY_ALIAS=pennyvpn" >> $GITHUB_ENV
+            echo "PENNY_KEY_PASSWORD=$PASS" >> $GITHUB_ENV
+          fi
+
+      - name: Build Signed Release APK (com.penny.vpn)
+        working-directory: V2rayNG
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblePlaystoreRelease --no-daemon
+
+      - name: Verify Native Libs & Release Output
+        run: |
+          ls -lh V2rayNG/app/build/outputs/apk/playstore/release/
+          for f in V2rayNG/app/build/outputs/apk/playstore/release/*.apk; do
+            echo "== Verifying $f"
+            unzip -l "$f" | grep "libhev-socks5-tunnel.so" || { echo "Missing libhev-socks5-tunnel.so in $f"; exit 1; }
           done
 
-      - name: Upload Penny VPN APK
+      - name: Upload Penny VPN Signed Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Penny-VPN-Installer
-          path: V2rayNG/app/build/outputs/apk/playstore/debug/*universal*.apk
+          name: Penny-VPN-Release-APK
+          path: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk

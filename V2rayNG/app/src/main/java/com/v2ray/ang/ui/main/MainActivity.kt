@@ -13,25 +13,17 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
-import android.provider.Settings
-import android.util.Base64
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -39,7 +31,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,34 +50,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
@@ -117,1379 +94,31 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.Socket
-import java.net.URL
-import java.nio.charset.StandardCharsets
-import java.security.KeyFactory
-import java.security.MessageDigest
-import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-// ═════════════════════════ زبان (فقط انگلیسی) ═════════════════════════
-
-private enum class AppLang(val code: String) { EN("en") }
-
-private object Strings {
-    fun subtitle(l: AppLang, vip: Boolean) =
-        if (vip) "1 Month 50 GB Active • Dedicated Servers" else "Smart Fastest Server Selector"
-
-    fun splashTagline(l: AppLang) = "Fast, Smart & Secure Protection"
-
-    fun ready(l: AppLang) = "Ready to Connect"
-    fun connectedBadge(l: AppLang, vip: Boolean) =
-        if (vip) "Connected to VIP (1M / 50GB)" else "Connected"
-
-    fun smartConnect(l: AppLang, vip: Boolean) =
-        if (vip) "VIP Connect" else "Smart Connect"
-
-    fun tapToCancel(l: AppLang) = "Tap to Cancel"
-    fun disconnect(l: AppLang) = "Disconnect"
-
-    fun download(l: AppLang) = "Download"
-    fun upload(l: AppLang) = "Upload"
-    fun duration(l: AppLang) = "Duration"
-    fun totalData(l: AppLang) = "Total Data"
-
-    fun noServerYet(l: AppLang, vip: Boolean) =
-        if (vip) "No VIP servers scanned yet; tap Scan or Connect."
-        else "No servers scanned yet; tap Scan or Connect."
-
-    fun scanServersBtn(l: AppLang, vip: Boolean) =
-        if (vip) "Scan VIP" else "Scan Servers"
-
-    fun nextServerBtn(l: AppLang) = "Next Server"
-
-    fun scanInfo(l: AppLang, min: Long, count: Int, vip: Boolean): String {
-        val tag = if (vip) "VIP " else ""
-        val ago = when {
-            min < 1 -> "just now"
-            min < 60 -> "${min}m ago"
-            else -> "${min / 60}h ago"
-        }
-        return "Last ${tag}scan: $ago  •  $count servers ready"
-    }
-
-    fun noScanYet(l: AppLang, vip: Boolean) =
-        if (vip) "No VIP scan performed yet" else "No scan performed yet"
-
-    fun menuBestConfigs(l: AppLang, vip: Boolean) =
-        if (vip) "1M 50GB Dedicated Servers" else "Best Servers List"
-
-    fun menuAppLog(l: AppLang) = "App Activity Logs"
-    fun menuCoreLog(l: AppLang) = "Core Logs (Logcat)"
-    fun close(l: AppLang) = "Close"
-    fun copy(l: AppLang) = "Copy"
-    fun clear(l: AppLang) = "Clear"
-    fun emptyBestList(l: AppLang) = "No server list yet. Please scan first."
-    fun emptyLogs(l: AppLang) = "No logs recorded yet."
-}
-
 /**
- * آیکن الماس سفید شیشه‌ای (White Glassy Diamond) جایگزین تاج
+ * MainActivity ماژولار شده Penny VPN:
+ * منطق مدل‌ها در PennyModels.kt، اعتبارسنجی سرورمحور لایسنس ECDSA در PennyLicenseManager.kt،
+ * اسکنر امن و امضاشده در PennyServerScanner.kt و کامپوننت‌های گرافیکی در PennyComponents.kt تفکیک شده‌اند.
  */
-@Composable
-private fun GlassDiamondIcon(
-    size: Dp = 15.dp,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-
-        val outerPath = Path().apply {
-            moveTo(w * 0.24f, h * 0.14f)
-            lineTo(w * 0.76f, h * 0.14f)
-            lineTo(w * 0.96f, h * 0.38f)
-            lineTo(w * 0.50f, h * 0.92f)
-            lineTo(w * 0.04f, h * 0.38f)
-            close()
-        }
-
-        drawPath(
-            path = outerPath,
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    Color(0xFFFFFFFF).copy(alpha = 0.96f),
-                    Color(0xFFE4E9F2).copy(alpha = 0.78f),
-                    Color(0xFFB4C3D8).copy(alpha = 0.55f)
-                ),
-                start = Offset(0f, 0f),
-                end = Offset(w, h)
-            )
-        )
-
-        val topFacet = Path().apply {
-            moveTo(w * 0.24f, h * 0.14f)
-            lineTo(w * 0.76f, h * 0.14f)
-            lineTo(w * 0.68f, h * 0.38f)
-            lineTo(w * 0.32f, h * 0.38f)
-            close()
-        }
-        drawPath(
-            path = topFacet,
-            color = Color(0xFFFFFFFF).copy(alpha = 0.56f)
-        )
-
-        val leftLowerFacet = Path().apply {
-            moveTo(w * 0.04f, h * 0.38f)
-            lineTo(w * 0.32f, h * 0.38f)
-            lineTo(w * 0.50f, h * 0.92f)
-            close()
-        }
-        drawPath(
-            path = leftLowerFacet,
-            color = Color(0xFFD0D8E8).copy(alpha = 0.42f)
-        )
-
-        drawLine(
-            color = Color(0xFFFFFFFF).copy(alpha = 0.85f),
-            start = Offset(w * 0.04f, h * 0.38f),
-            end = Offset(w * 0.96f, h * 0.38f),
-            strokeWidth = 1.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFFFFFFF).copy(alpha = 0.75f),
-            start = Offset(w * 0.24f, h * 0.14f),
-            end = Offset(w * 0.32f, h * 0.38f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFFFFFFF).copy(alpha = 0.75f),
-            start = Offset(w * 0.76f, h * 0.14f),
-            end = Offset(w * 0.68f, h * 0.38f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFEFF3FA).copy(alpha = 0.70f),
-            start = Offset(w * 0.32f, h * 0.38f),
-            end = Offset(w * 0.50f, h * 0.92f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFEFF3FA).copy(alpha = 0.70f),
-            start = Offset(w * 0.68f, h * 0.38f),
-            end = Offset(w * 0.50f, h * 0.92f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-
-        drawPath(
-            path = outerPath,
-            color = Color(0xFFFFFFFF).copy(alpha = 0.92f),
-            style = Stroke(width = 1.15.dp.toPx())
-        )
-    }
-}
-
-/**
- * آیکن منوی مدرن خطی (بدون ایموجی)
- */
-@Composable
-private fun MenuLinesIcon(
-    size: Dp = 15.dp,
-    color: Color = Color(0xFFE8ECF4),
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val stroke = 1.6.dp.toPx()
-        drawLine(
-            color = color,
-            start = Offset(w * 0.12f, h * 0.24f),
-            end = Offset(w * 0.88f, h * 0.24f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color.copy(alpha = 0.85f),
-            start = Offset(w * 0.22f, h * 0.50f),
-            end = Offset(w * 0.78f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.12f, h * 0.76f),
-            end = Offset(w * 0.88f, h * 0.76f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-/**
- * رنگ‌بندی مشکی و طوسی متالیک برای دکمه‌های خاموش/روشن (Switch) در منو
- */
-@Composable
-private fun metallicSwitchColors() = SwitchDefaults.colors(
-    checkedThumbColor = Color(0xFFE4E7F0),
-    checkedTrackColor = Color(0xFF3B3E48),
-    checkedBorderColor = Color(0xFF5A5E6B),
-    uncheckedThumbColor = Color(0xFF7E828E),
-    uncheckedTrackColor = Color(0xFF121317),
-    uncheckedBorderColor = Color(0xFF2C2E36)
-)
-
-// ═════════════════════════ اعتبارسنجی رمزنگاری‌شده اشتراک ۱ ماه ۵۰ گیگ (ECDSA P-256 + قفل Device ID) ═════════════════════════
-
-private data class VerifiedLicense(
-    val serial: String,
-    val deviceId: String,
-    val durationMs: Long,
-    val maxBytes: Long
-)
-
-private object VipLicenseManager {
-    const val VIP_DURATION_MS = 30L * 24L * 60L * 60L * 1000L // ۱ ماه (۳۰ روز)
-    const val VIP_MAX_BYTES = 50L * 1024L * 1024L * 1024L      // ۵۰ گیگابایت
-
-    // کلید عمومی ECDSA P-256 (X.509 SPKI Base64) — کلید خصوصی فقط نزد ادمین برای صدور لایسنس و امضای لیست سرورهاست
-    const val DEFAULT_PUBLIC_KEY_B64 =
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6KKEe5BoWXMq4ujPuAwXQ0W65MlAMd/0g0v+jk+e5za6t/sGUB4beggBjexWZxcnxJ5OD+0rk9YQd3T+oiamoQ=="
-
-    fun getDeviceId(context: Context): String {
-        return try {
-            val rawId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-                ?: "UNKNOWN_DEVICE"
-            val digest = MessageDigest.getInstance("SHA-256")
-                .digest(("PENNY_DEV_ID:" + rawId).toByteArray(StandardCharsets.UTF_8))
-            val sb = StringBuilder()
-            for (i in 0 until 4) {
-                sb.append(String.format(Locale.US, "%02X", digest[i].toInt() and 0xFF))
-            }
-            sb.toString()
-        } catch (e: Exception) {
-            Log.w("PennyVPN", "DeviceId fallback: ${e.message}")
-            "00000000"
-        }
-    }
-
-    fun maskCode(code: String): String {
-        val clean = code.trim()
-        if (clean.length <= 10) return "****"
-        return "${clean.take(4)}-****-${clean.takeLast(4)}"
-    }
-
-    fun verifyEcdsaSignature(dataBytes: ByteArray, sigBytes: ByteArray, pubKeyB64: String = DEFAULT_PUBLIC_KEY_B64): Boolean {
-        return try {
-            val keyBytes = Base64.decode(pubKeyB64, Base64.DEFAULT)
-            val keySpec = X509EncodedKeySpec(keyBytes)
-            val pubKey = KeyFactory.getInstance("EC").generatePublic(keySpec)
-            val verifier = Signature.getInstance("SHA256withECDSA")
-            verifier.initVerify(pubKey)
-            verifier.update(dataBytes)
-            verifier.verify(sigBytes)
-        } catch (e: Exception) {
-            Log.w("PennyVPN", "ECDSA verify failed: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * بررسی لایسنس دیجیتال ECDSA P-256 با فرمت:
-     * PL1.<payload_base64url>.<sig_base64url>
-     * که payload شامل: serial:deviceId_or_ANY:activateBeforeEpochSec:days:gb
-     */
-    fun verifyLicense(rawCode: String, currentDeviceId: String, effectiveNowMs: Long): Pair<VerifiedLicense?, String> {
-        val trimmed = rawCode.trim().replace(" ", "")
-        if (trimmed.startsWith("PL1.", ignoreCase = true)) {
-            val parts = trimmed.split(".")
-            if (parts.size != 3) return null to "Invalid ECDSA license format."
-            return try {
-                val payloadBytes = Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-                val sigBytes = Base64.decode(parts[2], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-                if (!verifyEcdsaSignature(payloadBytes, sigBytes)) {
-                    return null to "Invalid digital signature!"
-                }
-                val payloadStr = String(payloadBytes, StandardCharsets.UTF_8)
-                val fields = payloadStr.split(":")
-                if (fields.size < 3) return null to "Corrupted license payload."
-                val serial = fields[0].uppercase(Locale.US)
-                val targetDevice = fields[1].uppercase(Locale.US)
-                val expEpochSec = fields[2].toLongOrNull() ?: 0L
-                val days = fields.getOrNull(3)?.toLongOrNull()?.coerceIn(1L, 365L) ?: 30L
-                val gb = fields.getOrNull(4)?.toLongOrNull()?.coerceIn(1L, 1000L) ?: 50L
-
-                if (targetDevice != "ANY" && targetDevice != currentDeviceId.uppercase(Locale.US)) {
-                    return null to "This code is locked to another Device ID ($targetDevice)."
-                }
-                if (expEpochSec > 0L && effectiveNowMs > expEpochSec * 1000L) {
-                    return null to "Activation deadline for this code has passed."
-                }
-                VerifiedLicense(
-                    serial = serial,
-                    deviceId = targetDevice,
-                    durationMs = days * 24L * 3600_000L,
-                    maxBytes = gb * 1024L * 1024L * 1024L
-                ) to "OK"
-            } catch (e: Exception) {
-                Log.w("PennyVPN", "License parse error: ${e.message}")
-                null to "Malformed activation code."
-            }
-        }
-        return null to "Invalid activation code! Please use a valid ECDSA license (PL1....)."
-    }
-
-    /**
-     * بررسی امضای دیجیتال لیست سرورهای VIP در صورت وجود هدر #PENNY-SIG:<base64>
-     */
-    fun verifySignedServerList(rawContent: String): Pair<Boolean, String> {
-        val normalized = rawContent.replace("\r\n", "\n").trim()
-        val lines = normalized.lines()
-        val firstLine = lines.firstOrNull()?.trim() ?: return false to ""
-        if (firstLine.startsWith("#PENNY-SIG:")) {
-            val sigB64 = firstLine.removePrefix("#PENNY-SIG:").trim()
-            val body = lines.drop(1).joinToString("\n").trim()
-            return try {
-                val sigBytes = Base64.decode(sigB64, Base64.DEFAULT)
-                val ok = verifyEcdsaSignature(body.toByteArray(StandardCharsets.UTF_8), sigBytes)
-                if (ok) true to body else false to ""
-            } catch (e: Exception) {
-                Log.w("PennyVPN", "Signed list verify error: ${e.message}")
-                false to ""
-            }
-        }
-        // اگر لیست از منبع مستقیم HTTPS خود ادمین بدون میرور خوانده شده باشد
-        return true to normalized
-    }
-}
-
-// ═════════════════════════ مدل سرورها (بدون پرچم کشور، با نام‌های صادقانه Node A-1 / Server A-1) ═════════════════════════
-
-private enum class Phase { IDLE, SCANNING, CONNECTING }
-
-private enum class UiMode { IDLE, SCANNING, CONNECTING, CONNECTED }
-
-private data class PennyServer(
-    val guid: String,
-    val codeTag: String,
-    val ms: Long,
-    val label: String,
-    val isVipServer: Boolean = false
-)
-
-/**
- * نام‌گذاری سرورها بدون پرچم کشور و مرتب‌شده بر اساس کمترین پینگ (ms):
- * Node A-1, Node A-2, Server A-1, Server A-2, Node B-1, ...
- */
-private fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
-    return list.sortedBy { it.ms }.mapIndexed { index, s ->
-        val groupChar = ('A'.code + (index / 4).coerceAtMost(5)).toChar()
-        val num = (index % 2) + 1
-        val isNodeGroup = (index % 4) < 2
-        val codeTag = "$groupChar-$num"
-        val baseLabel = if (isNodeGroup) "Node $codeTag" else "Server $codeTag"
-        // حذف نام اصلی سرور از کانفیگ ذخیره شده تا در نوتیفیکیشن سیستم نمایش داده نشود
-        try {
-            val cfg = MmkvManager.decodeServerConfig(s.guid)
-            if (cfg != null && cfg.remarks != "Penny VPN") {
-                cfg.remarks = "Penny VPN"
-                MmkvManager.encodeServerConfig(s.guid, cfg)
-            }
-        } catch (e: Exception) {
-            Log.w("PennyVPN", "Failed to sanitize remarks for ${s.guid}: ${e.message}")
-        }
-        s.copy(
-            codeTag = codeTag,
-            label = baseLabel,
-            isVipServer = isVipList
-        )
-    }
-}
-
-// ═════════════════════════ فرمت‌ها ═════════════════════════
-
-private fun fmtBytes(b: Long): String {
-    if (b < 0) return "—"
-    val kb = b / 1024.0
-    return when {
-        kb < 1024.0 -> String.format(Locale.US, "%.0f KB", kb)
-        kb < 1024.0 * 1024.0 -> String.format(Locale.US, "%.1f MB", kb / 1024.0)
-        else -> String.format(Locale.US, "%.2f GB", kb / 1024.0 / 1024.0)
-    }
-}
-
-private fun fmtSpeed(bps: Long): String = if (bps < 0) "—" else fmtBytes(bps) + "/s"
-
-private fun fmtDuration(sec: Long): String {
-    val s = sec.coerceAtLeast(0)
-    return String.format(Locale.US, "%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
-}
-
-// ═════════════════════════ کامپوننت‌های گرافیکی مدرن (تم نقره‌ای متالیک، خاکستری و نود شاینی) ═════════════════════════
-
-@Composable
-private fun StatCell(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Color(0xFFF2F4F8), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(2.dp))
-        Text(label, color = Color(0xFF9EA1AB), fontSize = 10.sp)
-    }
-}
-
-/**
- * انیمیشن ورود پلکانی (Staggered Entrance Animation) برای آیتم‌های لیست بهترین کانفیگ‌ها
- */
-@Composable
-private fun StaggeredServerItem(
-    index: Int,
-    content: @Composable () -> Unit
-) {
-    val anim = remember { Animatable(0f) }
-    LaunchedEffect(index) {
-        delay((index * 55L).coerceAtMost(550L))
-        anim.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                alpha = anim.value
-                translationY = (1f - anim.value) * 34f
-                val sc = 0.95f + 0.05f * anim.value
-                scaleX = sc
-                scaleY = sc
-            }
-    ) {
-        content()
-    }
-}
-
-/**
- * کارت مدرن نمایش سرور بدون پرچم کشور و بدون ستاره/10G ULTRA
- * همراه با افکت محو شدن (Fade / Crossfade) ملایم هنگام تغییر سرور
- */
-@Composable
-private fun ModernServerCard(
-    server: PennyServer?,
-    isConnected: Boolean,
-    isVipMode: Boolean,
-    lang: AppLang,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val borderColor = when {
-        isConnected -> Color(0xFFD8DCE6).copy(alpha = 0.85f)
-        isVipMode -> Color(0xFFD8C7B0).copy(alpha = 0.65f)
-        else -> Color(0xFF3A3B44).copy(alpha = 0.85f)
-    }
-
-    Surface(
-        color = Color(0xFF1A1B20).copy(alpha = 0.94f),
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-            .clickable(enabled = enabled) { onClick() }
-    ) {
-        Crossfade(
-            targetState = server,
-            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-            label = "serverCardFade"
-        ) { currentSrv ->
-            if (currentSrv == null) {
-                Text(
-                    text = Strings.noServerYet(lang, isVipMode),
-                    color = Color(0xFF9EA1AB),
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // باکس مدرن کد نود (بدون پرچم کشور - استایل نقره‌ای متالیک)
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF2B2D36), Color(0xFF1D1E24))
-                                )
-                            )
-                            .border(
-                                1.dp,
-                                if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.85f)
-                                else if (isVipMode) Color(0xFFD8C7B0).copy(alpha = 0.65f)
-                                else Color(0xFF454752),
-                                RoundedCornerShape(11.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = currentSrv.codeTag.ifEmpty { "A-1" },
-                            color = if (isConnected) Color(0xFFF2F4F8)
-                            else if (isVipMode) Color(0xFFE6CFAF)
-                            else Color(0xFFD0D4DF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-
-                    Spacer(Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = currentSrv.label,
-                            color = Color(0xFFF2F4F8),
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = if (isConnected) {
-                                "Active Node • ${currentSrv.ms} ms • Stable"
-                            } else {
-                                "Ping ${currentSrv.ms} ms • Tap to change server"
-                            },
-                            color = Color(0xFF9EA1AB),
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(Modifier.width(6.dp))
-
-                    // بج مدرن پینگ با ترکیب نقره‌ای متالیک و الماس سفید شیشه‌ای در حالت VIP
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(
-                                if (isConnected) Color(0xFF2B2E38)
-                                else if (isVipMode) Color(0xFF282A33)
-                                else Color(0xFF23242C)
-                            )
-                            .border(
-                                1.dp,
-                                if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.65f)
-                                else Color(0xFF3E404A),
-                                RoundedCornerShape(9.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isVipMode) {
-                                GlassDiamondIcon(size = 11.dp)
-                                Spacer(Modifier.width(4.dp))
-                            }
-                            Text(
-                                text = "${currentSrv.ms} ms",
-                                color = if (isConnected) Color(0xFFF2F4F8)
-                                else if (isVipMode) Color(0xFFE8ECF4)
-                                else Color(0xFFC8CCD6),
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * انتخابگر حالت هوشمند بهینه‌سازی تانل (الهام‌گرفته از اپ‌های برتر جهانی مثل ProtonVPN و Surfshark):
- * Smart Auto | Gaming (Low Jitter) | Streaming (High Bandwidth)
- */
-private enum class ConnectionProfile(val label: String, val tag: String) {
-    SMART("Smart Auto", "Balanced"),
-    GAMING("Gaming", "Low Ping"),
-    STREAMING("Streaming", "High Speed")
-}
-
-@Composable
-private fun ConnectionProfileBar(
-    selected: ConnectionProfile,
-    onSelect: (ConnectionProfile) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = Color(0xFF17181E).copy(alpha = 0.95f),
-        shape = RoundedCornerShape(14.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF32343E), RoundedCornerShape(14.dp))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            ConnectionProfile.values().forEach { prof ->
-                val active = prof == selected
-                Surface(
-                    color = if (active) Color(0xFF2B2E38) else Color.Transparent,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .then(
-                            if (active) Modifier.border(
-                                1.dp,
-                                Color(0xFFD8DCE6).copy(alpha = 0.55f),
-                                RoundedCornerShape(10.dp)
-                            ) else Modifier
-                        )
-                        .clickable { onSelect(prof) }
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = prof.label,
-                            color = if (active) Color(0xFFF2F4F8) else Color(0xFF9EA1AB),
-                            fontSize = 11.sp,
-                            fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = prof.tag,
-                            color = if (active) Color(0xFFD8C7B0) else Color(0xFF6E717C),
-                            fontSize = 8.5.sp,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * کارت نمایش کیفیت کل سرویس، جیتر زنده، سپر DNS و درصد آپ‌تایم
- * همراه با بارگذاری هوشمند تبلیغ بنری فقط در صورت آماده بودن واقعی
- */
-@Composable
-private fun ServiceQualityUptimeCard(
-    lang: AppLang,
-    isConnected: Boolean,
-    isVipMode: Boolean,
-    serverCount: Int,
-    bestPingMs: Long,
-    cleanDnsShield: Boolean,
-    splitTunnelLocal: Boolean,
-    adUnitId: String,
-    showAds: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val uptimePercent = if (isVipMode) "99.99%" else "99.98%"
-    val jitterMs = ((bestPingMs % 5L) + 2L).coerceIn(2L, 8L)
-    val qualityScore = when {
-        bestPingMs in 1..250 -> 0.98f
-        bestPingMs in 251..500 -> 0.94f
-        bestPingMs > 500 -> 0.89f
-        else -> 0.96f
-    }
-    val qualityLabel = when {
-        bestPingMs in 1..250 -> "Ultra Stable"
-        bestPingMs in 251..550 -> "Excellent"
-        else -> "Optimal"
-    }
-
-    var adLoaded by remember { mutableStateOf(false) }
-
-    Surface(
-        color = Color(0xFF18191F).copy(alpha = 0.95f),
-        shape = RoundedCornerShape(16.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .border(
-                1.dp,
-                if (isConnected) Color(0xFF4A4E5C) else Color(0xFF32343E),
-                RoundedCornerShape(16.dp)
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 13.dp, vertical = 10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(if (isConnected) Color(0xFFD8DCE6) else Color(0xFFC8B8A2))
-                    )
-                    Text(
-                        text = "Service Quality: $qualityLabel",
-                        color = Color(0xFFECEEF4),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(Color(0xFF252730))
-                        .border(1.dp, Color(0xFF484B57), RoundedCornerShape(7.dp))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "Uptime $uptimePercent",
-                        color = Color(0xFFE2E5EE),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(7.dp))
-
-            // نوار شاینی کیفیت کل شبکه
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFF262830))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(qualityScore)
-                        .fillMaxHeight()
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFF8E93A2), Color(0xFFD8DCE6), Color(0xFFE6CFAF))
-                            )
-                        )
-                )
-            }
-
-            Spacer(Modifier.height(5.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Jitter: ${jitterMs} ms • 0% Loss",
-                    color = Color(0xFF9497A1),
-                    fontSize = 9.5.sp
-                )
-                Text(
-                    text = buildString {
-                        append(if (cleanDnsShield) "DNS Shield: Active" else "Standard DNS")
-                        if (splitTunnelLocal) append(" • Split Tunnel")
-                        append(" • ${serverCount.coerceAtLeast(1)} Nodes")
-                    },
-                    color = Color(0xFFC8CCD6),
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            if (showAds) {
-                AndroidView(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(if (adLoaded) 50.dp else 0.dp),
-                    factory = { ctx ->
-                        AdView(ctx).apply {
-                            setAdSize(AdSize.BANNER)
-                            this.adUnitId = adUnitId
-                            adListener = object : com.google.android.gms.ads.AdListener() {
-                                override fun onAdLoaded() {
-                                    adLoaded = true
-                                }
-                                override fun onAdFailedToLoad(error: LoadAdError) {
-                                    adLoaded = false
-                                }
-                            }
-                            loadAd(AdRequest.Builder().build())
-                        }
-                    }
-                )
-            }
-        }
-    }
-}
-
-/**
- * اسپلش و انیمیشن ورود بزرگ‌تر و پویا برای لوگو و نوشته‌ها در شروع اپ
- */
-@Composable
-private fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
-    val logoAnim = remember { Animatable(0f) }
-    val titleAnim = remember { Animatable(0f) }
-    val subAnim = remember { Animatable(0f) }
-    val footerAnim = remember { Animatable(0f) }
-
-    LaunchedEffect(Unit) {
-        launch {
-            logoAnim.animateTo(
-                targetValue = 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessLow
-                )
-            )
-        }
-        launch {
-            delay(180)
-            titleAnim.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
-            )
-        }
-        launch {
-            delay(360)
-            subAnim.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
-            )
-        }
-        launch {
-            delay(540)
-            footerAnim.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
-            )
-        }
-        delay(2450)
-        onFinished()
-    }
-
-    val inf = rememberInfiniteTransition(label = "splashInf")
-    val orbitAngle by inf.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(2800, easing = LinearEasing)),
-        label = "orbitAngle"
-    )
-    val glowPulse by inf.animateFloat(
-        initialValue = 12f,
-        targetValue = 26f,
-        animationSpec = infiniteRepeatable(
-            tween(1000, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "glowPulse"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF22232A),
-                        Color(0xFF141519),
-                        Color(0xFF0B0B0E)
-                    )
-                )
-            )
-            .clickable { onFinished() },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(252.dp)
-                    .graphicsLayer {
-                        val p = logoAnim.value
-                        alpha = p.coerceIn(0f, 1f)
-                        val sc = 0.42f + 0.58f * p
-                        scaleX = sc
-                        scaleY = sc
-                        translationY = (1f - p) * -42f
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val center = Offset(size.width / 2f, size.height / 2f)
-                    val arcR = size.minDimension * 0.43f
-                    val tl = Offset(center.x - arcR, center.y - arcR)
-                    val sz = Size(arcR * 2f, arcR * 2f)
-                    drawArc(
-                        color = Color(0xFFD8DCE6).copy(alpha = 0.78f),
-                        startAngle = orbitAngle,
-                        sweepAngle = 95f,
-                        useCenter = false,
-                        topLeft = tl,
-                        size = sz,
-                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                    drawArc(
-                        color = Color(0xFFE6CFAF).copy(alpha = 0.62f),
-                        startAngle = orbitAngle + 180f,
-                        sweepAngle = 95f,
-                        useCenter = false,
-                        topLeft = tl,
-                        size = sz,
-                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-
-                Image(
-                    painter = painterResource(id = R.drawable.penny_cat_logo),
-                    contentDescription = "Penny VPN Logo",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(198.dp)
-                )
-            }
-
-            Spacer(Modifier.height(18.dp))
-
-            Text(
-                text = "PENNY VPN",
-                color = Color(0xFFF2F4F8),
-                fontSize = 34.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 4.sp,
-                style = TextStyle(
-                    shadow = Shadow(
-                        color = Color(0xFFD0D4DF),
-                        offset = Offset(0f, 0f),
-                        blurRadius = glowPulse
-                    )
-                ),
-                modifier = Modifier.graphicsLayer {
-                    val p = titleAnim.value
-                    alpha = p
-                    translationY = (1f - p) * 32f
-                    val sc = 0.86f + 0.14f * p
-                    scaleX = sc
-                    scaleY = sc
-                }
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = Strings.splashTagline(lang),
-                color = Color(0xFFC8CCD6),
-                fontSize = 15.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.graphicsLayer {
-                    val p = subAnim.value
-                    alpha = p
-                    translationY = (1f - p) * 26f
-                }
-            )
-            Spacer(Modifier.height(14.dp))
-            Text(
-                text = "powered by Omidss",
-                color = Color(0xFFD8C7B0),
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-                modifier = Modifier.graphicsLayer {
-                    val p = footerAnim.value
-                    alpha = p
-                    translationY = (1f - p) * 20f
-                }
-            )
-        }
-    }
-}
-
-/**
- * هدر براق (Shiny Metallic Silver) متمرکز و خلوت
- */
-@Composable
-private fun NeonBrandHeader(
-    mode: UiMode,
-    lang: AppLang,
-    isVipMode: Boolean,
-    onLogoClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val glowTarget = when {
-        isVipMode && mode == UiMode.IDLE -> Color(0xFFE6CFAF)
-        mode == UiMode.IDLE -> Color(0xFFB8BDC8)
-        mode == UiMode.SCANNING -> Color(0xFFD0D4DF)
-        mode == UiMode.CONNECTING -> Color(0xFFD8DCE6)
-        else -> Color(0xFFEEF1F7)
-    }
-    val neonColor by animateColorAsState(glowTarget, tween(700), label = "neonColor")
-    val inf = rememberInfiniteTransition(label = "headerNeon")
-    val blurRadius by inf.animateFloat(
-        initialValue = 10f,
-        targetValue = 22f,
-        animationSpec = infiniteRepeatable(
-            tween(1600, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "neonBlur"
-    )
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.penny_cat_logo),
-                contentDescription = "Penny VPN Cat Logo",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .border(1.2.dp, neonColor.copy(alpha = 0.75f), CircleShape)
-                    .clickable { onLogoClick() }
-            )
-            Spacer(Modifier.width(9.dp))
-            Text(
-                text = if (isVipMode) "PENNY VIP" else "PENNY VPN",
-                color = Color(0xFFF2F4F8),
-                fontSize = 23.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 2.5.sp,
-                style = TextStyle(
-                    shadow = Shadow(
-                        color = neonColor,
-                        offset = Offset(0f, 0f),
-                        blurRadius = blurRadius
-                    )
-                )
-            )
-        }
-        Spacer(Modifier.height(3.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            if (isVipMode) {
-                GlassDiamondIcon(size = 12.dp)
-                Spacer(Modifier.width(5.dp))
-            }
-            Text(
-                text = Strings.subtitle(lang, isVipMode),
-                color = if (isVipMode) Color(0xFFE8ECF4) else Color(0xFF9EA1AB),
-                fontSize = 11.5.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-/**
- * انیمیشن پالس زنده روی متن وضعیت اتصال در حالت CONNECTED با درخشش نقره‌ای متالیک
- */
-@Composable
-private fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang, isVip: Boolean) {
-    val isConnected = mode == UiMode.CONNECTED
-    val inf = rememberInfiniteTransition(label = "statusPulse")
-    val pulseScale by inf.animateFloat(
-        initialValue = 1.0f,
-        targetValue = if (isConnected) 1.06f else 1.0f,
-        animationSpec = infiniteRepeatable(
-            tween(1100, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "statusScale"
-    )
-    val pulseGlow by inf.animateFloat(
-        initialValue = 8f,
-        targetValue = if (isConnected) 20f else 8f,
-        animationSpec = infiniteRepeatable(
-            tween(1100, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "statusGlow"
-    )
-
-    Crossfade(
-        targetState = if (isConnected) Strings.connectedBadge(lang, isVip) else statusMessage,
-        label = "status"
-    ) { msg ->
-        Text(
-            text = msg,
-            color = if (isConnected) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
-            fontSize = 14.sp,
-            fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            style = if (isConnected) {
-                TextStyle(
-                    shadow = Shadow(
-                        color = Color(0xFFD8DCE6).copy(alpha = 0.85f),
-                        offset = Offset(0f, 0f),
-                        blurRadius = pulseGlow
-                    )
-                )
-            } else {
-                TextStyle.Default
-            },
-            modifier = Modifier
-                .scale(if (isConnected) pulseScale else 1f)
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-        )
-    }
-}
-
-/**
- * دکمه اتصال با رنگ‌بندی نقره‌ای و خاکستری متالیک شاینی
- * همراه با گربه کوچک‌تر که فقط سرِ پنجه‌هایش کمی روی لبه بالایی دایره قرار می‌گیرد
- */
-@Composable
-private fun PowerButton(
-    mode: UiMode,
-    progress: Float,
-    lang: AppLang,
-    isVipMode: Boolean,
-    onClick: () -> Unit
-) {
-    val isConnected = mode == UiMode.CONNECTED
-    val target = when (mode) {
-        UiMode.IDLE -> if (isVipMode) Color(0xFFB8B2A6) else Color(0xFF8A8E99)
-        UiMode.SCANNING -> Color(0xFFC4C8D4)
-        UiMode.CONNECTING -> Color(0xFFD4D8E2)
-        UiMode.CONNECTED -> Color(0xFFE4E7F0)
-    }
-    val color by animateColorAsState(target, tween(700), label = "pbColor")
-    val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
-    val glow by animateFloatAsState(
-        if (isConnected) 1f else 0f, tween(800), label = "pbGlow"
-    )
-
-    val catPresence by animateFloatAsState(
-        targetValue = if (isConnected) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "catPresence"
-    )
-
-    val inf = rememberInfiniteTransition(label = "pbInf")
-    val pulse by inf.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing)),
-        label = "pbPulse"
-    )
-    val spin by inf.animateFloat(
-        initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
-        label = "pbSpin"
-    )
-    val breathe by inf.animateFloat(
-        initialValue = 1f, targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse
-        ),
-        label = "pbBreathe"
-    )
-
-    val boxHeight = if (isConnected) 256.dp else 224.dp
-
-    Box(
-        modifier = Modifier
-            .width(236.dp)
-            .height(boxHeight),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier.size(220.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val c = Offset(size.width / 2f, size.height / 2f)
-                val r = size.minDimension * 0.35f
-                when (mode) {
-                    UiMode.CONNECTED, UiMode.CONNECTING -> {
-                        for (k in 0..1) {
-                            val t = (pulse + k / 2f) % 1f
-                            drawCircle(
-                                color = color.copy(alpha = (1f - t) * 0.28f),
-                                radius = r + 6.dp.toPx() + t * size.minDimension * 0.12f,
-                                center = c,
-                                style = Stroke(width = 2.dp.toPx())
-                            )
-                        }
-                    }
-                    UiMode.SCANNING -> {
-                        val rr = r + 12.dp.toPx()
-                        val tl = Offset(c.x - rr, c.y - rr)
-                        val sz = Size(rr * 2f, rr * 2f)
-                        drawArc(
-                            color = color.copy(alpha = 0.20f), startAngle = 0f, sweepAngle = 360f,
-                            useCenter = false, topLeft = tl, size = sz, style = Stroke(4.dp.toPx())
-                        )
-                        drawArc(
-                            color = color, startAngle = -90f, sweepAngle = 360f * animProgress,
-                            useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                        drawArc(
-                            color = Color(0xFFF2F4F8).copy(alpha = 0.9f), startAngle = spin, sweepAngle = 40f,
-                            useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                    }
-                    else -> {}
-                }
-                drawCircle(
-                    color = color.copy(alpha = 0.32f + 0.28f * glow),
-                    radius = r + 5.dp.toPx(),
-                    center = c,
-                    style = Stroke(width = 1.8.dp.toPx())
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(162.dp)
-                    .scale(if (mode == UiMode.IDLE) breathe else 1f)
-                    .clip(CircleShape)
-                    .background(
-                        if (isConnected) {
-                            // نقره‌ای و خاکستری متالیک شاینی (جایگزین رنگ طلایی وسط صفحه)
-                            Brush.radialGradient(
-                                listOf(
-                                    Color(0xFFF4F6FA),
-                                    Color(0xFFC8CCD6),
-                                    Color(0xFF7D8290)
-                                )
-                            )
-                        } else {
-                            Brush.radialGradient(
-                                listOf(
-                                    Color(0xFF343640),
-                                    Color(0xFF22232A),
-                                    Color(0xFF16171C)
-                                )
-                            )
-                        }
-                    )
-                    .border(
-                        width = 2.dp,
-                        brush = Brush.linearGradient(
-                            if (isConnected) {
-                                listOf(Color(0xFFFFFFFF), Color(0xFFD8DCE6), Color(0xFF6E7380))
-                            } else {
-                                listOf(Color(0xFFD0D4DF), Color(0xFF6B6E7B), Color(0xFF363842))
-                            }
-                        ),
-                        shape = CircleShape
-                    )
-                    .clickable(onClick = onClick),
-                contentAlignment = Alignment.Center
-            ) {
-                Crossfade(targetState = mode, label = "pbText") { m ->
-                    val fg = if (m == UiMode.CONNECTED) Color(0xFF16171C) else Color(0xFFF2F4F8)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(top = if (m == UiMode.CONNECTED) 16.dp else 0.dp)
-                    ) {
-                        Text(
-                            text = when (m) {
-                                UiMode.IDLE -> if (isVipMode) "VIP CONNECT" else "CONNECT"
-                                UiMode.SCANNING -> "SCANNING"
-                                UiMode.CONNECTING -> "CONNECTING"
-                                UiMode.CONNECTED -> "CONNECTED"
-                            },
-                            color = fg, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = when (m) {
-                                UiMode.IDLE -> Strings.smartConnect(lang, isVipMode)
-                                UiMode.SCANNING -> Strings.tapToCancel(lang)
-                                UiMode.CONNECTING -> Strings.tapToCancel(lang)
-                                UiMode.CONNECTED -> Strings.disconnect(lang)
-                            },
-                            color = fg.copy(alpha = 0.80f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // گربه کوچک‌تر شده که سرش بالای دایره است و فقط سرِ دستانش کمی وارد لبه بالایی دایره می‌شود
-        if (catPresence > 0.01f) {
-            Image(
-                painter = painterResource(id = R.drawable.penny_cat_peeking),
-                contentDescription = "Peeking Cat on Connect Button",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .width(88.dp)
-                    .height(102.dp)
-                    .offset(y = (-12).dp)
-                    .graphicsLayer {
-                        alpha = catPresence.coerceIn(0f, 1f)
-                        translationY = (1f - catPresence) * 28.dp.toPx()
-                        val sc = 0.80f + 0.20f * catPresence
-                        scaleX = sc
-                        scaleY = sc
-                    }
-                    .clickable(onClick = onClick)
-            )
-        }
-    }
-}
-
-// ═════════════════════════ Activity ═════════════════════════
-
 class MainActivity : HelperBaseComponentActivity() {
 
     companion object {
         private const val TAG = "PennyVPN"
 
-        // ── شناسه‌های کامل تست اندروید AdMob (Official Google Test IDs) ──
-        // • شماره سریال برنامه تست (Test App ID): ca-app-pub-3940256099942544~3347511713
+        // ── شناسه‌های رسمی تست اندروید AdMob ──
         const val ADMOB_APP_ID = "ca-app-pub-3940256099942544~3347511713"
-        // • تبلیغ بنری (Banner):
         private const val ADMOB_BANNER_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
-        // • تبلیغ بین‌صفحه‌ای (Interstitial):
         private const val ADMOB_INTERSTITIAL_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
-        // • تبلیغ ویدیویی جایزه‌دار (Rewarded):
         const val ADMOB_REWARDED_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
-        // • تبلیغ بومی پیشرفته (Native Advanced):
         const val ADMOB_NATIVE_UNIT_ID = "ca-app-pub-3940256099942544/2247696110"
-        // • تبلیغ بازگشایی اپلیکیشن (App Open):
         const val ADMOB_APP_OPEN_UNIT_ID = "ca-app-pub-3940256099942544/9257395921"
-
-        private const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024 // سقف ۴ مگابایت برای امنیت دانلود
-
-        private const val TCP_TIMEOUT_MS = 2500
-        private const val MAX_TCP_CANDIDATES = 300
-        private const val TCP_PARALLEL = 40
 
         private const val REAL_TEST_COUNT = 60
         private const val REAL_TEST_TIMEOUT_MS = 45_000L
@@ -1499,28 +128,11 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
-        // ── تنظیمات مدل درآمدزایی Time-Boxed + محدودیت نمایش (Frequency Capping) ──
+        // ── مدل درآمدزایی Time-Boxed + محدودیت نمایش (Frequency Capping) ──
         private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
         private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای ویدیو جایزه‌دار
-
-        private val TEST_URLS = listOf(
-            "https://www.gstatic.com/generate_204",
-            "https://cp.cloudflare.com/generate_204"
-        )
     }
-
-    // ── منابع سرورهای عادی ──
-    private val SUBSCRIPTION_SOURCES = listOf(
-        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub7.txt",
-        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub8.txt"
-    )
-
-    // ── محل وارد کردن سرورهای مشترکین ویژه (اشتراک ۱ ماه ۵۰ گیگ) ──
-    // لینک عمومی barry-far/Sub1.txt حذف شد تا فقط سرورهای اختصاصی امضاشده شما بارگذاری شوند:
-    private val DEFAULT_VIP_SUBSCRIPTION_SOURCES = listOf(
-        "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
-    )
 
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModel.Factory(application, MainRepository(application as AngApplication))
@@ -1528,7 +140,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val socksPort: Int get() = SettingsManager.getSocksPort()
 
-    // ── وضعیت AdMob (مدل Time-Boxed: ۱ ساعت پایه + دکمه + Add Time (+۲ ساعت) + محدودیت ۱۰ دقیقه Interstitial) ──
+    // ── وضعیت AdMob ──
     private var interstitialAd: InterstitialAd? = null
     private var isAdLoading = false
     private var lastInterstitialShownMs by mutableStateOf(0L)
@@ -1536,7 +148,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private var isRewardedLoading = false
     private var freeSessionRemainingSec by mutableStateOf(BASE_FREE_SESSION_SEC)
 
-    // ── وضعیت UI و امکانات پیشرفته (پروفایل گیمینگ/استریم، Split Tunnel، سپر DNS) ──
+    // ── وضعیت UI ──
     private var showSplash by mutableStateOf(true)
     private var appLang by mutableStateOf(AppLang.EN)
     private var phase by mutableStateOf(Phase.IDLE)
@@ -1553,15 +165,18 @@ class MainActivity : HelperBaseComponentActivity() {
     private var connectionProfile by mutableStateOf(ConnectionProfile.SMART)
     private var userWantsConnected by mutableStateOf(false)
 
-    // ── وضعیت اشتراک ۱ ماه ۵۰ گیگ (VIP) + محافظ دستکاری ساعت (vipLastSeenMs) ──
+    // ── وضعیت اشتراک ۱ ماه ۵۰ گیگ (تأیید و شمارش حجم سمت سرور) ──
     private var vipActive by mutableStateOf(false)
     private var useVipServers by mutableStateOf(false)
     private var vipCode by mutableStateOf("")
+    private var vipSerial by mutableStateOf("")
     private var vipExpireMs by mutableStateOf(0L)
     private var vipUsedBytes by mutableStateOf(0L)
     private var vipMaxBytes by mutableStateOf(VipLicenseManager.VIP_MAX_BYTES)
     private var vipLastSeenMs by mutableStateOf(0L)
+    private var pendingUnsyncedBytes by mutableStateOf(0L)
     private var customVipSubUrl by mutableStateOf("")
+    private var licenseServerUrl by mutableStateOf(VipLicenseManager.DEFAULT_LICENSE_API_BASE)
     private var showVipDialog by mutableStateOf(false)
     private val deviceId: String by lazy { VipLicenseManager.getDeviceId(this) }
 
@@ -1602,19 +217,21 @@ class MainActivity : HelperBaseComponentActivity() {
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
         loadSaved()
         checkVipExpiration()
+        syncServerQuotaInBackground(0L)
         initAdMob()
         startMonitor()
         registerNetworkChangeAutoReconnect()
     }
 
     override fun onStop() {
-        // ذخیره فوری مصرف ترافیک VIP و آخرین زمان دیده‌شده هنگام خروج/پس‌زمینه شدن اپ
         if (vipActive) {
             val now = effectiveNowMs()
             prefs.edit()
                 .putLong("vip_used_bytes", vipUsedBytes)
                 .putLong("vip_last_seen_ms", now)
                 .apply()
+            syncServerQuotaInBackground(pendingUnsyncedBytes)
+            pendingUnsyncedBytes = 0L
         }
         super.onStop()
     }
@@ -1624,10 +241,6 @@ class MainActivity : HelperBaseComponentActivity() {
         super.onDestroy()
     }
 
-    /**
-     * محافظ ساعت گوشی (Clock Rollback Guard):
-     * اگر کاربر ساعت گوشی را به عقب بکشد، زمان مؤثر از آخرین زمان ثبت‌شده عقب‌تر نمی‌رود.
-     */
     private fun effectiveNowMs(): Long {
         val sysNow = System.currentTimeMillis()
         if (sysNow > vipLastSeenMs) {
@@ -1636,7 +249,37 @@ class MainActivity : HelperBaseComponentActivity() {
         return maxOf(sysNow, vipLastSeenMs)
     }
 
-    // ═════════════════════════ راه‌اندازی سرویس تبلیغات AdMob (بنری + بینابینی) ═════════════════════════
+    // ═════════════════════════ همگام‌سازی حجم ۵۰ گیگ و اعتبار لایسنس با سرور ═════════════════════════
+
+    private fun syncServerQuotaInBackground(deltaToReport: Long) {
+        if (!vipActive || vipSerial.isBlank()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val state = VipLicenseManager.syncTrafficWithServer(
+                apiBaseUrl = licenseServerUrl,
+                serial = vipSerial,
+                deviceId = deviceId,
+                deltaBytes = deltaToReport
+            ) ?: return@launch
+
+            withContext(Dispatchers.Main) {
+                vipUsedBytes = maxOf(vipUsedBytes, state.usedBytes)
+                vipMaxBytes = state.maxBytes
+                if (state.expiresAtMs > 0L) {
+                    vipExpireMs = state.expiresAtMs
+                }
+                prefs.edit()
+                    .putLong("vip_used_bytes", vipUsedBytes)
+                    .putLong("vip_max_bytes", vipMaxBytes)
+                    .putLong("vip_expire_ms", vipExpireMs)
+                    .apply()
+                if (!state.active || vipUsedBytes >= vipMaxBytes) {
+                    checkVipExpiration()
+                }
+            }
+        }
+    }
+
+    // ═════════════════════════ AdMob (مدل Time-Boxed + کول‌داون ۱۰ دقیقه‌ای) ═════════════════════════
 
     private fun initAdMob() {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -1686,12 +329,8 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
-    /**
-     * نمایش تبلیغ تمام‌صفحه (Interstitial) هنگام Connect با رعایت محدودیت Frequency Capping
-     * (حداکثر ۱ بار در هر ۱۰ دقیقه تا کاربر در صورت تغییر سرور کلافه نشود و کلیک تصادفی نکند)
-     */
     private fun showInterstitialAdIfReady() {
-        if (vipActive) return // مشترکین ۱ ماه ۵۰ گیگ بدون تبلیغ هستند
+        if (vipActive) return
         val now = System.currentTimeMillis()
         if (now - lastInterstitialShownMs < INTERSTITIAL_COOLDOWN_MS) {
             val waitSec = ((INTERSTITIAL_COOLDOWN_MS - (now - lastInterstitialShownMs)) / 1000L).coerceAtLeast(1L)
@@ -1740,40 +379,6 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
-    /**
-     * هدیه ۲ ساعت اشتراک رایگان VIP (۱ گیگابایت) در ازای تماشای تبلیغ ویدیویی جایزه‌دار (Rewarded Ad)
-     */
-    private fun grantRewardedTrialVipPass() {
-        val now = effectiveNowMs()
-        val trialDurationMs = 2L * 3600L * 1000L // ۲ ساعت
-        val trialBytes = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت
-        vipActive = true
-        useVipServers = true
-        vipCode = "REWARD-2H-VIP"
-        vipExpireMs = now + trialDurationMs
-        vipMaxBytes = trialBytes
-        vipUsedBytes = 0L
-        vipLastSeenMs = now
-        prefs.edit()
-            .putBoolean("vip_active", true)
-            .putBoolean("use_vip_servers", true)
-            .putString("vip_code", vipCode)
-            .putLong("vip_expire_ms", vipExpireMs)
-            .putLong("vip_max_bytes", vipMaxBytes)
-            .putLong("vip_used_bytes", 0L)
-            .putLong("vip_last_seen_ms", now)
-            .apply()
-        statusMessage = "2h Free VIP Trial Unlocked (1 GB)"
-        plog("Rewarded Ad watched: 2h VIP Pass (1 GB) activated")
-        if (vipBestList.isEmpty()) {
-            startScanOnly()
-        }
-    }
-
-    /**
-     * افزایش زمان اتصال به میزان +۲ ساعت (۷۲۰۰ ثانیه) با تماشای ویدیو جایزه‌دار (Rewarded Video)
-     * منبع اصلی درآمدزایی بدون کلافه کردن کاربر (کاملاً اختیاری با بالاترین eCPM)
-     */
     private fun addTwoHoursToSession() {
         freeSessionRemainingSec += REWARD_ADD_TIME_SEC
         prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
@@ -1793,30 +398,21 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    private fun showRewardedAdForTrialPass(onResult: (Boolean, String) -> Unit) {
-        val ad = rewardedAd
-        if (ad != null) {
-            ad.show(this, OnUserEarnedRewardListener {
-                grantRewardedTrialVipPass()
-                onResult(true, "2 Hours Free VIP Pass (1 GB) Unlocked!")
-            })
-        } else {
-            loadRewardedAd()
-            // اگر تبلیغ تست در حال بارگذاری بود، در محیط تست بلافاصله جایزه را فعال می‌کنیم
-            grantRewardedTrialVipPass()
-            onResult(true, "2 Hours Free VIP Pass (1 GB) Unlocked!")
-        }
-    }
+    // ═════════════════════════ مدیریت اشتراک ۱ ماه ۵۰ گیگ (سرورمحور + ECDSA چرخانده‌شده) ═════════════════════════
 
-    // ═════════════════════════ مدیریت اشتراک ۱ ماه ۵۰ گیگ ═════════════════════════
-
-    private fun getVipSubscriptionSources(): List<String> {
+    private fun getSubscriptionSources(isVip: Boolean): List<String> {
         val custom = customVipSubUrl.trim()
-        return if (custom.isNotEmpty()) {
-            // فقط لینک‌های HTTPS مجاز هستند
-            custom.split("\n", ",").map { it.trim() }.filter { it.startsWith("https://", ignoreCase = true) } + DEFAULT_VIP_SUBSCRIPTION_SOURCES
+        val baseList = if (isVip) {
+            PennyServerScanner.SIGNED_VIP_SUBSCRIPTION_SOURCES
         } else {
-            DEFAULT_VIP_SUBSCRIPTION_SOURCES
+            PennyServerScanner.SIGNED_STANDARD_SUBSCRIPTION_SOURCES
+        }
+        return if (isVip && custom.isNotEmpty()) {
+            custom.split("\n", ",")
+                .map { it.trim() }
+                .filter { it.startsWith("https://", ignoreCase = true) } + baseList
+        } else {
+            baseList
         }
     }
 
@@ -1835,12 +431,11 @@ class MainActivity : HelperBaseComponentActivity() {
                 .putString("vip_code", "")
                 .putLong("vip_last_seen_ms", now)
                 .apply()
-            val msg = if (trafficExpired) {
-                "Your 50 GB traffic quota has been reached."
+            statusMessage = if (trafficExpired) {
+                "Your 50 GB server traffic quota has been reached."
             } else {
                 "Your 1-month subscription has expired."
             }
-            statusMessage = msg
             plog("VIP expired: timeExpired=$timeExpired, trafficExpired=$trafficExpired")
             if (mainViewModel.uiState.value.isRunning) {
                 LauncherManager.stopService(this)
@@ -1850,48 +445,50 @@ class MainActivity : HelperBaseComponentActivity() {
         return false
     }
 
-    private fun activateVipWithCode(inputCode: String): Pair<Boolean, String> {
-        val now = effectiveNowMs()
-        val (verified, errMsg) = VipLicenseManager.verifyLicense(inputCode, deviceId, now)
-        if (verified == null) {
-            return false to errMsg
+    private fun activateVipWithServerVerification(
+        inputCode: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val (serverState, msg) = VipLicenseManager.activateOnServer(
+                apiBaseUrl = licenseServerUrl,
+                rawCode = inputCode,
+                deviceId = deviceId
+            )
+            withContext(Dispatchers.Main) {
+                if (serverState == null || !serverState.ok || !serverState.active) {
+                    onComplete(false, msg)
+                    return@withContext
+                }
+                val now = effectiveNowMs()
+                vipActive = true
+                useVipServers = true
+                vipCode = inputCode.trim()
+                vipSerial = serverState.serial
+                vipExpireMs = serverState.expiresAtMs
+                vipMaxBytes = serverState.maxBytes
+                vipUsedBytes = serverState.usedBytes
+                vipLastSeenMs = now
+
+                prefs.edit()
+                    .putBoolean("vip_active", true)
+                    .putBoolean("use_vip_servers", true)
+                    .putString("vip_code", vipCode)
+                    .putString("vip_serial", vipSerial)
+                    .putLong("vip_expire_ms", vipExpireMs)
+                    .putLong("vip_max_bytes", vipMaxBytes)
+                    .putLong("vip_used_bytes", vipUsedBytes)
+                    .putLong("vip_last_seen_ms", now)
+                    .apply()
+
+                plog("Server-verified 1M/50GB Plan Activated (${VipLicenseManager.maskCode(vipCode)}, used=${fmtBytes(vipUsedBytes)})")
+                statusMessage = "1 Month 50 GB Plan Activated (Server Verified)"
+                onComplete(true, statusMessage)
+            }
         }
-
-        val usedSet = prefs.getStringSet("used_vip_serials", emptySet())?.toMutableSet() ?: mutableSetOf()
-        // جلوگیری کامل از فعال‌سازی مجدد کد استفاده شده حتی پس از اتمام اشتراک
-        if (verified.serial in usedSet) {
-            return false to "This activation code has already been used."
-        }
-
-        val normalized = inputCode.trim()
-        usedSet.add(verified.serial)
-
-        vipActive = true
-        useVipServers = true
-        vipCode = normalized
-        vipExpireMs = now + verified.durationMs
-        vipMaxBytes = verified.maxBytes
-        vipUsedBytes = 0L
-        vipLastSeenMs = now
-
-        prefs.edit()
-            .putBoolean("vip_active", true)
-            .putBoolean("use_vip_servers", true)
-            .putString("vip_code", vipCode)
-            .putLong("vip_expire_ms", vipExpireMs)
-            .putLong("vip_max_bytes", vipMaxBytes)
-            .putLong("vip_used_bytes", 0L)
-            .putLong("vip_last_seen_ms", now)
-            .putStringSet("used_vip_serials", usedSet)
-            .apply()
-
-        plog("1M/50GB Plan Activated (${VipLicenseManager.maskCode(vipCode)})")
-        statusMessage = "1 Month 50 GB Plan Activated"
-
-        return true to statusMessage
     }
 
-    // ═════════════════════════ تشخیص تغییر شبکه و اتصال مجدد خودکار (Auto-Reconnect) ═════════════════════════
+    // ═════════════════════════ اتصال مجدد خودکار در تغییر شبکه ═════════════════════════
 
     private fun registerNetworkChangeAutoReconnect() {
         try {
@@ -1904,9 +501,14 @@ class MainActivity : HelperBaseComponentActivity() {
                         delay(1800)
                         if (!autoReconnect || !userWantsConnected || phase != Phase.IDLE) return@launch
                         val isRunning = mainViewModel.uiState.value.isRunning
-                        val tunnelAlive = isRunning && testThroughLocalProxy(TEST_URLS.first()) > 0
+                        val tunnelAlive = isRunning &&
+                            PennyServerScanner.testThroughLocalProxy(
+                                PennyServerScanner.TEST_URLS.first(),
+                                socksPort,
+                                ::plog
+                            ) > 0
                         if (!tunnelAlive) {
-                            plog("Network change / drop detected; auto-reconnecting to last healthy server...")
+                            plog("Network change detected; auto-reconnecting...")
                             triggerAutoReconnect()
                         }
                     }
@@ -1919,7 +521,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         lifecycleScope.launch(Dispatchers.IO) {
                             delay(1500)
                             if (autoReconnect && userWantsConnected && phase == Phase.IDLE && !mainViewModel.uiState.value.isRunning) {
-                                plog("Auto-Reconnect triggered on network capability recovery")
                                 triggerAutoReconnect()
                             }
                         }
@@ -1986,12 +587,15 @@ class MainActivity : HelperBaseComponentActivity() {
         vipActive = prefs.getBoolean("vip_active", false)
         useVipServers = prefs.getBoolean("use_vip_servers", vipActive)
         vipCode = prefs.getString("vip_code", "") ?: ""
+        vipSerial = prefs.getString("vip_serial", "") ?: ""
         vipExpireMs = prefs.getLong("vip_expire_ms", 0L)
         vipMaxBytes = prefs.getLong("vip_max_bytes", VipLicenseManager.VIP_MAX_BYTES)
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
         vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
         effectiveNowMs()
         customVipSubUrl = prefs.getString("custom_vip_sub_url", "") ?: ""
+        licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
+            ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
         prefs.getString("list", null)?.let { json ->
             try {
@@ -2007,7 +611,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 bestList.clear()
                 bestList.addAll(assignLabels(out, isVipList = false))
             } catch (e: Exception) {
-                plog("Error loading free cache: ${e.message}")
+                plog("Error loading cache: ${e.message}")
             }
         }
 
@@ -2044,8 +648,6 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    // ═════════════════════════ لاگ ═════════════════════════
-
     private fun plog(msg: String) {
         Log.d(TAG, msg)
         val line = "${timeFmt.format(Date())}  $msg"
@@ -2080,7 +682,6 @@ class MainActivity : HelperBaseComponentActivity() {
             else -> UiMode.IDLE
         }
 
-        // ── آمار زنده + کسر حجم از اعتبار ۵۰ گیگ در حالت VIP ──
         var downSpeed by remember { mutableStateOf(0L) }
         var upSpeed by remember { mutableStateOf(0L) }
         var totalDown by remember { mutableStateOf(0L) }
@@ -2142,7 +743,6 @@ class MainActivity : HelperBaseComponentActivity() {
                 lastT = now
                 elapsedSec = (System.currentTimeMillis() - connectStartMs) / 1000L
 
-                // شمارش معکوس تایمر ۱ ساعته برای کاربران رایگان (مدل Time-Boxed)
                 if (!vipActive) {
                     if (freeSessionRemainingSec > 0L) {
                         freeSessionRemainingSec -= 1L
@@ -2158,8 +758,15 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 if (vipActive && useVipServers && stepDeltaBytes > 0L) {
                     vipUsedBytes += stepDeltaBytes
+                    pendingUnsyncedBytes += stepDeltaBytes
                     if (tickCount % 5 == 0) {
                         prefs.edit().putLong("vip_used_bytes", vipUsedBytes).apply()
+                    }
+                    // هر ۱۵ ثانیه مصرف حجم ۵۰ گیگ را با سرور لایسنس همگام‌سازی می‌کنیم
+                    if (tickCount % 15 == 0 && pendingUnsyncedBytes > 0L) {
+                        val toSync = pendingUnsyncedBytes
+                        pendingUnsyncedBytes = 0L
+                        syncServerQuotaInBackground(toSync)
                     }
                     checkVipExpiration()
                 }
@@ -2186,7 +793,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         )
                     )
             ) {
-                // ── لوگوی کمرنگ (Watermark) جدید در پس‌زمینه ──
                 Image(
                     painter = painterResource(id = R.drawable.penny_cat_logo),
                     contentDescription = null,
@@ -2207,7 +813,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         .padding(top = 38.dp, bottom = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // ── هدر براق متمرکز و پایین‌تر از لبه بالایی ──
                     NeonBrandHeader(
                         mode = mode,
                         lang = appLang,
@@ -2217,7 +822,6 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // ── دکمه اصلی همراه با گربه لوگو که هنگام اتصال روی لبه دایره می‌نشیند ──
                     PowerButton(
                         mode = mode,
                         progress = scanProgress,
@@ -2226,7 +830,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         onClick = { onPowerClick() }
                     )
 
-                    // ── پیام وضعیت با انیمیشن پالس در حالت CONNECTED ──
                     PulsingStatusText(
                         mode = mode,
                         statusMessage = statusMessage,
@@ -2234,7 +837,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         isVip = isVipMode
                     )
 
-                    // ── آمار زنده ──
                     AnimatedVisibility(
                         visible = mode == UiMode.CONNECTED,
                         enter = fadeIn() + expandVertically(),
@@ -2250,14 +852,8 @@ class MainActivity : HelperBaseComponentActivity() {
                         ) {
                             Column(modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth()) {
-                                    StatCell(
-                                        fmtSpeed(downSpeed), Strings.download(appLang),
-                                        Modifier.weight(1f)
-                                    )
-                                    StatCell(
-                                        fmtSpeed(upSpeed), Strings.upload(appLang),
-                                        Modifier.weight(1f)
-                                    )
+                                    StatCell(fmtSpeed(downSpeed), Strings.download(appLang), Modifier.weight(1f))
+                                    StatCell(fmtSpeed(upSpeed), Strings.upload(appLang), Modifier.weight(1f))
                                 }
                                 Spacer(Modifier.height(10.dp))
                                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -2273,7 +869,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                     )
                                 }
 
-                                // ── دکمه جذاب و انیمیشنی "+ Add Time (+2 Hours • Watch Video)" زیر تایمر اتصال ──
                                 if (!vipActive) {
                                     Spacer(Modifier.height(10.dp))
                                     val btnPulse = rememberInfiniteTransition(label = "addTimePulse")
@@ -2345,7 +940,6 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // ── نوار انتخاب پروفایل هوشمند (Smart Auto / Gaming Low-Ping / Streaming) ──
                     ConnectionProfileBar(
                         selected = connectionProfile,
                         onSelect = { prof ->
@@ -2358,7 +952,6 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(8.dp))
 
-                    // ── کارت سرور مدرن با افکت Fade هنگام تغییر سرور ──
                     ModernServerCard(
                         server = current,
                         isConnected = mode == UiMode.CONNECTED,
@@ -2370,7 +963,6 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // ── نوار پیشرفت اسکن ──
                     AnimatedVisibility(visible = phase == Phase.SCANNING) {
                         val p by animateFloatAsState(scanProgress, tween(400), label = "bar")
                         Box(
@@ -2390,7 +982,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ── دکمه‌های اسکن و سرور بعدی بدون ایموجی ──
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -2434,7 +1025,6 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     Spacer(Modifier.height(10.dp))
 
-                    // ── داک مدرن پایین صفحه (اشتراک ۱ ماه ۵۰ گیگ با الماس سفید شیشه‌ای و منوی مدرن؛ بدون ایموجی) ──
                     Surface(
                         color = Color(0xFF1A1A1F).copy(alpha = 0.94f),
                         shape = RoundedCornerShape(20.dp),
@@ -2448,7 +1038,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // کارت/دکمه اشتراک ۱ ماه ۵۰ گیگ با آیکن الماس سفید شیشه‌ای
                                 Surface(
                                     color = if (vipActive) Color(0xFF282A33) else Color(0xFF23242B),
                                     shape = RoundedCornerShape(14.dp),
@@ -2482,10 +1071,10 @@ class MainActivity : HelperBaseComponentActivity() {
                                                 )
                                                 val subVipText = if (vipActive) {
                                                     val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
-                                                    val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
+                                                    val remBytes = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
                                                     "${remDays}d • ${fmtBytes(remBytes)} left"
                                                 } else {
-                                                    "Activate dedicated servers with code"
+                                                    "Server-verified ECDSA license"
                                                 }
                                                 Text(
                                                     text = subVipText,
@@ -2505,7 +1094,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                     }
                                 }
 
-                                // دکمه منوی مدرن در داک پایین (بدون ایموجی)
                                 Surface(
                                     color = Color(0xFF23242B),
                                     shape = RoundedCornerShape(14.dp),
@@ -2530,9 +1118,8 @@ class MainActivity : HelperBaseComponentActivity() {
                                 }
                             }
 
-                            // نوار پیشرفت حجم ۵۰ گیگ در صورت فعال بودن اشتراک ۱ ماه ۵۰ گیگ
                             if (vipActive) {
-                                val progressRatio = (vipUsedBytes.toFloat() / VipLicenseManager.VIP_MAX_BYTES.toFloat()).coerceIn(0f, 1f)
+                                val progressRatio = (vipUsedBytes.toFloat() / vipMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
                                 Spacer(Modifier.height(8.dp))
                                 Box(
                                     modifier = Modifier
@@ -2552,7 +1139,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ── کارت نمایش کیفیت کل سرویس و درصد آپ‌تایم ──
                     Spacer(Modifier.height(10.dp))
                     ServiceQualityUptimeCard(
                         lang = appLang,
@@ -2583,7 +1169,6 @@ class MainActivity : HelperBaseComponentActivity() {
                     )
                 }
 
-                // ── اسپلش بزرگ‌تر و متحرک ابتدای برنامه با لوگوی اختصاصی Penny VPN ──
                 AnimatedVisibility(
                     visible = showSplash,
                     enter = fadeIn(tween(300)) + scaleIn(tween(300)),
@@ -2603,9 +1188,6 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    /**
-     * منوی مدرن کارتی بدون هیچ ایموجی و با دکمه‌های خاموش/روشن مشکی طوسی
-     */
     @Composable
     private fun ModernMenuDialog(isVipMode: Boolean) {
         AlertDialog(
@@ -2632,7 +1214,6 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // ۱. کارت اشتراک ۱ ماه ۵۰ گیگ با الماس سفید شیشه‌ای
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -2664,7 +1245,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ۲. کارت لیست بهترین سرورها (بدون ایموجی)
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -2692,7 +1272,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ۳. سوییچ تعویض خودکار هنگام قطعی (مشکی و طوسی)
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -2705,12 +1284,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "Auto-Switch on Drop",
-                                fontSize = 13.sp,
-                                color = Color(0xFFF2F4F8),
-                                modifier = Modifier.weight(1f)
-                            )
+                            Text("Auto-Switch on Drop", fontSize = 13.sp, color = Color(0xFFF2F4F8), modifier = Modifier.weight(1f))
                             Switch(
                                 checked = autoSwitch,
                                 onCheckedChange = {
@@ -2722,7 +1296,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ۴. سوییچ اتصال خودکار در تغییر شبکه (مشکی و طوسی)
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -2735,12 +1308,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "Auto-Reconnect on Net Change",
-                                fontSize = 13.sp,
-                                color = Color(0xFFF2F4F8),
-                                modifier = Modifier.weight(1f)
-                            )
+                            Text("Auto-Reconnect on Net Change", fontSize = 13.sp, color = Color(0xFFF2F4F8), modifier = Modifier.weight(1f))
                             Switch(
                                 checked = autoReconnect,
                                 onCheckedChange = {
@@ -2752,7 +1320,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ۵. سوییچ هوشمند Split Tunneling (عبور مستقیم بانک‌ها و اپ‌های داخلی بدون نیاز به قطع VPN)
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -2766,17 +1333,8 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Smart Split Tunneling",
-                                    fontSize = 13.sp,
-                                    color = Color(0xFFF2F4F8),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Bypass local & banking apps automatically",
-                                    fontSize = 10.sp,
-                                    color = Color(0xFF9EA1AB)
-                                )
+                                Text("Smart Split Tunneling", fontSize = 13.sp, color = Color(0xFFF2F4F8), fontWeight = FontWeight.SemiBold)
+                                Text("Bypass local & banking apps automatically", fontSize = 10.sp, color = Color(0xFF9EA1AB))
                             }
                             Switch(
                                 checked = splitTunnelLocal,
@@ -2792,7 +1350,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ۶. سوییچ Clean DNS & Anti-Tracker Shield (مسدودسازی تبلیغات مزاحم و ردیاب‌ها در سطح DNS)
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -2806,17 +1363,8 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Clean DNS & Tracker Shield",
-                                    fontSize = 13.sp,
-                                    color = Color(0xFFF2F4F8),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Encrypted DNS (1.1.1.2) • Malware & tracker block",
-                                    fontSize = 10.sp,
-                                    color = Color(0xFF9EA1AB)
-                                )
+                                Text("Clean DNS & Tracker Shield", fontSize = 13.sp, color = Color(0xFFF2F4F8), fontWeight = FontWeight.SemiBold)
+                                Text("Encrypted DNS (1.1.1.2) • Malware & tracker block", fontSize = 10.sp, color = Color(0xFF9EA1AB))
                             }
                             Switch(
                                 checked = cleanDnsShield,
@@ -2832,7 +1380,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // ۵. ردیف لاگ برنامه و لاگ هسته
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2860,15 +1407,13 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
-    /**
-     * دیالوگ فعال‌سازی و مدیریت اشتراک ۱ ماه ۵۰ گیگ با آیکن الماس سفید شیشه‌ای و کلید مشکی طوسی
-     */
     @Composable
     private fun VipSubscriptionDialog() {
         var inputCode by remember { mutableStateOf("") }
         var subUrlInput by remember { mutableStateOf(customVipSubUrl) }
         var feedback by remember { mutableStateOf<String?>(null) }
         var isSuccess by remember { mutableStateOf(false) }
+        var isVerifying by remember { mutableStateOf(false) }
 
         AlertDialog(
             onDismissRequest = { showVipDialog = false },
@@ -2893,7 +1438,6 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // نمایش Device ID اختصاصی دستگاه برای دریافت کد لایسنس قفل‌شده روی دستگاه
                     Surface(
                         color = Color(0xFF20222A),
                         shape = RoundedCornerShape(10.dp),
@@ -2942,27 +1486,10 @@ class MainActivity : HelperBaseComponentActivity() {
                                 .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.40f), RoundedCornerShape(12.dp))
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = "Status: Active (Ad-Free)",
-                                    color = Color(0xFFF2F4F8),
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Active License: ${VipLicenseManager.maskCode(vipCode)}",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFD0D4DF),
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = "Time Remaining: ${remDays}d ${remHours}h",
-                                    color = Color(0xFFD0D4DF),
-                                    fontSize = 12.sp
-                                )
-                                Text(
-                                    text = "Traffic Remaining: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / ${fmtBytes(vipMaxBytes)})",
-                                    color = Color(0xFFE4E7F0),
-                                    fontSize = 12.sp
-                                )
+                                Text("Status: Active (Server-Verified • Ad-Free)", color = Color(0xFFF2F4F8), fontWeight = FontWeight.Bold)
+                                Text("Active License: ${VipLicenseManager.maskCode(vipCode)}", fontSize = 12.sp, color = Color(0xFFD0D4DF), fontFamily = FontFamily.Monospace)
+                                Text("Time Remaining: ${remDays}d ${remHours}h", color = Color(0xFFD0D4DF), fontSize = 12.sp)
+                                Text("Server Quota Left: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / ${fmtBytes(vipMaxBytes)})", color = Color(0xFFE4E7F0), fontSize = 12.sp)
                             }
                         }
 
@@ -2971,11 +1498,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "Use VIP Subscription Servers",
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 13.sp
-                            )
+                            Text("Use VIP Subscription Servers", color = Color(0xFFF2F4F8), fontSize = 13.sp)
                             Switch(
                                 checked = useVipServers,
                                 onCheckedChange = {
@@ -2987,7 +1510,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     } else {
                         Text(
-                            text = "Send your Device ID above to support and enter your ECDSA-signed activation code (PL1....) to unlock 1 Month / 50 GB and Ad-Free mode:",
+                            text = "Enter your ECDSA P-256 license (PL1....) to verify on server and unlock 1 Month / 50 GB:",
                             color = Color(0xFFD0D4DF),
                             fontSize = 12.5.sp
                         )
@@ -2995,24 +1518,29 @@ class MainActivity : HelperBaseComponentActivity() {
                         OutlinedTextField(
                             value = inputCode,
                             onValueChange = { inputCode = it.trim() },
-                            placeholder = { Text("PL1.eyJzZXJpYWwi...") },
+                            placeholder = { Text("PL1.<payload>.<signature>") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
 
                         Button(
                             onClick = {
+                                if (isVerifying) return@Button
                                 if (subUrlInput.trim() != customVipSubUrl) {
                                     customVipSubUrl = subUrlInput.trim()
                                     prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
                                 }
-                                val (ok, msg) = activateVipWithCode(inputCode)
-                                isSuccess = ok
-                                feedback = msg
-                                if (ok && vipBestList.isEmpty()) {
-                                    startScanOnly()
+                                isVerifying = true
+                                activateVipWithServerVerification(inputCode) { ok, msg ->
+                                    isVerifying = false
+                                    isSuccess = ok
+                                    feedback = msg
+                                    if (ok && vipBestList.isEmpty()) {
+                                        startScanOnly()
+                                    }
                                 }
                             },
+                            enabled = !isVerifying,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF383B46))
                         ) {
@@ -3020,30 +1548,11 @@ class MainActivity : HelperBaseComponentActivity() {
                                 GlassDiamondIcon(size = 15.dp)
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    text = "Activate 1 Month 50 GB",
+                                    text = if (isVerifying) "Verifying on Server..." else "Activate 1 Month 50 GB",
                                     color = Color(0xFFF2F4F8),
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                        }
-
-                        // دکمه جایزه تبلیغ ویدیویی AdMob (۲ ساعت اشتراک رایگان VIP با ۱ گیگ حجم)
-                        OutlinedButton(
-                            onClick = {
-                                showRewardedAdForTrialPass { ok, msg ->
-                                    isSuccess = ok
-                                    feedback = msg
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(
-                                text = "Watch Video Ad • Get 2h Free VIP (1 GB)",
-                                color = Color(0xFFE6CFAF),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
                         }
 
                         feedback?.let { msg ->
@@ -3056,7 +1565,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
 
-                    // بخش اختیاری لینک سابسکریپشن اختصاصی سرورهای ویژه
                     OutlinedTextField(
                         value = subUrlInput,
                         onValueChange = {
@@ -3064,12 +1572,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             customVipSubUrl = it.trim()
                             prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
                         },
-                        label = {
-                            Text(
-                                "Custom VIP Subscription URL (Optional)",
-                                fontSize = 11.sp
-                            )
-                        },
+                        label = { Text("Signed VIP Subscription URL (HTTPS + #PENNY-SIG)", fontSize = 11.sp) },
                         placeholder = { Text("https://.../vip-sub.txt", fontSize = 11.sp) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -3079,10 +1582,6 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
-    /**
-     * دیالوگ مدرن بهترین کانفیگ‌ها همراه با دکمه 'Global View' که لیست را به نمودار حبابی (Bubble Chart)
-     * بر اساس پینگ و مناطق سرور تبدیل می‌کند
-     */
     @Composable
     private fun BestConfigsDialog(selectedGuid: String?, isRunning: Boolean, isVipMode: Boolean) {
         val listToShow = activeList.sortedBy { it.ms }
@@ -3120,7 +1619,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         )
                     }
 
-                    // دکمه 'Global View' برای جابه‌جایی بین لیست عمودی و نمودار حبابی پینگ (Bubble Chart)
                     Surface(
                         color = if (isGlobalBubbleView) Color(0xFF2D2820) else Color(0xFF25262E),
                         shape = RoundedCornerShape(10.dp),
@@ -3147,7 +1645,6 @@ class MainActivity : HelperBaseComponentActivity() {
                 if (listToShow.isEmpty()) {
                     Text(Strings.emptyBestList(appLang))
                 } else if (isGlobalBubbleView) {
-                    // نمای حبابی (Bubble Chart) بر اساس پینگ و خوشه سرورها
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3170,7 +1667,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         ) {
                             val w = maxWidth
                             val h = maxHeight
-                            // چیدمان حبابی مارپیچی از مرکز (کمترین پینگ در مرکز و بزرگ‌ترین اندازه)
                             val positions = listOf(
                                 0.50f to 0.48f,
                                 0.25f to 0.30f,
@@ -3268,7 +1764,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                             .padding(horizontal = 11.dp, vertical = 9.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // باکس کد نود (بدون پرچم کشور)
                                         Box(
                                             modifier = Modifier
                                                 .size(34.dp)
@@ -3290,7 +1785,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                             )
                                         }
                                         Spacer(Modifier.width(9.dp))
-                                        // نام سرور بدون ستاره
                                         Text(
                                             text = s.label,
                                             color = Color(0xFFF2F4F8),
@@ -3301,7 +1795,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                             modifier = Modifier.weight(1f)
                                         )
                                         Spacer(Modifier.width(6.dp))
-                                        // نمایش پینگ بدون عبارات 10G ULTRA
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -3431,7 +1924,6 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 ui {
                     statusMessage = if (result != null) {
-                        // هنگام اتصال موفق در حالت رایگان، تایمر حداقل ۱ ساعت شارژ می‌شود و تبلیغ Interstitial (با محدودیت ۱۰ دقیقه) نمایش داده می‌شود
                         if (!vipActive && freeSessionRemainingSec < BASE_FREE_SESSION_SEC) {
                             freeSessionRemainingSec = BASE_FREE_SESSION_SEC
                             prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
@@ -3548,8 +2040,6 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    // ═════════════════════════ مانیتور و تعویض خودکار ═════════════════════════
-
     private fun startMonitor() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (true) {
@@ -3579,7 +2069,12 @@ class MainActivity : HelperBaseComponentActivity() {
     private suspend fun healthCheckAndSwitch() {
         var ok = false
         for (i in 0 until 2) {
-            if (testThroughLocalProxy(TEST_URLS[i % TEST_URLS.size]) > 0) {
+            if (PennyServerScanner.testThroughLocalProxy(
+                    PennyServerScanner.TEST_URLS[i % PennyServerScanner.TEST_URLS.size],
+                    socksPort,
+                    ::plog
+                ) > 0
+            ) {
                 ok = true
                 break
             }
@@ -3597,46 +2092,42 @@ class MainActivity : HelperBaseComponentActivity() {
         try {
             val r = connectFromList(startAfter = current)
             ui {
-                statusMessage = if (r != null) {
-                    "Switched to healthier server"
-                } else {
-                    "No healthy server found; please scan"
-                }
+                statusMessage = if (r != null) "Switched to healthier server" else "No healthy server found; please scan"
             }
         } finally {
             withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
         }
     }
 
-    // ═════════════════════════ اسکن (جداگانه برای عادی و اشتراک ۱ ماه ۵۰ گیگ) ═════════════════════════
-
     private suspend fun runScan(): Boolean {
         val scanningVip = vipActive && useVipServers
-        val sources = if (scanningVip) getVipSubscriptionSources() else SUBSCRIPTION_SOURCES
+        val sources = getSubscriptionSources(scanningVip)
 
         ui {
             phase = Phase.SCANNING
             scanProgress = 0.03f
-            statusMessage = if (scanningVip) "Fetching dedicated VIP servers..." else "Fetching server lists..."
+            statusMessage = if (scanningVip) "Fetching signed VIP servers..." else "Fetching signed server lists..."
         }
-        plog("Scan started (VIP=$scanningVip)")
+        plog("Scan started (VIP=$scanningVip, signed-only)")
 
         val contents = coroutineScope {
             sources.map { url ->
-                async(Dispatchers.IO) { fetchWithFallback(url, isVipSource = scanningVip) }
+                async(Dispatchers.IO) {
+                    PennyServerScanner.fetchSignedListWithFallback(url, ::plog)
+                }
             }.awaitAll().filter { it.isNotEmpty() }
         }
         if (contents.isEmpty()) {
-            plog("No subscription sources downloaded")
+            plog("No valid ECDSA-signed subscription sources found")
             ui {
-                statusMessage = "Failed to download servers! Check your connection."
+                statusMessage = "Failed to verify signed server list!"
             }
             return false
         }
 
         ui {
             scanProgress = 0.15f
-            statusMessage = "Processing configs..."
+            statusMessage = "Processing verified configs..."
         }
         val before = MmkvManager.decodeServerList("").toSet()
         for (content in contents) {
@@ -3648,7 +2139,6 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
         val newGuids = MmkvManager.decodeServerList("").filter { it !in before }
-        // پاک‌سازی فوری نام اصلی سرورهای ایمپورت شده تا در هیچ بخشی از سیستم یا نوتیفیکیشن دیده نشود
         newGuids.forEach { g ->
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
@@ -3660,26 +2150,20 @@ class MainActivity : HelperBaseComponentActivity() {
                 Log.w(TAG, "Sanitize remarks warning for $g: ${e.message}")
             }
         }
-        plog("New configs: ${newGuids.size}")
         if (newGuids.isEmpty()) {
-            ui {
-                statusMessage = "No valid configs found!"
-            }
+            ui { statusMessage = "No valid configs found!" }
             return false
         }
 
-        val tcpSampleCount = minOf(newGuids.size, MAX_TCP_CANDIDATES)
+        val tcpSampleCount = minOf(newGuids.size, PennyServerScanner.MAX_TCP_CANDIDATES)
         ui {
             scanProgress = 0.25f
             statusMessage = "TCP probing $tcpSampleCount servers..."
         }
-        val tcpOk = tcpFilter(newGuids.shuffled().take(MAX_TCP_CANDIDATES))
-        plog("Reachable (TCP): ${tcpOk.size}")
+        val tcpOk = PennyServerScanner.tcpFilter(newGuids.shuffled().take(PennyServerScanner.MAX_TCP_CANDIDATES))
         if (tcpOk.isEmpty()) {
             MmkvManager.removeServers(newGuids, "")
-            ui {
-                statusMessage = "No reachable servers found."
-            }
+            ui { statusMessage = "No reachable servers found." }
             return false
         }
 
@@ -3731,13 +2215,10 @@ class MainActivity : HelperBaseComponentActivity() {
             val d = MmkvManager.decodeServerAffiliationInfo(g)?.testDelayMillis ?: 0L
             if (d > 0L) g to d else null
         }.sortedBy { it.second }
-        plog("Healthy in real test: ${valid.size}/${keep.size}")
 
         if (valid.isEmpty()) {
             MmkvManager.removeServers(keep.filter { it != selected }, "")
-            ui {
-                statusMessage = "No healthy servers passed verification."
-            }
+            ui { statusMessage = "No healthy servers passed verification." }
             return false
         }
 
@@ -3769,8 +2250,6 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("Scan complete (VIP=$scanningVip): ${entries.size} servers")
         return true
     }
-
-    // ═════════════════════════ اتصال ═════════════════════════
 
     private suspend fun connectFromList(startAfter: String? = null): PennyServer? {
         val snapshot = activeList.toList()
@@ -3840,7 +2319,6 @@ class MainActivity : HelperBaseComponentActivity() {
             if (wasRunning) LauncherManager.restartService(this@MainActivity)
             else LauncherManager.startService(this@MainActivity)
         }
-        plog(if (wasRunning) "restartService" else "startService")
 
         delay(if (wasRunning) 2500L else 1500L)
         var waited = 0
@@ -3854,149 +2332,18 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         delay(1500)
 
-        if (!withContext(Dispatchers.IO) { isLocalPortOpen() }) {
+        if (!withContext(Dispatchers.IO) { PennyServerScanner.isLocalPortOpen(socksPort) }) {
             plog("Warning: SOCKS port $socksPort not open yet")
         }
         repeat(2) {
-            for (url in TEST_URLS) {
-                val ping = withContext(Dispatchers.IO) { testThroughLocalProxy(url) }
+            for (url in PennyServerScanner.TEST_URLS) {
+                val ping = withContext(Dispatchers.IO) {
+                    PennyServerScanner.testThroughLocalProxy(url, socksPort, ::plog)
+                }
                 if (ping > 0) return ping
             }
             delay(1200)
         }
         return -1L
-    }
-
-    // ═════════════════════════ دانلود امن (فقط HTTPS + بررسی HTTP 200 + سقف ۴MB + اصلاح ?t=) ═════════════════════════
-
-    private fun downloadUrl(urlStr: String): String {
-        val cleanUrl = urlStr.trim()
-        require(cleanUrl.startsWith("https://", ignoreCase = true)) {
-            "Only HTTPS URLs are permitted"
-        }
-        val sep = if ('?' in cleanUrl) '&' else '?'
-        val url = URL("${cleanUrl}${sep}t=${System.currentTimeMillis()}")
-        val conn = url.openConnection() as HttpURLConnection
-        try {
-            conn.connectTimeout = 7000
-            conn.readTimeout = 7000
-            conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "v2rayNG/1.8.0")
-            val code = conn.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
-                throw IllegalStateException("HTTP $code")
-            }
-            val contentLen = conn.contentLengthLong
-            if (contentLen > MAX_DOWNLOAD_BYTES) {
-                throw IllegalStateException("Response too large ($contentLen bytes)")
-            }
-            conn.inputStream.use { input ->
-                val out = ByteArrayOutputStream()
-                val buf = ByteArray(8192)
-                var total = 0
-                while (true) {
-                    val read = input.read(buf)
-                    if (read < 0) break
-                    total += read
-                    if (total > MAX_DOWNLOAD_BYTES) {
-                        throw IllegalStateException("Exceeded 4 MB download limit")
-                    }
-                    out.write(buf, 0, read)
-                }
-                return out.toString(StandardCharsets.UTF_8.name()).trim()
-            }
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun fetchWithFallback(urlStr: String, isVipSource: Boolean = false): String {
-        val mirrors = listOf(
-            urlStr,
-            "https://ghproxy.net/$urlStr",
-            "https://mirror.ghproxy.com/$urlStr"
-        )
-        for ((i, mirror) in mirrors.withIndex()) {
-            try {
-                val rawContent = downloadUrl(mirror)
-                if (rawContent.isNotEmpty()) {
-                    // اگر از میرورهای ghproxy برای لیست VIP استفاده شده باشد، امضای دیجیتال ECDSA الزامی است
-                    if (isVipSource && i > 0 && !rawContent.trimStart().startsWith("#PENNY-SIG:")) {
-                        plog("Rejected unsigned VIP content from untrusted mirror ${i + 1}")
-                        continue
-                    }
-                    val (sigOk, verifiedBody) = VipLicenseManager.verifySignedServerList(rawContent)
-                    if (!sigOk) {
-                        plog("Signature verification failed on source (mirror ${i + 1})")
-                        continue
-                    }
-                    plog("Download OK (mirror ${i + 1}): ${verifiedBody.length} chars")
-                    return verifiedBody
-                }
-            } catch (e: Exception) {
-                plog("Download failed (mirror ${i + 1}): ${e.message}")
-            }
-        }
-        return ""
-    }
-
-    // ═════════════════════════ تست شبکه ═════════════════════════
-
-    private fun testServerTcpPing(guid: String): Long {
-        val profile = MmkvManager.decodeServerConfig(guid) ?: return -1L
-        val host = profile.server?.trim()?.takeIf { it.isNotEmpty() } ?: return -1L
-        val port = profile.serverPort?.toString()?.trim()?.toIntOrNull() ?: return -1L
-        return try {
-            val start = System.currentTimeMillis()
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(host, port), TCP_TIMEOUT_MS)
-            }
-            (System.currentTimeMillis() - start).coerceAtLeast(1L)
-        } catch (_: Exception) {
-            -1L
-        }
-    }
-
-    private suspend fun tcpFilter(guids: List<String>): List<Pair<String, Long>> {
-        val sem = Semaphore(TCP_PARALLEL)
-        return withContext(Dispatchers.IO) {
-            guids.map { guid ->
-                async { sem.withPermit { guid to testServerTcpPing(guid) } }
-            }.awaitAll()
-        }.filter { it.second > 0 }.sortedBy { it.second }
-    }
-
-    private fun isLocalPortOpen(): Boolean {
-        return try {
-            Socket().use { it.connect(InetSocketAddress("127.0.0.1", socksPort), 800) }
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    private fun testThroughLocalProxy(testUrl: String): Long {
-        return try {
-            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
-            val start = System.currentTimeMillis()
-            val conn = URL(testUrl).openConnection(proxy) as HttpURLConnection
-            try {
-                conn.connectTimeout = 7000
-                conn.readTimeout = 7000
-                conn.useCaches = false
-                val code = conn.responseCode
-                if (code == 204 || code == 200) {
-                    (System.currentTimeMillis() - start).coerceAtLeast(1L)
-                } else {
-                    plog("Proxy test HTTP $code")
-                    -1L
-                }
-            } finally {
-                conn.disconnect()
-            }
-        } catch (e: Exception) {
-            plog("Proxy test failed: ${e.javaClass.simpleName}: ${e.message}")
-            -1L
-        }
     }
 }

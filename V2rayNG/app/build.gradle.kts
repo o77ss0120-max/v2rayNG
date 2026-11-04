@@ -10,7 +10,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.v2ray.ang"
+        applicationId = "com.penny.vpn"
         minSdk = 24
         targetSdk = 37
         versionCode = 755
@@ -38,9 +38,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val ksPath = System.getenv("PENNY_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+            if (ksPath != null && file(ksPath).exists()) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("PENNY_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("PENNY_KEY_ALIAS") ?: "pennyvpn"
+                keyPassword = System.getenv("PENNY_KEY_PASSWORD") ?: ""
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            val relSigning = signingConfigs.findByName("release")
+            if (relSigning?.storeFile != null) {
+                signingConfig = relSigning
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -112,7 +128,7 @@ android {
                     else
                         "universal"
 
-                    output.outputFileName = "v2rayNG_${variant.versionName}_${abi}.apk"
+                    output.outputFileName = "PennyVPN_${variant.versionName}_${abi}.apk"
                     if (versionCodes.containsKey(abi)) {
                         output.versionCodeOverride =
                             (1000000 * versionCodes[abi]!!).plus(variant.versionCode)

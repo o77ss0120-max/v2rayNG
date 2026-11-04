@@ -13,6 +13,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -117,11 +119,17 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
 import java.net.URL
+import java.nio.charset.StandardCharsets
+import java.security.KeyFactory
+import java.security.MessageDigest
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -332,73 +340,135 @@ private fun metallicSwitchColors() = SwitchDefaults.colors(
     uncheckedBorderColor = Color(0xFF2C2E36)
 )
 
-// ═════════════════════════ اعتبارسنجی کد متغیر اشتراک ۱ ماه ۵۰ گیگ ═════════════════════════
+// ═════════════════════════ اعتبارسنجی رمزنگاری‌شده اشتراک ۱ ماه ۵۰ گیگ (ECDSA P-256 + قفل Device ID) ═════════════════════════
+
+private data class VerifiedLicense(
+    val serial: String,
+    val deviceId: String,
+    val durationMs: Long,
+    val maxBytes: Long
+)
 
 private object VipLicenseManager {
     const val VIP_DURATION_MS = 30L * 24L * 60L * 60L * 1000L // ۱ ماه (۳۰ روز)
     const val VIP_MAX_BYTES = 50L * 1024L * 1024L * 1024L      // ۵۰ گیگابایت
-    private const val ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 
-    fun computeSignature(serial4: String): String {
-        val clean = serial4.uppercase(Locale.US).trim()
-        var h = 2166136261L
-        val input = "$clean:PENNY_VIP_MASTER_2026"
-        for (ch in input) {
-            h = (h xor ch.code.toLong()) * 16777619L and 0xFFFFFFFFL
+    // کلید عمومی ECDSA P-256 (X.509 SPKI Base64) — کلید خصوصی فقط نزد ادمین برای صدور لایسنس و امضای لیست سرورهاست
+    const val DEFAULT_PUBLIC_KEY_B64 =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6KKEe5BoWXMq4ujPuAwXQ0W65MlAMd/0g0v+jk+e5za6t/sGUB4beggBjexWZxcnxJ5OD+0rk9YQd3T+oiamoQ=="
+
+    fun getDeviceId(context: Context): String {
+        return try {
+            val rawId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+                ?: "UNKNOWN_DEVICE"
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(("PENNY_DEV_ID:" + rawId).toByteArray(StandardCharsets.UTF_8))
+            val sb = StringBuilder()
+            for (i in 0 until 4) {
+                sb.append(String.format(Locale.US, "%02X", digest[i].toInt() and 0xFF))
+            }
+            sb.toString()
+        } catch (e: Exception) {
+            Log.w("PennyVPN", "DeviceId fallback: ${e.message}")
+            "00000000"
         }
-        val sb = StringBuilder()
-        var v = h
-        for (i in 0 until 4) {
-            val idx = ((v + i * 7L) % ALPHABET.length).toInt().let { if (it < 0) -it else it }
-            sb.append(ALPHABET[idx])
-            v = (v shr 4) xor ((v * 37L) and 0xFFFFFFFFL)
-        }
-        return sb.toString()
     }
 
-    fun verifyCode(rawCode: String): String? {
-        val normalized = rawCode.uppercase(Locale.US).trim().replace(" ", "")
-        val parts = normalized.split("-")
-        if (parts.size != 3) return null
-        val prefix = parts[0]
-        val serial = parts[1]
-        val sig = parts[2]
-        if (prefix != "PVIP" && prefix != "VIP") return null
-        if (serial.length != 4 || sig.length != 4) return null
-        val expected = computeSignature(serial)
-        return if (sig == expected) serial else null
+    fun maskCode(code: String): String {
+        val clean = code.trim()
+        if (clean.length <= 10) return "****"
+        return "${clean.take(4)}-****-${clean.takeLast(4)}"
+    }
+
+    fun verifyEcdsaSignature(dataBytes: ByteArray, sigBytes: ByteArray, pubKeyB64: String = DEFAULT_PUBLIC_KEY_B64): Boolean {
+        return try {
+            val keyBytes = Base64.decode(pubKeyB64, Base64.DEFAULT)
+            val keySpec = X509EncodedKeySpec(keyBytes)
+            val pubKey = KeyFactory.getInstance("EC").generatePublic(keySpec)
+            val verifier = Signature.getInstance("SHA256withECDSA")
+            verifier.initVerify(pubKey)
+            verifier.update(dataBytes)
+            verifier.verify(sigBytes)
+        } catch (e: Exception) {
+            Log.w("PennyVPN", "ECDSA verify failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * بررسی لایسنس دیجیتال ECDSA P-256 با فرمت:
+     * PL1.<payload_base64url>.<sig_base64url>
+     * که payload شامل: serial:deviceId_or_ANY:activateBeforeEpochSec:days:gb
+     */
+    fun verifyLicense(rawCode: String, currentDeviceId: String, effectiveNowMs: Long): Pair<VerifiedLicense?, String> {
+        val trimmed = rawCode.trim().replace(" ", "")
+        if (trimmed.startsWith("PL1.", ignoreCase = true)) {
+            val parts = trimmed.split(".")
+            if (parts.size != 3) return null to "Invalid ECDSA license format."
+            return try {
+                val payloadBytes = Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+                val sigBytes = Base64.decode(parts[2], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+                if (!verifyEcdsaSignature(payloadBytes, sigBytes)) {
+                    return null to "Invalid digital signature!"
+                }
+                val payloadStr = String(payloadBytes, StandardCharsets.UTF_8)
+                val fields = payloadStr.split(":")
+                if (fields.size < 3) return null to "Corrupted license payload."
+                val serial = fields[0].uppercase(Locale.US)
+                val targetDevice = fields[1].uppercase(Locale.US)
+                val expEpochSec = fields[2].toLongOrNull() ?: 0L
+                val days = fields.getOrNull(3)?.toLongOrNull()?.coerceIn(1L, 365L) ?: 30L
+                val gb = fields.getOrNull(4)?.toLongOrNull()?.coerceIn(1L, 1000L) ?: 50L
+
+                if (targetDevice != "ANY" && targetDevice != currentDeviceId.uppercase(Locale.US)) {
+                    return null to "This code is locked to another Device ID ($targetDevice)."
+                }
+                if (expEpochSec > 0L && effectiveNowMs > expEpochSec * 1000L) {
+                    return null to "Activation deadline for this code has passed."
+                }
+                VerifiedLicense(
+                    serial = serial,
+                    deviceId = targetDevice,
+                    durationMs = days * 24L * 3600_000L,
+                    maxBytes = gb * 1024L * 1024L * 1024L
+                ) to "OK"
+            } catch (e: Exception) {
+                Log.w("PennyVPN", "License parse error: ${e.message}")
+                null to "Malformed activation code."
+            }
+        }
+        return null to "Invalid activation code! Please use a valid ECDSA license (PL1....)."
+    }
+
+    /**
+     * بررسی امضای دیجیتال لیست سرورهای VIP در صورت وجود هدر #PENNY-SIG:<base64>
+     */
+    fun verifySignedServerList(rawContent: String): Pair<Boolean, String> {
+        val normalized = rawContent.replace("\r\n", "\n").trim()
+        val lines = normalized.lines()
+        val firstLine = lines.firstOrNull()?.trim() ?: return false to ""
+        if (firstLine.startsWith("#PENNY-SIG:")) {
+            val sigB64 = firstLine.removePrefix("#PENNY-SIG:").trim()
+            val body = lines.drop(1).joinToString("\n").trim()
+            return try {
+                val sigBytes = Base64.decode(sigB64, Base64.DEFAULT)
+                val ok = verifyEcdsaSignature(body.toByteArray(StandardCharsets.UTF_8), sigBytes)
+                if (ok) true to body else false to ""
+            } catch (e: Exception) {
+                Log.w("PennyVPN", "Signed list verify error: ${e.message}")
+                false to ""
+            }
+        }
+        // اگر لیست از منبع مستقیم HTTPS خود ادمین بدون میرور خوانده شده باشد
+        return true to normalized
     }
 }
 
-// ═════════════════════════ مدل سرورها (بدون پرچم کشور، با نام‌های Data center A-1 / Server A-1) ═════════════════════════
+// ═════════════════════════ مدل سرورها (بدون پرچم کشور، با نام‌های صادقانه Node A-1 / Server A-1) ═════════════════════════
 
 private enum class Phase { IDLE, SCANNING, CONNECTING }
 
 private enum class UiMode { IDLE, SCANNING, CONNECTING, CONNECTED }
-
-private enum class Tier(val title: String, val badgeText: String) {
-    ULTRA("Ultra", "10G ULTRA"),
-    TURBO("Turbo", "TURBO"),
-    VIP("VIP", "HIGH SPEED"),
-    STANDARD("Standard", "STABLE"),
-    BASIC("Basic", "ONLINE")
-}
-
-private fun starsFor(ms: Long): Int = when {
-    ms <= 350 -> 5
-    ms <= 600 -> 4
-    ms <= 1000 -> 3
-    ms <= 1800 -> 2
-    else -> 1
-}
-
-private fun tierFor(stars: Int): Tier = when (stars) {
-    5 -> Tier.ULTRA
-    4 -> Tier.TURBO
-    3 -> Tier.VIP
-    2 -> Tier.STANDARD
-    else -> Tier.BASIC
-}
 
 private data class PennyServer(
     val guid: String,
@@ -406,22 +476,19 @@ private data class PennyServer(
     val ms: Long,
     val label: String,
     val isVipServer: Boolean = false
-) {
-    val stars: Int get() = starsFor(ms)
-    val tier: Tier get() = tierFor(stars)
-}
+)
 
 /**
  * نام‌گذاری سرورها بدون پرچم کشور و مرتب‌شده بر اساس کمترین پینگ (ms):
- * Data center A-1, Data center A-2, Server A-1, Server A-2, Data center B-1, ...
+ * Node A-1, Node A-2, Server A-1, Server A-2, Node B-1, ...
  */
 private fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
     return list.sortedBy { it.ms }.mapIndexed { index, s ->
         val groupChar = ('A'.code + (index / 4).coerceAtMost(5)).toChar()
         val num = (index % 2) + 1
-        val isDataCenter = (index % 4) < 2
+        val isNodeGroup = (index % 4) < 2
         val codeTag = "$groupChar-$num"
-        val baseLabel = if (isDataCenter) "Data center $codeTag" else "Server $codeTag"
+        val baseLabel = if (isNodeGroup) "Node $codeTag" else "Server $codeTag"
         // حذف نام اصلی سرور از کانفیگ ذخیره شده تا در نوتیفیکیشن سیستم نمایش داده نشود
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
@@ -429,7 +496,9 @@ private fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): L
                 cfg.remarks = "Penny VPN"
                 MmkvManager.encodeServerConfig(s.guid, cfg)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w("PennyVPN", "Failed to sanitize remarks for ${s.guid}: ${e.message}")
+        }
         s.copy(
             codeTag = codeTag,
             label = baseLabel,
@@ -1322,9 +1391,21 @@ class MainActivity : HelperBaseComponentActivity() {
     companion object {
         private const val TAG = "PennyVPN"
 
-        // ── شناسه‌های AdMob (آماده تست؛ هنگام انتشار در گوگل پلی با Unit IDهای پنل AdMob خود جایگزین کنید) ──
+        // ── شناسه‌های کامل تست اندروید AdMob (Official Google Test IDs) ──
+        // • شماره سریال برنامه تست (Test App ID): ca-app-pub-3940256099942544~3347511713
+        const val ADMOB_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+        // • تبلیغ بنری (Banner):
         private const val ADMOB_BANNER_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
+        // • تبلیغ بین‌صفحه‌ای (Interstitial):
         private const val ADMOB_INTERSTITIAL_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
+        // • تبلیغ ویدیویی جایزه‌دار (Rewarded):
+        const val ADMOB_REWARDED_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
+        // • تبلیغ بومی پیشرفته (Native Advanced):
+        const val ADMOB_NATIVE_UNIT_ID = "ca-app-pub-3940256099942544/2247696110"
+        // • تبلیغ بازگشایی اپلیکیشن (App Open):
+        const val ADMOB_APP_OPEN_UNIT_ID = "ca-app-pub-3940256099942544/9257395921"
+
+        private const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024 // سقف ۴ مگابایت برای امنیت دانلود
 
         private const val TCP_TIMEOUT_MS = 2500
         private const val MAX_TCP_CANDIDATES = 300
@@ -1351,10 +1432,9 @@ class MainActivity : HelperBaseComponentActivity() {
     )
 
     // ── محل وارد کردن سرورهای مشترکین ویژه (اشتراک ۱ ماه ۵۰ گیگ) ──
-    // هر لینک سابسکریپشن یا فایل متنی خام (Raw) گیت‌هاب / سرور شخصی خود را در این لیست قرار دهید:
+    // لینک عمومی barry-far/Sub1.txt حذف شد تا فقط سرورهای اختصاصی امضاشده شما بارگذاری شوند:
     private val DEFAULT_VIP_SUBSCRIPTION_SOURCES = listOf(
-        "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt",
-        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+        "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
     )
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -1381,14 +1461,17 @@ class MainActivity : HelperBaseComponentActivity() {
     private var autoReconnect by mutableStateOf(true)
     private var userWantsConnected by mutableStateOf(false)
 
-    // ── وضعیت اشتراک ۱ ماه ۵۰ گیگ (VIP) ──
+    // ── وضعیت اشتراک ۱ ماه ۵۰ گیگ (VIP) + محافظ دستکاری ساعت (vipLastSeenMs) ──
     private var vipActive by mutableStateOf(false)
     private var useVipServers by mutableStateOf(false)
     private var vipCode by mutableStateOf("")
     private var vipExpireMs by mutableStateOf(0L)
     private var vipUsedBytes by mutableStateOf(0L)
+    private var vipMaxBytes by mutableStateOf(VipLicenseManager.VIP_MAX_BYTES)
+    private var vipLastSeenMs by mutableStateOf(0L)
     private var customVipSubUrl by mutableStateOf("")
     private var showVipDialog by mutableStateOf(false)
+    private val deviceId: String by lazy { VipLicenseManager.getDeviceId(this) }
 
     private var showMenu by mutableStateOf(false)
     private var showLog by mutableStateOf(false)
@@ -1432,9 +1515,33 @@ class MainActivity : HelperBaseComponentActivity() {
         registerNetworkChangeAutoReconnect()
     }
 
+    override fun onStop() {
+        // ذخیره فوری مصرف ترافیک VIP و آخرین زمان دیده‌شده هنگام خروج/پس‌زمینه شدن اپ
+        if (vipActive) {
+            val now = effectiveNowMs()
+            prefs.edit()
+                .putLong("vip_used_bytes", vipUsedBytes)
+                .putLong("vip_last_seen_ms", now)
+                .apply()
+        }
+        super.onStop()
+    }
+
     override fun onDestroy() {
         unregisterNetworkChangeCallback()
         super.onDestroy()
+    }
+
+    /**
+     * محافظ ساعت گوشی (Clock Rollback Guard):
+     * اگر کاربر ساعت گوشی را به عقب بکشد، زمان مؤثر از آخرین زمان ثبت‌شده عقب‌تر نمی‌رود.
+     */
+    private fun effectiveNowMs(): Long {
+        val sysNow = System.currentTimeMillis()
+        if (sysNow > vipLastSeenMs) {
+            vipLastSeenMs = sysNow
+        }
+        return maxOf(sysNow, vipLastSeenMs)
     }
 
     // ═════════════════════════ راه‌اندازی سرویس تبلیغات AdMob (بنری + بینابینی) ═════════════════════════
@@ -1501,7 +1608,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun getVipSubscriptionSources(): List<String> {
         val custom = customVipSubUrl.trim()
         return if (custom.isNotEmpty()) {
-            custom.split("\n", ",").map { it.trim() }.filter { it.startsWith("http") } + DEFAULT_VIP_SUBSCRIPTION_SOURCES
+            // فقط لینک‌های HTTPS مجاز هستند
+            custom.split("\n", ",").map { it.trim() }.filter { it.startsWith("https://", ignoreCase = true) } + DEFAULT_VIP_SUBSCRIPTION_SOURCES
         } else {
             DEFAULT_VIP_SUBSCRIPTION_SOURCES
         }
@@ -1509,15 +1617,18 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun checkVipExpiration(): Boolean {
         if (!vipActive) return false
-        val now = System.currentTimeMillis()
+        val now = effectiveNowMs()
         val timeExpired = now >= vipExpireMs
-        val trafficExpired = vipUsedBytes >= VipLicenseManager.VIP_MAX_BYTES
+        val trafficExpired = vipUsedBytes >= vipMaxBytes
         if (timeExpired || trafficExpired) {
             vipActive = false
             useVipServers = false
+            vipCode = ""
             prefs.edit()
                 .putBoolean("vip_active", false)
                 .putBoolean("use_vip_servers", false)
+                .putString("vip_code", "")
+                .putLong("vip_last_seen_ms", now)
                 .apply()
             val msg = if (trafficExpired) {
                 "Your 50 GB traffic quota has been reached."
@@ -1535,34 +1646,41 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun activateVipWithCode(inputCode: String): Pair<Boolean, String> {
-        val serial = VipLicenseManager.verifyCode(inputCode)
-            ?: return false to "Invalid activation code!"
-
-        val usedSet = prefs.getStringSet("used_vip_serials", emptySet())?.toMutableSet() ?: mutableSetOf()
-        if (serial in usedSet && vipCode != inputCode.uppercase(Locale.US).trim()) {
-            return false to "This code has already been used."
+        val now = effectiveNowMs()
+        val (verified, errMsg) = VipLicenseManager.verifyLicense(inputCode, deviceId, now)
+        if (verified == null) {
+            return false to errMsg
         }
 
-        val now = System.currentTimeMillis()
-        val normalized = inputCode.uppercase(Locale.US).trim()
-        usedSet.add(serial)
+        val usedSet = prefs.getStringSet("used_vip_serials", emptySet())?.toMutableSet() ?: mutableSetOf()
+        // جلوگیری کامل از فعال‌سازی مجدد کد استفاده شده حتی پس از اتمام اشتراک
+        if (verified.serial in usedSet) {
+            return false to "This activation code has already been used."
+        }
+
+        val normalized = inputCode.trim()
+        usedSet.add(verified.serial)
 
         vipActive = true
         useVipServers = true
         vipCode = normalized
-        vipExpireMs = now + VipLicenseManager.VIP_DURATION_MS
+        vipExpireMs = now + verified.durationMs
+        vipMaxBytes = verified.maxBytes
         vipUsedBytes = 0L
+        vipLastSeenMs = now
 
         prefs.edit()
             .putBoolean("vip_active", true)
             .putBoolean("use_vip_servers", true)
             .putString("vip_code", vipCode)
             .putLong("vip_expire_ms", vipExpireMs)
+            .putLong("vip_max_bytes", vipMaxBytes)
             .putLong("vip_used_bytes", 0L)
+            .putLong("vip_last_seen_ms", now)
             .putStringSet("used_vip_serials", usedSet)
             .apply()
 
-        plog("1M/50GB Plan Activated with code $vipCode")
+        plog("1M/50GB Plan Activated (${VipLicenseManager.maskCode(vipCode)})")
         statusMessage = "1 Month 50 GB Plan Activated"
 
         return true to statusMessage
@@ -1615,7 +1733,9 @@ class MainActivity : HelperBaseComponentActivity() {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
             networkCallback?.let { cm.unregisterNetworkCallback(it) }
             networkCallback = null
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "unregisterNetworkCallback warning: ${e.message}")
+        }
     }
 
     private suspend fun triggerAutoReconnect() {
@@ -1656,7 +1776,10 @@ class MainActivity : HelperBaseComponentActivity() {
         useVipServers = prefs.getBoolean("use_vip_servers", vipActive)
         vipCode = prefs.getString("vip_code", "") ?: ""
         vipExpireMs = prefs.getLong("vip_expire_ms", 0L)
+        vipMaxBytes = prefs.getLong("vip_max_bytes", VipLicenseManager.VIP_MAX_BYTES)
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
+        vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
+        effectiveNowMs()
         customVipSubUrl = prefs.getString("custom_vip_sub_url", "") ?: ""
 
         prefs.getString("list", null)?.let { json ->
@@ -2382,10 +2505,46 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // نمایش Device ID اختصاصی دستگاه برای دریافت کد لایسنس قفل‌شده روی دستگاه
+                    Surface(
+                        color = Color(0xFF20222A),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF363844), RoundedCornerShape(10.dp))
+                            .clickable {
+                                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(ClipData.newPlainText("PennyVPN Device ID", deviceId))
+                                feedback = "Device ID ($deviceId) copied to clipboard"
+                                isSuccess = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Device ID: $deviceId",
+                                color = Color(0xFFE4E7F0),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Copy ID",
+                                color = Color(0xFFD8DCE6),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
                     if (vipActive) {
-                        val remDays = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
-                        val remHours = (((vipExpireMs - System.currentTimeMillis()) % (24L * 3600_000L)) / 3600_000L).coerceAtLeast(0L)
-                        val remBytes = (VipLicenseManager.VIP_MAX_BYTES - vipUsedBytes).coerceAtLeast(0L)
+                        val now = effectiveNowMs()
+                        val remDays = ((vipExpireMs - now) / (24L * 3600_000L)).coerceAtLeast(0L)
+                        val remHours = (((vipExpireMs - now) % (24L * 3600_000L)) / 3600_000L).coerceAtLeast(0L)
+                        val remBytes = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
 
                         Surface(
                             color = Color(0xFF23252D),
@@ -2401,18 +2560,18 @@ class MainActivity : HelperBaseComponentActivity() {
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Active Code: $vipCode",
+                                    text = "Active License: ${VipLicenseManager.maskCode(vipCode)}",
                                     fontSize = 12.sp,
                                     color = Color(0xFFD0D4DF),
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = "Time Remaining: ${remDays}d ${remHours}h (of 30 days)",
+                                    text = "Time Remaining: ${remDays}d ${remHours}h",
                                     color = Color(0xFFD0D4DF),
                                     fontSize = 12.sp
                                 )
                                 Text(
-                                    text = "Traffic Remaining: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / 50 GB)",
+                                    text = "Traffic Remaining: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / ${fmtBytes(vipMaxBytes)})",
                                     color = Color(0xFFE4E7F0),
                                     fontSize = 12.sp
                                 )
@@ -2425,7 +2584,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Use Dedicated VIP Servers",
+                                text = "Use VIP Subscription Servers",
                                 color = Color(0xFFF2F4F8),
                                 fontSize = 13.sp
                             )
@@ -2440,15 +2599,15 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     } else {
                         Text(
-                            text = "Enter your variable activation code to unlock 1 Month / 50 GB dedicated servers and Ad-Free mode:",
+                            text = "Send your Device ID above to support and enter your ECDSA-signed activation code (PL1....) to unlock 1 Month / 50 GB and Ad-Free mode:",
                             color = Color(0xFFD0D4DF),
-                            fontSize = 13.sp
+                            fontSize = 12.5.sp
                         )
 
                         OutlinedTextField(
                             value = inputCode,
-                            onValueChange = { inputCode = it.uppercase(Locale.US) },
-                            placeholder = { Text("PVIP-XXXX-YYYY") },
+                            onValueChange = { inputCode = it.trim() },
+                            placeholder = { Text("PL1.eyJzZXJpYWwi...") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -2925,7 +3084,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         val contents = coroutineScope {
             sources.map { url ->
-                async(Dispatchers.IO) { fetchWithFallback(url) }
+                async(Dispatchers.IO) { fetchWithFallback(url, isVipSource = scanningVip) }
             }.awaitAll().filter { it.isNotEmpty() }
         }
         if (contents.isEmpty()) {
@@ -2958,7 +3117,9 @@ class MainActivity : HelperBaseComponentActivity() {
                     cfg.remarks = "Penny VPN"
                     MmkvManager.encodeServerConfig(g, cfg)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "Sanitize remarks warning for $g: ${e.message}")
+            }
         }
         plog("New configs: ${newGuids.size}")
         if (newGuids.isEmpty()) {
@@ -3167,22 +3328,50 @@ class MainActivity : HelperBaseComponentActivity() {
         return -1L
     }
 
-    // ═════════════════════════ دانلود ═════════════════════════
+    // ═════════════════════════ دانلود امن (فقط HTTPS + بررسی HTTP 200 + سقف ۴MB + اصلاح ?t=) ═════════════════════════
 
     private fun downloadUrl(urlStr: String): String {
-        val url = URL("$urlStr?t=${System.currentTimeMillis()}")
+        val cleanUrl = urlStr.trim()
+        require(cleanUrl.startsWith("https://", ignoreCase = true)) {
+            "Only HTTPS URLs are permitted"
+        }
+        val sep = if ('?' in cleanUrl) '&' else '?'
+        val url = URL("${cleanUrl}${sep}t=${System.currentTimeMillis()}")
         val conn = url.openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 7000
             conn.readTimeout = 7000
+            conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent", "v2rayNG/1.8.0")
-            return conn.inputStream.bufferedReader().use { it.readText() }.trim()
+            val code = conn.responseCode
+            if (code != HttpURLConnection.HTTP_OK) {
+                throw IllegalStateException("HTTP $code")
+            }
+            val contentLen = conn.contentLengthLong
+            if (contentLen > MAX_DOWNLOAD_BYTES) {
+                throw IllegalStateException("Response too large ($contentLen bytes)")
+            }
+            conn.inputStream.use { input ->
+                val out = ByteArrayOutputStream()
+                val buf = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val read = input.read(buf)
+                    if (read < 0) break
+                    total += read
+                    if (total > MAX_DOWNLOAD_BYTES) {
+                        throw IllegalStateException("Exceeded 4 MB download limit")
+                    }
+                    out.write(buf, 0, read)
+                }
+                return out.toString(StandardCharsets.UTF_8.name()).trim()
+            }
         } finally {
             conn.disconnect()
         }
     }
 
-    private fun fetchWithFallback(urlStr: String): String {
+    private fun fetchWithFallback(urlStr: String, isVipSource: Boolean = false): String {
         val mirrors = listOf(
             urlStr,
             "https://ghproxy.net/$urlStr",
@@ -3190,10 +3379,20 @@ class MainActivity : HelperBaseComponentActivity() {
         )
         for ((i, mirror) in mirrors.withIndex()) {
             try {
-                val content = downloadUrl(mirror)
-                if (content.isNotEmpty()) {
-                    plog("Download OK (mirror ${i + 1}): ${content.length} chars")
-                    return content
+                val rawContent = downloadUrl(mirror)
+                if (rawContent.isNotEmpty()) {
+                    // اگر از میرورهای ghproxy برای لیست VIP استفاده شده باشد، امضای دیجیتال ECDSA الزامی است
+                    if (isVipSource && i > 0 && !rawContent.trimStart().startsWith("#PENNY-SIG:")) {
+                        plog("Rejected unsigned VIP content from untrusted mirror ${i + 1}")
+                        continue
+                    }
+                    val (sigOk, verifiedBody) = VipLicenseManager.verifySignedServerList(rawContent)
+                    if (!sigOk) {
+                        plog("Signature verification failed on source (mirror ${i + 1})")
+                        continue
+                    }
+                    plog("Download OK (mirror ${i + 1}): ${verifiedBody.length} chars")
+                    return verifiedBody
                 }
             } catch (e: Exception) {
                 plog("Download failed (mirror ${i + 1}): ${e.message}")

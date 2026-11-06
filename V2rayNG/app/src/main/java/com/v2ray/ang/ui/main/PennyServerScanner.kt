@@ -797,4 +797,72 @@ internal object PennyServerScanner {
             -1L
         }
     }
+
+    data class AppUpdateInfo(
+        val currentVersion: String,
+        val latestVersion: String,
+        val hasUpdate: Boolean,
+        val downloadUrl: String,
+        val releaseNotes: String
+    )
+
+    const val APP_VERSION_NAME = "2.6.0-BPB"
+    const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
+    const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
+
+    fun checkAppUpdateOnGitHub(): AppUpdateInfo {
+        val apiUrls = listOf(
+            "https://api.github.com/repos/o77ss0120-max/v2rayNG/releases/latest",
+            "https://ghproxy.net/https://api.github.com/repos/o77ss0120-max/v2rayNG/releases/latest"
+        )
+        for (u in apiUrls) {
+            try {
+                val conn = URL(u).openConnection() as HttpURLConnection
+                try {
+                    conn.connectTimeout = 6000
+                    conn.readTimeout = 6000
+                    conn.setRequestProperty("Accept", "application/vnd.github+json")
+                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/2.6")
+                    if (conn.responseCode == 200) {
+                        val text = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+                        val obj = JSONObject(text)
+                        val tag = obj.optString("tag_name", "").removePrefix("v").ifEmpty { APP_VERSION_NAME }
+                        val notes = obj.optString("body", "").ifEmpty {
+                            "BPB-VPN TLS Fragment engine, Clean IP auto-tuning, and shiny green ping display."
+                        }
+                        var apkUrl = obj.optString("html_url", GITHUB_RELEASES_PAGE)
+                        val assets = obj.optJSONArray("assets")
+                        if (assets != null) {
+                            for (i in 0 until assets.length()) {
+                                val a = assets.optJSONObject(i) ?: continue
+                                val dl = a.optString("browser_download_url", "")
+                                if (dl.endsWith(".apk", ignoreCase = true)) {
+                                    apkUrl = dl
+                                    break
+                                }
+                            }
+                        }
+                        val isNewer = tag != APP_VERSION_NAME && tag.isNotBlank()
+                        return AppUpdateInfo(
+                            currentVersion = APP_VERSION_NAME,
+                            latestVersion = tag,
+                            hasUpdate = isNewer,
+                            downloadUrl = apkUrl,
+                            releaseNotes = notes
+                        )
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return AppUpdateInfo(
+            currentVersion = APP_VERSION_NAME,
+            latestVersion = APP_VERSION_NAME,
+            hasUpdate = false,
+            downloadUrl = GITHUB_RELEASES_PAGE,
+            releaseNotes = "BPB-VPN TLS Fragment engine (100-200ms & Smart 1-5ms), Clean Cloudflare IPs (104.17.148.22 / 104.17.147.22) on ports 443/8443/2083."
+        )
+    }
 }

@@ -179,6 +179,42 @@ internal fun MenuLinesIcon(
 }
 
 @Composable
+internal fun UpdateArrowIcon(
+    size: Dp = 15.dp,
+    color: Color = Color(0xFF5CFF9D),
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 1.65.dp.toPx()
+        drawArc(
+            color = color,
+            startAngle = -210f,
+            sweepAngle = 285f,
+            useCenter = false,
+            topLeft = Offset(w * 0.14f, h * 0.14f),
+            size = Size(w * 0.72f, h * 0.72f),
+            style = Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.78f, h * 0.16f),
+            end = Offset(w * 0.88f, h * 0.40f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.62f, h * 0.36f),
+            end = Offset(w * 0.88f, h * 0.40f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
 internal fun metallicSwitchColors() = SwitchDefaults.colors(
     checkedThumbColor = Color(0xFFE4E7F0),
     checkedTrackColor = Color(0xFF3B3E48),
@@ -222,6 +258,79 @@ internal fun StaggeredServerItem(
             }
     ) {
         content()
+    }
+}
+
+@Composable
+internal fun ShinyGreenPingBadge(
+    ms: Long,
+    showDiamond: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val inf = rememberInfiniteTransition(label = "pingGlow")
+    val glowAlpha by inf.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            tween(1150, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "pingGlowAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(9.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF0E291C),
+                        Color(0xFF143826),
+                        Color(0xFF0E291C)
+                    )
+                )
+            )
+            .border(
+                width = 1.1.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF39FF88).copy(alpha = 0.55f + 0.35f * glowAlpha),
+                        Color(0xFF8BFFB8).copy(alpha = 0.90f),
+                        Color(0xFF00E676).copy(alpha = 0.55f + 0.35f * glowAlpha)
+                    )
+                ),
+                shape = RoundedCornerShape(9.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            if (showDiamond) {
+                GlassDiamondIcon(size = 11.dp)
+            }
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF4CFF96).copy(alpha = glowAlpha))
+            )
+            Text(
+                text = "$ms ms",
+                color = Color(0xFF5CFF9D),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = FontFamily.Monospace,
+                style = TextStyle(
+                    shadow = Shadow(
+                        color = Color(0xFF00FF7F).copy(alpha = 0.78f * glowAlpha),
+                        offset = Offset(0f, 0f),
+                        blurRadius = 10f
+                    )
+                )
+            )
+        }
     }
 }
 
@@ -314,9 +423,9 @@ internal fun ModernServerCard(
                         Spacer(Modifier.height(2.dp))
                         Text(
                             text = if (isConnected) {
-                                "Active Node • ${currentSrv.ms} ms • Stable"
+                                "Active Node • BPB Fragment • Stable"
                             } else {
-                                "Ping ${currentSrv.ms} ms • Tap to change server"
+                                "Tap to change server"
                             },
                             color = Color(0xFF9EA1AB),
                             fontSize = 10.sp,
@@ -327,38 +436,10 @@ internal fun ModernServerCard(
 
                     Spacer(Modifier.width(6.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(
-                                if (isConnected) Color(0xFF2B2E38)
-                                else if (isVipMode) Color(0xFF282A33)
-                                else Color(0xFF23242C)
-                            )
-                            .border(
-                                1.dp,
-                                if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.65f)
-                                else Color(0xFF3E404A),
-                                RoundedCornerShape(9.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (isVipMode) {
-                                GlassDiamondIcon(size = 11.dp)
-                                Spacer(Modifier.width(4.dp))
-                            }
-                            Text(
-                                text = "${currentSrv.ms} ms",
-                                color = if (isConnected) Color(0xFFF2F4F8)
-                                else if (isVipMode) Color(0xFFE8ECF4)
-                                else Color(0xFFC8CCD6),
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
+                    ShinyGreenPingBadge(
+                        ms = currentSrv.ms,
+                        showDiamond = isVipMode
+                    )
                 }
             }
         }

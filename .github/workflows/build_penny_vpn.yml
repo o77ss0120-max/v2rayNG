@@ -5,6 +5,9 @@ on:
     branches: [ "master", "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   LIBV2RAY_TAG: "v26.10.31"
   LIBV2RAY_SHA256: "2efdf731b1ed624eb1cb0d5a4d0aa95c0672e89f9702226d1ba2dc90308630b6"
@@ -12,7 +15,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -79,7 +81,7 @@ jobs:
             echo "PENNY_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
             echo "PENNY_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
           else
-            echo "::warning::KEYSTORE_BASE64 secret not set in GitHub repo; generating ephemeral release keystore in /tmp (set KEYSTORE_BASE64 in GitHub Secrets for consistent upgrade signatures)"
+            echo "::warning::KEYSTORE_BASE64 secret not set in GitHub repo; generating ephemeral release keystore in /tmp"
             PASS="PennyReleaseKey2026!"
             keytool -genkeypair -v \
               -keystore "$KS_FILE" \
@@ -107,8 +109,23 @@ jobs:
             unzip -l "$f" | grep "libhev-socks5-tunnel.so" || { echo "Missing libhev-socks5-tunnel.so in $f"; exit 1; }
           done
 
-      - name: Upload Penny VPN Signed Release APK
+      - name: Upload Penny VPN Signed Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Penny-VPN-Release-APK
           path: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk
+
+      - name: Publish Signed APK to GitHub Releases (for In-App Updater)
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: v2.6.0-BPB
+          name: "Penny VPN v2.6.0-BPB (Shiny Green Ping + In-App Updater + BPB Anti-DPI)"
+          body: |
+            ### Penny VPN v2.6.0-BPB Release
+            - **Shiny Bright Green Server Ping**: Glowing `#5CFF9D` latency badges across Home, Server List, and Global Bubble View.
+            - **In-App Update Center**: Direct APK update checker & downloader + one-tap BPB Server & Clean IP updater.
+            - **BPB-VPN Anti-Filtering Engine**: Fragmented TLS ClientHello socket, Xray v26 `finalmask` (Normal 100-200ms & Smart 1-5ms modes), and 8 Clean Cloudflare Anycast IPs across ports 443, 8443 & 2083.
+          files: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk
+          draft: false
+          prerelease: false

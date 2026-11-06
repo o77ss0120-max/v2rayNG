@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -50,11 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -183,6 +187,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showMenu by mutableStateOf(false)
     private var showLog by mutableStateOf(false)
     private var showBest by mutableStateOf(false)
+    private var showUpdateDialog by mutableStateOf(false)
+    private var bpbFragmentMode by mutableStateOf("NORMAL")
 
     private val logLines = mutableStateListOf<String>()
     private val bestList = mutableStateListOf<PennyServer>()
@@ -1144,6 +1150,29 @@ class MainActivity : HelperBaseComponentActivity() {
                                 }
 
                                 Surface(
+                                    color = Color(0xFF17271F),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.50f), RoundedCornerShape(14.dp))
+                                        .clickable { showUpdateDialog = true }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        UpdateArrowIcon(size = 15.dp, color = Color(0xFF5CFF9D))
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(
+                                            text = "Update",
+                                            color = Color(0xFF5CFF9D),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+
+                                Surface(
                                     color = Color(0xFF23242B),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
@@ -1233,6 +1262,7 @@ class MainActivity : HelperBaseComponentActivity() {
             if (showMenu) ModernMenuDialog(isVipMode)
             if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning, isVipMode)
             if (showVipDialog) VipSubscriptionDialog()
+            if (showUpdateDialog) UpdateCenterDialog()
             if (showLog) LogDialog()
         }
     }
@@ -1263,6 +1293,44 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        color = Color(0xFF15261E),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.55f), RoundedCornerShape(14.dp))
+                            .clickable {
+                                showMenu = false
+                                showUpdateDialog = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                UpdateArrowIcon(size = 15.dp, color = Color(0xFF5CFF9D))
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Check for App & Server Update",
+                                        color = Color(0xFF5CFF9D),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = "Version ${PennyServerScanner.APP_VERSION_NAME} • BPB Fragment Engine",
+                                        color = Color(0xFF9EA1AB),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            Text("›", color = Color(0xFF5CFF9D), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
@@ -1773,10 +1841,17 @@ class MainActivity : HelperBaseComponentActivity() {
                                         )
                                         Text(
                                             text = "${s.ms}ms",
-                                            color = if (active) Color(0xFF28241E) else Color(0xFFE6CFAF),
+                                            color = if (active) Color(0xFF0B2918) else Color(0xFF5CFF9D),
                                             fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontFamily = FontFamily.Monospace,
+                                            style = TextStyle(
+                                                shadow = Shadow(
+                                                    color = Color(0xFF00FF7F).copy(alpha = if (active) 0.35f else 0.75f),
+                                                    offset = Offset(0f, 0f),
+                                                    blurRadius = 8f
+                                                )
+                                            )
                                         )
                                     }
                                 }
@@ -1848,12 +1923,9 @@ class MainActivity : HelperBaseComponentActivity() {
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Text(
-                                                text = "${s.ms} ms",
-                                                color = if (active) Color(0xFFE6CFAF) else Color(0xFFC8CCD6),
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = FontFamily.Monospace
+                                            ShinyGreenPingBadge(
+                                                ms = s.ms,
+                                                showDiamond = s.isVip
                                             )
                                             if (active) {
                                                 Text(
@@ -1868,6 +1940,240 @@ class MainActivity : HelperBaseComponentActivity() {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        )
+    }
+
+    @Composable
+    private fun UpdateCenterDialog() {
+        var checking by remember { mutableStateOf(true) }
+        var updateInfo by remember {
+            mutableStateOf(
+                PennyServerScanner.AppUpdateInfo(
+                    currentVersion = PennyServerScanner.APP_VERSION_NAME,
+                    latestVersion = PennyServerScanner.APP_VERSION_NAME,
+                    hasUpdate = false,
+                    downloadUrl = PennyServerScanner.GITHUB_RELEASES_PAGE,
+                    releaseNotes = "Checking GitHub Releases & BPB Fragment status..."
+                )
+            )
+        }
+        var statusNote by remember { mutableStateOf<String?>(null) }
+
+        LaunchedEffect(Unit) {
+            checking = true
+            val info = withContext(Dispatchers.IO) {
+                PennyServerScanner.checkAppUpdateOnGitHub()
+            }
+            updateInfo = info
+            checking = false
+        }
+
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            containerColor = Color(0xFF181A20),
+            confirmButton = {
+                TextButton(onClick = { showUpdateDialog = false }) {
+                    Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
+                }
+            },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    UpdateArrowIcon(size = 18.dp, color = Color(0xFF5CFF9D))
+                    Text(
+                        text = "Penny VPN Update Center",
+                        color = Color(0xFFF2F4F8),
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 16.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        color = Color(0xFF12231B),
+                        shape = RoundedCornerShape(13.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.50f), RoundedCornerShape(13.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Current Build: v${updateInfo.currentVersion}",
+                                    color = Color(0xFFF2F4F8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = if (checking) "CHECKING..." else if (updateInfo.hasUpdate) "UPDATE READY" else "UP TO DATE",
+                                    color = Color(0xFF5CFF9D),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Text(
+                                text = "Latest Release: v${updateInfo.latestVersion}",
+                                color = Color(0xFFD0D4DF),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = updateInfo.releaseNotes,
+                                color = Color(0xFFA8B0BE),
+                                fontSize = 10.5.sp,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // انتخاب حالت فرگمنت BPB-VPN (Normal 100-200ms یا Smart 1-5ms)
+                    Surface(
+                        color = Color(0xFF21232B),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF383A46), RoundedCornerShape(12.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "BPB-VPN Anti-DPI Fragment Engine",
+                                color = Color(0xFFF2F4F8),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val isNormal = bpbFragmentMode == "NORMAL"
+                                OutlinedButton(
+                                    onClick = {
+                                        bpbFragmentMode = "NORMAL"
+                                        prefs.edit().putString("bpb_frag_mode", "NORMAL").apply()
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "100-200")
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
+                                        statusNote = "Switched to BPB Normal Fragment (100-200 bytes / 1ms)"
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = "Normal (100-200)",
+                                        fontSize = 10.5.sp,
+                                        color = if (isNormal) Color(0xFF5CFF9D) else Color(0xFFB8BCC8),
+                                        fontWeight = if (isNormal) FontWeight.ExtraBold else FontWeight.Medium
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        bpbFragmentMode = "SMART"
+                                        prefs.edit().putString("bpb_frag_mode", "SMART").apply()
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "1-5")
+                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
+                                        statusNote = "Switched to BPB Smart Fragment (1-5 bytes / 1ms)"
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = "Smart (1-5)",
+                                        fontSize = 10.5.sp,
+                                        color = if (!isNormal) Color(0xFF5CFF9D) else Color(0xFFB8BCC8),
+                                        fontWeight = if (!isNormal) FontWeight.ExtraBold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            showUpdateDialog = false
+                            startScanOnly()
+                        },
+                        enabled = phase == Phase.IDLE,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F402E)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                    ) {
+                        Text(
+                            text = "Update BPB Servers & Clean IPs Now",
+                            color = Color(0xFF5CFF9D),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 12.5.sp
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
+                                    startActivity(intent)
+                                }
+                            },
+                            shape = RoundedCornerShape(11.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Download APK",
+                                color = Color(0xFFF2F4F8),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(PennyServerScanner.GITHUB_ACTIONS_PAGE))
+                                    startActivity(intent)
+                                }
+                            },
+                            shape = RoundedCornerShape(11.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "GitHub Builds",
+                                color = Color(0xFFD8DCE6),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    statusNote?.let { note ->
+                        Text(
+                            text = note,
+                            color = Color(0xFF5CFF9D),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }

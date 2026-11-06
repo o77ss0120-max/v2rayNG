@@ -71,7 +71,7 @@ private class TlsHelloFragmentSocket(host: String, port: Int, connectTimeoutMs: 
                     var cursor = off
                     val end = off + len
                     while (cursor < end) {
-                        val chunkLen = Random.nextInt(80, 160).coerceAtMost(end - cursor)
+                        val chunkLen = Random.nextInt(3, 8).coerceAtMost(end - cursor)
                         baseOut.write(b, cursor, chunkLen)
                         baseOut.flush()
                         cursor += chunkLen
@@ -97,27 +97,46 @@ internal object PennyServerScanner {
     const val MAX_TCP_CANDIDATES = 300
     const val TCP_PARALLEL = 40
 
-    const val BPB_HOST = "h1bq9ybcr6av6637iy1pyhiet.pages.dev"
-    const val BPB_MIXED_SNI = "H1bQ9ybcr6AV6637iy1pyhIET.pageS.dEv"
+    // رمزگشایی رشته‌های حساس در زمان اجرا تا هیچ دامنه یا UUID به‌صورت متن ساده در گیت‌هاب نباشد
+    private fun decodeXorHex(hex: String): String {
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val b = hex.substring(i * 2, i * 2 + 2).toInt(16)
+            out[i] = ((b xor ((0x5A + i * 7) and 0xFF)) and 0xFF).toByte()
+        }
+        return String(out, StandardCharsets.UTF_8)
+    }
 
-    // سرور ۱ اختصاصی کلودفلر (Stealth Edge Cluster EU-01)
-    const val EDGE_EU01_HOST = "cdn-asset-metrics.cdn-sync-eu01.workers.dev"
-    const val EDGE_EU01_MIXED_SNI = "CdN-AsSeT-MeTrIcS.CdN-SyNc-eU01.WoRkErS.DeV"
-    const val EDGE_EU01_UUID = "9a4e7c21-5b8d-4f16-8e32-6d1a9c0f4b78"
-    const val EDGE_EU01_SUB_URL = "https://cdn-asset-metrics.cdn-sync-eu01.workers.dev/api/v2/feed/sync"
+    private const val ENC_BPB1_HOST = "32500a1e4f04e6e8e0afc1d198838ff4a3a8e9af9f859d9e7627607679405f1d5e243e"
+    private const val ENC_BPB1_SNI = "12500a3e4f04e6e8e0afe1f198838ff4a3a8e9af9f85bdbe5627607679407f1d5e043e"
+    private const val ENC_BPB1_UUID = "6f05515e141ee2babfa0c2c5cb9888a0fee7f5e6d38bc1d6663820222743490a0224712b"
+    private const val ENC_BPB1_TR_PWD = "1525300a181eccedead88595ede18fba88a19c"
+    private const val ENC_BPB1_SUB_FRAG = "32151c1f0547aba4faa8c2d697ccdea0b8e7b9a9d0dbc7cc6b702167674d45564e6f382e31381745161cf6a8c1daf0dbf989f1fef0feacedcd9a8595d1637e727d4c4d414202253b226418150f0c"
+    private const val ENC_BPB1_SUB_NORM = "32151c1f0547aba4faa8c2d697ccdea0b8e7b9a9d0dbc7cc6b702167674d45564e6f382e31381745161cf6a8c1daf0dbf989f1fef0feacedcd9a8595d16b636177404410574d34762a2b011e"
+    private const val ENC_BPB2_HOST = "20135e5a0212bce1a3efd5c69ad4d7b2abbbb4ead2dd96822f317b396e444b56496f2c2a20"
+    private const val ENC_BPB2_SNI = "00135e5a2212bcc1a3efd5c69af4d792ab9bb4ead2ddb6a22f317b396e446b56696f2c2a20"
+    private const val ENC_BPB2_UUID = "69500e0c4619bceebfabc5c29c9888a2fae2f5bdd48891d636392323291c480b0e252c7e"
+    private const val ENC_BPB2_TR_PWD = "1b272f3e3c09dbffe2ca8595edefce81fcabab85"
+    private const val ENC_BPB2_SUB_FRAG = "32151c1f0547aba4e8eb9692dada84a9fba7adbed28c9f8a63637c222a154e4a17792361263c030e0157e4e2f8bae4c9e8cbfdf3879991b591b8b1a8872a7f66780e4e5d575a292e3c2d5f061e0541fbf8f0e1"
 
-    // سرور ۲ اختصاصی کلودفلر (Stealth Edge Cluster EU-02)
-    const val EDGE_EU02_HOST = "cdn-asset-metrics.cdn-sync-eu02.workers.dev"
-    const val EDGE_EU02_MIXED_SNI = "CdN-AsSeT-MeTrIcS.CdN-SyNc-eU02.WoRkErS.DeV"
-    const val EDGE_EU02_UUID = "3c8f1e64-7a29-4d50-9b18-2e6c4a8d0f93"
-    const val EDGE_EU02_SUB_URL = "https://cdn-asset-metrics.cdn-sync-eu02.workers.dev/api/v2/feed/sync"
+    val BPB_HOST: String by lazy { decodeXorHex(ENC_BPB1_HOST) }
+    val BPB_MIXED_SNI: String by lazy { decodeXorHex(ENC_BPB1_SNI) }
+    private val BPB1_UUID: String by lazy { decodeXorHex(ENC_BPB1_UUID) }
+    private val BPB1_TR_PWD: String by lazy { decodeXorHex(ENC_BPB1_TR_PWD) }
+
+    val BPB2_HOST: String by lazy { decodeXorHex(ENC_BPB2_HOST) }
+    val BPB2_MIXED_SNI: String by lazy { decodeXorHex(ENC_BPB2_SNI) }
+    private val BPB2_UUID: String by lazy { decodeXorHex(ENC_BPB2_UUID) }
+    private val BPB2_TR_PWD: String by lazy { decodeXorHex(ENC_BPB2_TR_PWD) }
 
     // استخر آی‌پی‌های تمیز کلودفلر در رنج‌های متنوع Anycast برای اسکنر داخلی Clean IP
     val CANDIDATE_CF_ANYCAST_IPS = listOf(
-        "104.17.148.22",
-        "104.17.147.22",
         "172.66.44.58",
         "172.66.47.198",
+        "172.66.44.229",
+        "172.66.47.27",
+        "104.17.148.22",
+        "104.17.147.22",
         "172.64.155.209",
         "104.18.2.115",
         "162.159.135.42",
@@ -125,58 +144,54 @@ internal object PennyServerScanner {
         "104.19.143.29",
         "108.162.198.45",
         "172.67.74.226",
-        "188.114.96.3",
-        "www.speedtest.net",
-        "www.visa.com"
-    )
-
-    @Volatile
-    var CLEAN_CF_ENDPOINTS: List<String> = listOf(
-        "104.17.148.22",
-        "104.17.147.22",
-        "172.66.44.58",
-        "172.66.47.198",
-        "172.64.155.209",
-        "104.18.2.115",
-        "162.159.135.42",
         "www.speedtest.net"
     )
 
     @Volatile
-    var detectedIspProfile: String = "Auto (High-Speed Fragment 100-200B)"
+    var CLEAN_CF_ENDPOINTS: List<String> = listOf(
+        "172.66.44.58",
+        "172.66.47.198",
+        "172.66.44.229",
+        "172.66.47.27",
+        "104.17.148.22",
+        "104.17.147.22",
+        "172.64.155.209",
+        "www.speedtest.net"
+    )
+
+    @Volatile
+    var detectedIspProfile: String = "Auto (Smart Fragment 5-15B)"
 
     // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 2083 روی ایرانسل و همراه اول عملکرد عالی دارند)
-    val BPB_TLS_PORTS = listOf(443, 8443, 2083)
+    val BPB_TLS_PORTS = listOf(8443, 443, 2083)
 
-    // تنظیمات استاندارد TLS Fragment بهینه‌شده برای سرعت بالای یوتیوب و اینستاگرام
+    // تنظیمات TLS Fragment با تکهتکه کردن 5-15 بایتی تا عبارت 9 کاراکتری pages.dev همیشه بین دو پکت شکسته شود
     const val BPB_FINALMASK_NORMAL_JSON =
-        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"1"}}]}"""
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"10-20","delay":"1"}}]}"""
     const val BPB_FINALMASK_SMART_JSON =
-        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"50-100","delay":"1"}}]}"""
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"5-12","delay":"1"}}]}"""
 
-    // لینک‌های ساب اختصاصی کلاسترهای کلودفلر شما (Server 1 + Server 2 + BPB) + منابع پشتیبان
-    const val DEDICATED_BPB_FRAGMENT_SUB_URL =
-        "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/fragment?app=xray#BPB-Fragment"
-    const val DEDICATED_BPB_SUB_URL =
-        "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/normal?app=xray#%F0%9F%92%A6%20BPB%20Normal"
+    val DEDICATED_BPB_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_FRAG) }
+    val DEDICATED_BPB_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_NORM) }
+    val DEDICATED_BPB2_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB2_SUB_FRAG) }
 
-    val SIGNED_STANDARD_SUBSCRIPTION_SOURCES = listOf(
-        EDGE_EU01_SUB_URL,
-        EDGE_EU02_SUB_URL,
-        DEDICATED_BPB_FRAGMENT_SUB_URL,
-        DEDICATED_BPB_SUB_URL,
-        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
-        "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
-    )
+    val SIGNED_STANDARD_SUBSCRIPTION_SOURCES: List<String> by lazy {
+        listOf(
+            DEDICATED_BPB_FRAGMENT_SUB_URL,
+            DEDICATED_BPB2_FRAGMENT_SUB_URL,
+            DEDICATED_BPB_SUB_URL,
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+        )
+    }
 
-    val SIGNED_VIP_SUBSCRIPTION_SOURCES = listOf(
-        EDGE_EU01_SUB_URL,
-        EDGE_EU02_SUB_URL,
-        DEDICATED_BPB_FRAGMENT_SUB_URL,
-        DEDICATED_BPB_SUB_URL,
-        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
-        "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
-    )
+    val SIGNED_VIP_SUBSCRIPTION_SOURCES: List<String> by lazy {
+        listOf(
+            DEDICATED_BPB_FRAGMENT_SUB_URL,
+            DEDICATED_BPB2_FRAGMENT_SUB_URL,
+            DEDICATED_BPB_SUB_URL,
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+        )
+    }
 
     val TEST_URLS = listOf(
         "https://www.gstatic.com/generate_204",
@@ -215,15 +230,15 @@ internal object PennyServerScanner {
             val opLower = rawOp.lowercase()
             val (profileName, length, interval) = when {
                 opLower.contains("irancell") || opLower.contains("mtn") ->
-                    Triple("Irancell (MTN) • Fast Stream Fragment 50-100B", "50-100", "1")
+                    Triple("Irancell (MTN) • Deep Fragment 5-12B", "5-12", "1")
                 opLower.contains("mci") || opLower.contains("ir-tci") || opLower.contains("hamrah") ->
-                    Triple("Hamrah Aval (MCI) • High-Speed Fragment 80-160B", "80-160", "1")
+                    Triple("Hamrah Aval (MCI) • Smart Fragment 5-15B", "5-15", "1")
                 opLower.contains("rightel") ->
-                    Triple("Rightel • Fast Fragment 80-160B", "80-160", "1")
+                    Triple("Rightel • Fast Fragment 10-20B", "10-20", "1")
                 rawOp.isNotEmpty() ->
-                    Triple("$rawOp • Balanced Fragment 100-200B", "100-200", "1")
+                    Triple("$rawOp • Balanced Fragment 10-20B", "10-20", "1")
                 else ->
-                    Triple("Wi-Fi / Broadband • Fragment 100-200B", "100-200", "1")
+                    Triple("Wi-Fi / Broadband • Fragment 10-20B", "10-20", "1")
             }
             detectedIspProfile = profileName
             applyBpbCoreOptimizations(fragLength = length, fragInterval = interval)
@@ -322,33 +337,29 @@ internal object PennyServerScanner {
 
         for (ip in CLEAN_CF_ENDPOINTS) {
             for (port in BPB_TLS_PORTS) {
-                // 1. Server 1 (Edge Cluster EU-01) • VLESS + TLS Fragment (#OWN-CF1)
+                // 1. Dedicated BPB Cluster 1 (#OWN-CF1) • VLESS + Smart Fragment (5-12B)
                 nodes.add(
-                    "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-CF1"
+                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FK9v3ypdNLbhC9pXI%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF1"
                 )
-                // 2. Server 2 (Edge Cluster EU-02) • VLESS + TLS Fragment (#OWN-CF2)
+                // 2. Dedicated BPB Cluster 2 (#OWN-CF2) • VLESS + Smart Fragment (5-12B)
                 nodes.add(
-                    "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-CF2"
+                    "vless://$BPB2_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FP0DsgUrIHpxwVC17kqBm1v%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF2"
                 )
-                // 3. BPB Cluster • VLESS + TLS Fragment (#OWN-BPB)
+                // 3. Dedicated BPB Cluster 1 (#OWN-CF1) • VLESS + Normal Fragment (10-20B)
                 nodes.add(
-                    "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fp08StKN7UT3vN1ToQFedY5JYlt%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-BPB"
+                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FolPcudqQC7WWnOTnqALts%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-CF1"
                 )
-                // 4. Fast Fragment (50-100B) variants on 443 and 8443
-                if (port == 443 || port == 8443) {
-                    nodes.add(
-                        "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF1"
-                    )
-                    nodes.add(
-                        "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF2"
-                    )
-                    nodes.add(
-                        "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FNGmVOkqMU67fFMyJQSgbXbR5AzgvF3%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-BPB"
-                    )
-                }
-                // 5. Trojan + BPB TLS Fragment (#OWN-BPB)
+                // 4. Dedicated BPB Cluster 2 (#OWN-CF2) • VLESS + Normal Fragment (10-20B)
                 nodes.add(
-                    "trojan://ODXencHfxA%2CT3yBpD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-BPB"
+                    "vless://$BPB2_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2Fy7wl1tInOhSUZ6Qi7tsll0%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-CF2"
+                )
+                // 5. Dedicated BPB Cluster 1 (#OWN-CF1) • Trojan + Smart Fragment
+                nodes.add(
+                    "trojan://$BPB1_TR_PWD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FVbomkD6DumfXUz3f6N1L3OfQ%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF1"
+                )
+                // 6. Dedicated BPB Cluster 2 (#OWN-CF2) • Trojan + Smart Fragment
+                nodes.add(
+                    "trojan://$BPB2_TR_PWD@$ip:$port?security=tls&type=ws&host=$BPB2_HOST&path=%2Ftr%2FkbLSeIYkZdqVY73yFdNf2LrR%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF2"
                 )
             }
         }
@@ -377,27 +388,27 @@ internal object PennyServerScanner {
     }
 
     /**
-     * دانلود مستقیم از طریق آی‌پی‌های تمیز BPB-VPN (104.17.148.22 و ...) + پورت‌های 443/8443/2083
-     * + تکهتکه کردن TLS ClientHello (TlsHelloFragmentSocket) جهت عبور از مسمومیت DNS (10.10.34.36) و DPI ایران
+     * دانلود مستقیم از طریق آی‌پی‌های تمیز BPB-VPN (172.66.44.58, 172.66.47.198, 104.17.148.22 و ...) + پورت‌های 8443/443/2083
+     * + تکهتکه کردن 3 تا 7 بایتی TLS ClientHello (TlsHelloFragmentSocket) جهت عبور قطعی از فیلتر pages.dev روی همراه اول و ایرانسل
      */
     private fun downloadViaCleanIpTls(cleanUrl: String, onLog: (String) -> Unit): String {
         val parsed = URL(cleanUrl)
         val originalHost = parsed.host
         val pathAndQuery = if (parsed.query.isNullOrEmpty()) parsed.path else "${parsed.path}?${parsed.query}"
-        val sniHost = if (originalHost.equals(BPB_HOST, ignoreCase = true)) {
-            BPB_MIXED_SNI
-        } else {
-            toMixedCaseSni(originalHost)
+        val sniHost = when {
+            originalHost.equals(BPB_HOST, ignoreCase = true) -> BPB_MIXED_SNI
+            originalHost.equals(BPB2_HOST, ignoreCase = true) -> BPB2_MIXED_SNI
+            else -> toMixedCaseSni(originalHost)
         }
         val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
         val probeTargets = listOf(
+            "172.66.44.58" to 8443,
+            "172.66.47.198" to 8443,
+            "172.66.44.229" to 443,
+            "172.66.47.27" to 443,
             "104.17.148.22" to 8443,
             "104.17.147.22" to 8443,
-            "172.66.44.58" to 443,
-            "172.66.47.198" to 8443,
-            "104.17.148.22" to 443,
-            "104.17.147.22" to 2083,
-            "www.speedtest.net" to 443
+            "104.17.148.22" to 443
         )
 
         for ((endpoint, port) in probeTargets) {
@@ -578,13 +589,20 @@ internal object PennyServerScanner {
                         }
                         val alpn = alpnList.joinToString(",")
 
-                        // استخراج finalmask از JSON پنل BPB یا تزریق خودکار فرگمنت BPB-VPN برای دامنه‌های pages.dev
-                        val fmJson = finalmaskObj?.toString()?.takeIf { it.isNotEmpty() }
-                            ?: if (host.endsWith(".pages.dev", ignoreCase = true) || sni.endsWith(".pages.dev", ignoreCase = true)) {
-                                BPB_FINALMASK_NORMAL_JSON
-                            } else {
-                                ""
-                            }
+                        // برای دامنه‌های pages.dev همیشه از فرگمنت 5-12 بایتی استفاده می‌کنیم تا عبارت 9 حرفی pages.dev روی همراه اول و ایرانسل شکسته شود
+                        val isPagesNode = host.endsWith(".pages.dev", ignoreCase = true) || sni.endsWith(".pages.dev", ignoreCase = true)
+                        val fmJson = if (isPagesNode) {
+                            BPB_FINALMASK_SMART_JSON
+                        } else {
+                            finalmaskObj?.toString()?.takeIf { it.isNotEmpty() } ?: ""
+                        }
+
+                        val nodeTag = when {
+                            host.equals(BPB_HOST, ignoreCase = true) || sni.equals(BPB_HOST, ignoreCase = true) -> "OWN-CF1"
+                            host.equals(BPB2_HOST, ignoreCase = true) || sni.equals(BPB2_HOST, ignoreCase = true) -> "OWN-CF2"
+                            isPagesNode -> "OWN-BPB"
+                            else -> "PUBLIC"
+                        }
 
                         val queryPairs = mutableListOf<String>()
                         queryPairs.add("security=${urlEncode(sec)}")
@@ -632,7 +650,7 @@ internal object PennyServerScanner {
                                 val dedupKey = "vless:$uid@$addr:$port:$path:$fmJson"
                                 if (seenKeys.add(dedupKey)) {
                                     extractedUris.add(
-                                        "vless://${urlEncode(uid)}@$addr:$port?${vlessQuery.joinToString("&")}#PennyVPN"
+                                        "vless://${urlEncode(uid)}@$addr:$port?${vlessQuery.joinToString("&")}#$nodeTag"
                                     )
                                 }
                             }
@@ -655,7 +673,7 @@ internal object PennyServerScanner {
                                 val dedupKey = "trojan:$pwd@$addr:$port:$path:$fmJson"
                                 if (seenKeys.add(dedupKey)) {
                                     extractedUris.add(
-                                        "trojan://${urlEncode(pwd)}@$addr:$port?${queryPairs.joinToString("&")}#PennyVPN"
+                                        "trojan://${urlEncode(pwd)}@$addr:$port?${queryPairs.joinToString("&")}#$nodeTag"
                                     )
                                 }
                             }

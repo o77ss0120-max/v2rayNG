@@ -83,9 +83,11 @@ internal fun detectServerOriginTag(guid: String): String {
     return try {
         val cfg = MmkvManager.decodeServerConfig(guid) ?: return "PUB"
         val combined = "${cfg.host.orEmpty()} ${cfg.sni.orEmpty()} ${cfg.server.orEmpty()} ${cfg.remarks}".lowercase(Locale.US)
+        val bpb1 = PennyServerScanner.BPB_HOST.lowercase(Locale.US)
+        val bpb2 = PennyServerScanner.BPB2_HOST.lowercase(Locale.US)
         when {
-            combined.contains("cdn-sync-eu01") || combined.contains("own-cf1") || combined.contains("cf-1") -> "CF-1"
-            combined.contains("cdn-sync-eu02") || combined.contains("own-cf2") || combined.contains("cf-2") -> "CF-2"
+            combined.contains(bpb1) || combined.contains("own-cf1") || combined.contains("cf-1") -> "CF-1"
+            combined.contains(bpb2) || combined.contains("own-cf2") || combined.contains("cf-2") -> "CF-2"
             combined.contains(".pages.dev") || combined.contains("own-bpb") || combined.contains("bpb") -> "BPB"
             combined.contains(".workers.dev") || combined.contains("own-cf") -> "CF-1"
             else -> "PUB"

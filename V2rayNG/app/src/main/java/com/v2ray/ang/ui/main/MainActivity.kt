@@ -2661,13 +2661,13 @@ class MainActivity : HelperBaseComponentActivity() {
                     ) {
                         cfg.server = PennyServerScanner.CLEAN_CF_ENDPOINTS.first()
                     }
-                    if (cfg.finalMask.isNullOrBlank() &&
+                    if ((cfg.finalMask.isNullOrBlank() || cfg.finalMask?.contains("100-200") == true) &&
                         (cfg.host?.endsWith(".pages.dev", ignoreCase = true) == true ||
                             cfg.sni?.endsWith(".pages.dev", ignoreCase = true) == true ||
                             cfg.host?.endsWith(".workers.dev", ignoreCase = true) == true ||
                             cfg.sni?.endsWith(".workers.dev", ignoreCase = true) == true)
                     ) {
-                        cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
+                        cfg.finalMask = PennyServerScanner.BPB_FINALMASK_SMART_JSON
                     }
                     val originTag = detectServerOriginTag(g)
                     if (g in newlyImported || cfg.remarks.startsWith("Penny", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true) || cfg.remarks.startsWith("OWN-", ignoreCase = true)) {

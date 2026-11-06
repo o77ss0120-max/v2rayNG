@@ -1925,7 +1925,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                         ) {
                                             ShinyGreenPingBadge(
                                                 ms = s.ms,
-                                                showDiamond = s.isVip
+                                                showDiamond = s.isVipServer
                                             )
                                             if (active) {
                                                 Text(

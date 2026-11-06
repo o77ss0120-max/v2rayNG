@@ -22,7 +22,9 @@ internal data class PennyServer(
     val ms: Long,
     val label: String,
     val isVipServer: Boolean = false
-)
+) {
+    val isVip: Boolean get() = isVipServer
+}
 
 internal object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =

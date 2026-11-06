@@ -2576,10 +2576,17 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
+    private var lastHealthCheckRxBytes: Long = 0L
+
     private suspend fun healthCheckAndSwitch() {
         // حداقل ۳۵ ثانیه پس از اتصال جدید به تونل فرصت پایداری بدهیم و اگر ترافیک زنده در جریان است قطع نکنیم
         if (connectStartMs > 0L && System.currentTimeMillis() - connectStartMs < 35_000L) return
-        if (liveDownSpeedBps > 300L || liveUpSpeedBps > 300L) return
+        val currentRx = TrafficStats.getUidRxBytes(Process.myUid())
+        if (currentRx > 0L) {
+            val deltaRx = currentRx - lastHealthCheckRxBytes
+            lastHealthCheckRxBytes = currentRx
+            if (deltaRx > 16_384L) return
+        }
 
         var ok = false
         for (i in 0 until 3) {

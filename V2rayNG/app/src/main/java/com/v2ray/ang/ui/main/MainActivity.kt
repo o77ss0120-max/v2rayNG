@@ -2621,12 +2621,16 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
                 if (cfg != null) {
-                    if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true) {
+                    if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true ||
+                        cfg.server?.endsWith(".workers.dev", ignoreCase = true) == true
+                    ) {
                         cfg.server = PennyServerScanner.CLEAN_CF_ENDPOINTS.first()
                     }
                     if (cfg.finalMask.isNullOrBlank() &&
                         (cfg.host?.endsWith(".pages.dev", ignoreCase = true) == true ||
-                            cfg.sni?.endsWith(".pages.dev", ignoreCase = true) == true)
+                            cfg.sni?.endsWith(".pages.dev", ignoreCase = true) == true ||
+                            cfg.host?.endsWith(".workers.dev", ignoreCase = true) == true ||
+                            cfg.sni?.endsWith(".workers.dev", ignoreCase = true) == true)
                     ) {
                         cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }

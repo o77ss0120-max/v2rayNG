@@ -100,6 +100,18 @@ internal object PennyServerScanner {
     const val BPB_HOST = "h1bq9ybcr6av6637iy1pyhiet.pages.dev"
     const val BPB_MIXED_SNI = "H1bQ9ybcr6AV6637iy1pyhIET.pageS.dEv"
 
+    // سرور ۱ اختصاصی کلودفلر (Stealth Edge Cluster EU-01)
+    const val EDGE_EU01_HOST = "edge-telemetry-router.cdn-sync-eu01.workers.dev"
+    const val EDGE_EU01_MIXED_SNI = "EdGe-tElEmEtRy-rOuTeR.CdN-SyNc-eU01.WoRkErS.DeV"
+    const val EDGE_EU01_UUID = "9a4e7c21-5b8d-4f16-8e32-6d1a9c0f4b78"
+    const val EDGE_EU01_SUB_URL = "https://edge-telemetry-router.cdn-sync-eu01.workers.dev/api/v2/feed/sync"
+
+    // سرور ۲ اختصاصی کلودفلر (Stealth Edge Cluster EU-02)
+    const val EDGE_EU02_HOST = "edge-telemetry-router.cdn-sync-eu02.workers.dev"
+    const val EDGE_EU02_MIXED_SNI = "EdGe-tElEmEtRy-rOuTeR.CdN-SyNc-eU02.WoRkErS.DeV"
+    const val EDGE_EU02_UUID = "3c8f1e64-7a29-4d50-9b18-2e6c4a8d0f93"
+    const val EDGE_EU02_SUB_URL = "https://edge-telemetry-router.cdn-sync-eu02.workers.dev/api/v2/feed/sync"
+
     // استخر آی‌پی‌های تمیز کلودفلر در رنج‌های متنوع Anycast برای اسکنر داخلی Clean IP
     val CANDIDATE_CF_ANYCAST_IPS = listOf(
         "104.17.148.22",
@@ -142,13 +154,15 @@ internal object PennyServerScanner {
     const val BPB_FINALMASK_SMART_JSON =
         """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"1-5","delay":"1-1"}}]}"""
 
-    // لینک‌های ساب اختصاصی BPB شما (هر دو حالت Fragment و Normal) + منابع پشتیبان
+    // لینک‌های ساب اختصاصی کلاسترهای کلودفلر شما (Server 1 + Server 2 + BPB) + منابع پشتیبان
     const val DEDICATED_BPB_FRAGMENT_SUB_URL =
         "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/fragment?app=xray#BPB-Fragment"
     const val DEDICATED_BPB_SUB_URL =
         "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/normal?app=xray#%F0%9F%92%A6%20BPB%20Normal"
 
     val SIGNED_STANDARD_SUBSCRIPTION_SOURCES = listOf(
+        EDGE_EU01_SUB_URL,
+        EDGE_EU02_SUB_URL,
         DEDICATED_BPB_FRAGMENT_SUB_URL,
         DEDICATED_BPB_SUB_URL,
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
@@ -156,6 +170,8 @@ internal object PennyServerScanner {
     )
 
     val SIGNED_VIP_SUBSCRIPTION_SOURCES = listOf(
+        EDGE_EU01_SUB_URL,
+        EDGE_EU02_SUB_URL,
         DEDICATED_BPB_FRAGMENT_SUB_URL,
         DEDICATED_BPB_SUB_URL,
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
@@ -306,17 +322,31 @@ internal object PennyServerScanner {
 
         for (ip in CLEAN_CF_ENDPOINTS) {
             for (port in BPB_TLS_PORTS) {
-                // 1. VLESS + BPB TLS Fragment (100-200ms)
+                // 1. Server 1 (Edge Cluster EU-01) • VLESS + TLS Fragment
+                nodes.add(
+                    "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                )
+                // 2. Server 2 (Edge Cluster EU-02) • VLESS + TLS Fragment
+                nodes.add(
+                    "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                )
+                // 3. BPB Cluster • VLESS + TLS Fragment (100-200ms)
                 nodes.add(
                     "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fp08StKN7UT3vN1ToQFedY5JYlt%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
                 )
-                // 2. VLESS + BPB Smart Fragment (1-5ms)
+                // 4. Smart Fragment (1-5ms) variants on 443 and 8443
                 if (port == 443 || port == 8443) {
+                    nodes.add(
+                        "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
+                    )
+                    nodes.add(
+                        "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
+                    )
                     nodes.add(
                         "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FNGmVOkqMU67fFMyJQSgbXbR5AzgvF3%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
                     )
                 }
-                // 3. Trojan + BPB TLS Fragment (100-200ms)
+                // 5. Trojan + BPB TLS Fragment (100-200ms)
                 nodes.add(
                     "trojan://ODXencHfxA%2CT3yBpD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
                 )
@@ -748,7 +778,9 @@ internal object PennyServerScanner {
         if (host.isEmpty() || port <= 0) return -1L
 
         // محافظت در برابر مسمومیت DNS ایران (10.10.34.36) هنگام تست پینگ سرورها
-        if (host.endsWith(".pages.dev", ignoreCase = true)) {
+        if (host.endsWith(".pages.dev", ignoreCase = true) ||
+            host.endsWith(".workers.dev", ignoreCase = true)
+        ) {
             host = CLEAN_CF_ENDPOINTS.first()
             profile.server = host
             MmkvManager.encodeServerConfig(guid, profile)

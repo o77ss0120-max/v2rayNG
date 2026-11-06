@@ -184,7 +184,7 @@ internal object PennyServerScanner {
             MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://1.1.1.1/dns-query")
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
             MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
-            MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_LAN, true)
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, "1")
         } catch (_: Exception) {
         }
     }

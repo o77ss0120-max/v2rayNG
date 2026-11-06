@@ -79,35 +79,70 @@ internal object Strings {
     fun emptyLogs(l: AppLang) = "No logs recorded yet."
 }
 
+internal fun detectServerOriginTag(guid: String): String {
+    return try {
+        val cfg = MmkvManager.decodeServerConfig(guid) ?: return "PUB"
+        val combined = "${cfg.host.orEmpty()} ${cfg.sni.orEmpty()} ${cfg.server.orEmpty()} ${cfg.remarks}".lowercase(Locale.US)
+        when {
+            combined.contains("cdn-sync-eu01") || combined.contains("own-cf1") || combined.contains("cf-1") -> "CF-1"
+            combined.contains("cdn-sync-eu02") || combined.contains("own-cf2") || combined.contains("cf-2") -> "CF-2"
+            combined.contains(".pages.dev") || combined.contains("own-bpb") || combined.contains("bpb") -> "BPB"
+            combined.contains(".workers.dev") || combined.contains("own-cf") -> "CF-1"
+            else -> "PUB"
+        }
+    } catch (_: Exception) {
+        "PUB"
+    }
+}
+
+internal fun isDedicatedServerTag(codeTag: String): Boolean {
+    return codeTag == "CF-1" || codeTag == "CF-2" || codeTag == "BPB" || codeTag.startsWith("OWN")
+}
+
 internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
-    return list.sortedBy { it.ms }.mapIndexed { index, s ->
-        val groupChar = ('A'.code + (index / 4).coerceAtMost(5)).toChar()
-        val num = (index % 4) + 1
-        val isNodeGroup = (index % 4) < 2
-        val codeTag = "$groupChar-$num"
-        var customRemarks: String? = null
+    val tagged = list.map { s ->
+        val origin = detectServerOriginTag(s.guid)
+        s to origin
+    }
+    // اولویت اول با سرورهای اختصاصی خودمان (CF-1 و CF-2 و BPB) بر اساس پینگ، سپس سرورهای عمومی (PUB)
+    val sorted = tagged.sortedWith(
+        compareBy<Pair<PennyServer, String>> { (_, origin) ->
+            when (origin) {
+                "CF-1", "CF-2" -> 0
+                "BPB" -> 1
+                else -> 2
+            }
+        }.thenBy { (s, _) -> s.ms }
+    )
+
+    return sorted.mapIndexed { index, (s, origin) ->
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
             if (cfg != null) {
-                if (cfg.subscriptionId == "PENNY_MANAGED_SUB" ||
-                    cfg.remarks.startsWith("PennyVPN", ignoreCase = true) ||
-                    cfg.remarks.contains("BPB", ignoreCase = true)
-                ) {
-                    if (cfg.remarks != "Penny VPN") {
-                        cfg.remarks = "Penny VPN"
-                        MmkvManager.encodeServerConfig(s.guid, cfg)
-                    }
-                } else if (cfg.remarks.isNotBlank() && cfg.remarks != "Penny VPN") {
-                    customRemarks = cfg.remarks.take(24)
+                val targetRemark = when (origin) {
+                    "CF-1" -> "PennyVPN OWN-CF1"
+                    "CF-2" -> "PennyVPN OWN-CF2"
+                    "BPB" -> "PennyVPN OWN-BPB"
+                    else -> if (cfg.remarks.isBlank()) "PennyVPN PUBLIC" else cfg.remarks
+                }
+                if (cfg.remarks != targetRemark && (origin != "PUB" || cfg.remarks.startsWith("Penny", ignoreCase = true))) {
+                    cfg.remarks = targetRemark
+                    MmkvManager.encodeServerConfig(s.guid, cfg)
                 }
             }
         } catch (e: Exception) {
-            Log.w("PennyVPN", "Failed to read remarks for ${s.guid}: ${e.message}")
+            Log.w("PennyVPN", "Failed to tag remarks for ${s.guid}: ${e.message}")
         }
-        val baseLabel = customRemarks ?: if (isNodeGroup) "Node $codeTag" else "Server $codeTag"
+
+        val displayLabel = when (origin) {
+            "CF-1" -> "OWN Server 1 • #${index + 1}"
+            "CF-2" -> "OWN Server 2 • #${index + 1}"
+            "BPB" -> "OWN BPB • #${index + 1}"
+            else -> "Public Node • #${index + 1}"
+        }
         s.copy(
-            codeTag = codeTag,
-            label = baseLabel,
+            codeTag = origin,
+            label = displayLabel,
             isVipServer = isVipList
         )
     }

@@ -101,16 +101,16 @@ internal object PennyServerScanner {
     const val BPB_MIXED_SNI = "H1bQ9ybcr6AV6637iy1pyhIET.pageS.dEv"
 
     // سرور ۱ اختصاصی کلودفلر (Stealth Edge Cluster EU-01)
-    const val EDGE_EU01_HOST = "edge-telemetry-router.cdn-sync-eu01.workers.dev"
-    const val EDGE_EU01_MIXED_SNI = "EdGe-tElEmEtRy-rOuTeR.CdN-SyNc-eU01.WoRkErS.DeV"
+    const val EDGE_EU01_HOST = "cdn-asset-metrics.cdn-sync-eu01.workers.dev"
+    const val EDGE_EU01_MIXED_SNI = "CdN-AsSeT-MeTrIcS.CdN-SyNc-eU01.WoRkErS.DeV"
     const val EDGE_EU01_UUID = "9a4e7c21-5b8d-4f16-8e32-6d1a9c0f4b78"
-    const val EDGE_EU01_SUB_URL = "https://edge-telemetry-router.cdn-sync-eu01.workers.dev/api/v2/feed/sync"
+    const val EDGE_EU01_SUB_URL = "https://cdn-asset-metrics.cdn-sync-eu01.workers.dev/api/v2/feed/sync"
 
     // سرور ۲ اختصاصی کلودفلر (Stealth Edge Cluster EU-02)
-    const val EDGE_EU02_HOST = "edge-telemetry-router.cdn-sync-eu02.workers.dev"
-    const val EDGE_EU02_MIXED_SNI = "EdGe-tElEmEtRy-rOuTeR.CdN-SyNc-eU02.WoRkErS.DeV"
+    const val EDGE_EU02_HOST = "cdn-asset-metrics.cdn-sync-eu02.workers.dev"
+    const val EDGE_EU02_MIXED_SNI = "CdN-AsSeT-MeTrIcS.CdN-SyNc-eU02.WoRkErS.DeV"
     const val EDGE_EU02_UUID = "3c8f1e64-7a29-4d50-9b18-2e6c4a8d0f93"
-    const val EDGE_EU02_SUB_URL = "https://edge-telemetry-router.cdn-sync-eu02.workers.dev/api/v2/feed/sync"
+    const val EDGE_EU02_SUB_URL = "https://cdn-asset-metrics.cdn-sync-eu02.workers.dev/api/v2/feed/sync"
 
     // استخر آی‌پی‌های تمیز کلودفلر در رنج‌های متنوع Anycast برای اسکنر داخلی Clean IP
     val CANDIDATE_CF_ANYCAST_IPS = listOf(
@@ -143,16 +143,16 @@ internal object PennyServerScanner {
     )
 
     @Volatile
-    var detectedIspProfile: String = "Auto (Smart Fragment 80-160B)"
+    var detectedIspProfile: String = "Auto (High-Speed Fragment 100-200B)"
 
     // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 2083 روی ایرانسل و همراه اول عملکرد عالی دارند)
     val BPB_TLS_PORTS = listOf(443, 8443, 2083)
 
-    // تنظیمات استاندارد TLS Fragment و Smart Fragment مشابه BPB-VPN برای هسته Xray v26 (finalmask)
+    // تنظیمات استاندارد TLS Fragment بهینه‌شده برای سرعت بالای یوتیوب و اینستاگرام
     const val BPB_FINALMASK_NORMAL_JSON =
         """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"1"}}]}"""
     const val BPB_FINALMASK_SMART_JSON =
-        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"1-5","delay":"1-1"}}]}"""
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"50-100","delay":"1"}}]}"""
 
     // لینک‌های ساب اختصاصی کلاسترهای کلودفلر شما (Server 1 + Server 2 + BPB) + منابع پشتیبان
     const val DEDICATED_BPB_FRAGMENT_SUB_URL =
@@ -215,15 +215,15 @@ internal object PennyServerScanner {
             val opLower = rawOp.lowercase()
             val (profileName, length, interval) = when {
                 opLower.contains("irancell") || opLower.contains("mtn") ->
-                    Triple("Irancell (MTN) • Deep Fragment 10-30B", "10-30", "2")
+                    Triple("Irancell (MTN) • Fast Stream Fragment 50-100B", "50-100", "1")
                 opLower.contains("mci") || opLower.contains("ir-tci") || opLower.contains("hamrah") ->
-                    Triple("Hamrah Aval (MCI) • Smart Fragment 20-50B", "20-50", "1")
+                    Triple("Hamrah Aval (MCI) • High-Speed Fragment 80-160B", "80-160", "1")
                 opLower.contains("rightel") ->
-                    Triple("Rightel • Fast Fragment 40-90B", "40-90", "1")
+                    Triple("Rightel • Fast Fragment 80-160B", "80-160", "1")
                 rawOp.isNotEmpty() ->
-                    Triple("$rawOp • Balanced Fragment 80-160B", "80-160", "1")
+                    Triple("$rawOp • Balanced Fragment 100-200B", "100-200", "1")
                 else ->
-                    Triple("Wi-Fi / Broadband • Fragment 80-160B", "80-160", "1")
+                    Triple("Wi-Fi / Broadband • Fragment 100-200B", "100-200", "1")
             }
             detectedIspProfile = profileName
             applyBpbCoreOptimizations(fragLength = length, fragInterval = interval)
@@ -322,33 +322,33 @@ internal object PennyServerScanner {
 
         for (ip in CLEAN_CF_ENDPOINTS) {
             for (port in BPB_TLS_PORTS) {
-                // 1. Server 1 (Edge Cluster EU-01) • VLESS + TLS Fragment
+                // 1. Server 1 (Edge Cluster EU-01) • VLESS + TLS Fragment (#OWN-CF1)
                 nodes.add(
-                    "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                    "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-CF1"
                 )
-                // 2. Server 2 (Edge Cluster EU-02) • VLESS + TLS Fragment
+                // 2. Server 2 (Edge Cluster EU-02) • VLESS + TLS Fragment (#OWN-CF2)
                 nodes.add(
-                    "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                    "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-CF2"
                 )
-                // 3. BPB Cluster • VLESS + TLS Fragment (100-200ms)
+                // 3. BPB Cluster • VLESS + TLS Fragment (#OWN-BPB)
                 nodes.add(
-                    "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fp08StKN7UT3vN1ToQFedY5JYlt%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                    "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fp08StKN7UT3vN1ToQFedY5JYlt%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-BPB"
                 )
-                // 4. Smart Fragment (1-5ms) variants on 443 and 8443
+                // 4. Fast Fragment (50-100B) variants on 443 and 8443
                 if (port == 443 || port == 8443) {
                     nodes.add(
-                        "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
+                        "vless://$EDGE_EU01_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU01_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU01_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF1"
                     )
                     nodes.add(
-                        "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry%3Fed%3D2560&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
+                        "vless://$EDGE_EU02_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$EDGE_EU02_HOST&path=%2Fws%2Fv2%2Ftelemetry&sni=$EDGE_EU02_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-CF2"
                     )
                     nodes.add(
-                        "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FNGmVOkqMU67fFMyJQSgbXbR5AzgvF3%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
+                        "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FNGmVOkqMU67fFMyJQSgbXbR5AzgvF3%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#OWN-BPB"
                     )
                 }
-                // 5. Trojan + BPB TLS Fragment (100-200ms)
+                // 5. Trojan + BPB TLS Fragment (#OWN-BPB)
                 nodes.add(
-                    "trojan://ODXencHfxA%2CT3yBpD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                    "trojan://ODXencHfxA%2CT3yBpD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#OWN-BPB"
                 )
             }
         }
@@ -476,6 +476,7 @@ internal object PennyServerScanner {
             onLog?.invoke("Detected ISP DNS poisoning ($resolvedIp) for ${url.host}; switching to Clean IP TLS")
             val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
             if (bypassed.isNotEmpty()) return bypassed
+            throw IllegalStateException("ISP DNS hijacked ($resolvedIp) for ${url.host}")
         }
 
         val conn = url.openConnection() as HttpURLConnection

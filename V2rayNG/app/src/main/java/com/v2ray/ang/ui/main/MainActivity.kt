@@ -2010,15 +2010,21 @@ class MainActivity : HelperBaseComponentActivity() {
                         itemsIndexed(listToShow, key = { _, item -> item.guid }) { index, s ->
                             StaggeredServerItem(index = index) {
                                 val active = isRunning && s.guid == selectedGuid
+                                val isOwn = isDedicatedServerTag(s.codeTag)
+                                val tagText = s.codeTag.ifEmpty { "CF-1" }
                                 Surface(
-                                    color = if (active) Color(0xFF332C24) else Color(0xFF222127),
+                                    color = if (active) Color(0xFF332C24) else if (isOwn) Color(0xFF24211D) else Color(0xFF202128),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(14.dp))
                                         .border(
                                             1.dp,
-                                            if (active) Color(0xFFE6CFAF) else Color(0xFF3A3942),
+                                            when {
+                                                active -> Color(0xFFE6CFAF)
+                                                isOwn -> Color(0xFFE6CFAF).copy(alpha = 0.55f)
+                                                else -> Color(0xFF3A3942)
+                                            },
                                             RoundedCornerShape(14.dp)
                                         )
                                         .clickable(enabled = phase == Phase.IDLE) {
@@ -2034,34 +2040,63 @@ class MainActivity : HelperBaseComponentActivity() {
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(34.dp)
+                                                .size(36.dp)
                                                 .clip(RoundedCornerShape(9.dp))
-                                                .background(Color(0xFF17181D))
+                                                .background(if (isOwn) Color(0xFF2F281F) else Color(0xFF17181D))
                                                 .border(
                                                     1.dp,
-                                                    if (active) Color(0xFFD8DCE6).copy(alpha = 0.8f) else Color(0xFF3E404A),
+                                                    if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.8f) else Color(0xFF3E404A),
                                                     RoundedCornerShape(9.dp)
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = s.codeTag.ifEmpty { "A-1" },
-                                                color = if (active) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
-                                                fontSize = 10.sp,
+                                                text = tagText,
+                                                color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB8BDCB),
+                                                fontSize = 9.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontFamily = FontFamily.Monospace
                                             )
                                         }
                                         Spacer(Modifier.width(9.dp))
-                                        Text(
-                                            text = s.label,
-                                            color = Color(0xFFF2F4F8),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Text(
+                                                    text = s.label,
+                                                    color = Color(0xFFF2F4F8),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.5.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(
+                                                            if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.22f)
+                                                            else Color(0xFF323542)
+                                                        )
+                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (isOwn) "DEDICATED" else "PUBLIC",
+                                                        color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB4B9C7),
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = if (isOwn) "Our Cloudflare Server ($tagText)" else "Public Community Server",
+                                                color = if (isOwn) Color(0xFFD8C7B0) else Color(0xFF8E929E),
+                                                fontSize = 9.5.sp,
+                                                maxLines = 1
+                                            )
+                                        }
                                         Spacer(Modifier.width(6.dp))
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -2634,8 +2669,14 @@ class MainActivity : HelperBaseComponentActivity() {
                     ) {
                         cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
-                    if (g in newlyImported || cfg.remarks.startsWith("PennyVPN", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true)) {
-                        cfg.remarks = "Penny VPN"
+                    val originTag = detectServerOriginTag(g)
+                    if (g in newlyImported || cfg.remarks.startsWith("Penny", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true) || cfg.remarks.startsWith("OWN-", ignoreCase = true)) {
+                        cfg.remarks = when (originTag) {
+                            "CF-1" -> "PennyVPN OWN-CF1"
+                            "CF-2" -> "PennyVPN OWN-CF2"
+                            "BPB" -> "PennyVPN OWN-BPB"
+                            else -> "PennyVPN PUBLIC"
+                        }
                     }
                     MmkvManager.encodeServerConfig(g, cfg)
                 }
@@ -2649,17 +2690,25 @@ class MainActivity : HelperBaseComponentActivity() {
             return false
         }
 
-        val tcpSampleCount = minOf(newGuids.size, PennyServerScanner.MAX_TCP_CANDIDATES)
+        // جداسازی سرورهای اختصاصی کلودفلر خودمان (CF-1, CF-2, BPB) از سرورهای عمومی تا سرورهای عمومی باعث حذف سرورهای اختصاصی نشوند
+        val ownCandidates = newGuids.filter { isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
+        val pubCandidates = newGuids.filter { !isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
+        val prioritizedSample = (ownCandidates.take(180) + pubCandidates.take(120)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
+
         ui {
             scanProgress = 0.28f
-            statusMessage = "TCP probing $tcpSampleCount servers..."
+            statusMessage = "TCP probing ${prioritizedSample.size} servers (${ownCandidates.size} OWN)..."
         }
-        val tcpOk = PennyServerScanner.tcpFilter(newGuids.shuffled().take(PennyServerScanner.MAX_TCP_CANDIDATES))
+        val tcpOk = PennyServerScanner.tcpFilter(prioritizedSample)
+        val tcpOwn = tcpOk.filter { isDedicatedServerTag(detectServerOriginTag(it.first)) }
+        val tcpPub = tcpOk.filter { !isDedicatedServerTag(detectServerOriginTag(it.first)) }
+        plog("TCP probe hits: ${tcpOwn.size} Dedicated OWN servers, ${tcpPub.size} Public servers")
+
         val keep = if (tcpOk.isNotEmpty()) {
-            tcpOk.take(REAL_TEST_COUNT).map { it.first }
+            (tcpOwn.take(18).map { it.first } + tcpPub.take(8).map { it.first }).take(REAL_TEST_COUNT)
         } else {
             plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 20)} servers via Xray core")
-            newGuids.take(minOf(newGuids.size, 20))
+            (ownCandidates.take(16) + pubCandidates.take(4)).take(20)
         }
 
         val keepSet = keep.toHashSet()
@@ -2673,7 +2722,7 @@ class MainActivity : HelperBaseComponentActivity() {
         val toRemove = MmkvManager.decodeServerList("").filter { guid ->
             if (guid in protect) return@filter false
             val rem = MmkvManager.decodeServerConfig(guid)?.remarks.orEmpty()
-            rem == "Penny VPN" || rem.startsWith("PennyVPN", ignoreCase = true) || rem.contains("BPB", ignoreCase = true)
+            rem == "Penny VPN" || rem.startsWith("PennyVPN", ignoreCase = true) || rem.contains("BPB", ignoreCase = true) || rem.startsWith("OWN-", ignoreCase = true)
         }
         if (toRemove.isNotEmpty()) {
             MmkvManager.removeServers(toRemove, "")

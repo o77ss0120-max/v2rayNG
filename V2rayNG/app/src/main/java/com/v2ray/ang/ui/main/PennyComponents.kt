@@ -392,30 +392,33 @@ internal fun ModernServerCard(
                         .padding(horizontal = 12.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val isOwn = isDedicatedServerTag(currentSrv.codeTag)
+                    val tagText = currentSrv.codeTag.ifEmpty { "CF-1" }
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(40.dp)
                             .clip(RoundedCornerShape(11.dp))
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF2B2D36), Color(0xFF1D1E24))
+                                    if (isOwn) {
+                                        listOf(Color(0xFF383024), Color(0xFF221E18))
+                                    } else {
+                                        listOf(Color(0xFF282A34), Color(0xFF1B1C23))
+                                    }
                                 )
                             )
                             .border(
-                                1.dp,
-                                if (isConnected) Color(0xFFD8DCE6).copy(alpha = 0.85f)
-                                else if (isVipMode) Color(0xFFD8C7B0).copy(alpha = 0.65f)
-                                else Color(0xFF454752),
+                                1.2.dp,
+                                if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.88f)
+                                else Color(0xFF565A68),
                                 RoundedCornerShape(11.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = currentSrv.codeTag.ifEmpty { "A-1" },
-                            color = if (isConnected) Color(0xFFF2F4F8)
-                            else if (isVipMode) Color(0xFFE6CFAF)
-                            else Color(0xFFD0D4DF),
-                            fontSize = 11.sp,
+                            text = tagText,
+                            color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB8BDCB),
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             fontFamily = FontFamily.Monospace
                         )
@@ -424,22 +427,51 @@ internal fun ModernServerCard(
                     Spacer(Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = currentSrv.label,
-                            color = Color(0xFFF2F4F8),
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = currentSrv.label,
+                                color = Color(0xFFF2F4F8),
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(
+                                        if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.22f)
+                                        else Color(0xFF323542)
+                                    )
+                                    .border(
+                                        0.8.dp,
+                                        if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.75f)
+                                        else Color(0xFF5A5E6E),
+                                        RoundedCornerShape(5.dp)
+                                    )
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = if (isOwn) "DEDICATED" else "PUBLIC",
+                                    color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB4B9C7),
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = if (isConnected) {
-                                "Active Node • BPB Fragment • Stable"
-                            } else {
-                                "Tap to change server"
+                            text = when {
+                                isOwn && isConnected -> "Dedicated Cloudflare ($tagText) • High-Speed Stream"
+                                isOwn -> "Our Dedicated Cloudflare Edge ($tagText) • Tap to switch"
+                                isConnected -> "Public Shared Community Node • Tap to switch to OWN"
+                                else -> "Public Community Server • Shared Bandwidth"
                             },
-                            color = Color(0xFF9EA1AB),
+                            color = if (isOwn) Color(0xFFD8C7B0) else Color(0xFF9EA1AB),
                             fontSize = 10.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis

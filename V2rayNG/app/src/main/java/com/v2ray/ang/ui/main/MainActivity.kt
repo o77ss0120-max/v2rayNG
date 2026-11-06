@@ -257,6 +257,7 @@ class MainActivity : HelperBaseComponentActivity() {
         val sysNow = System.currentTimeMillis()
         if (sysNow > vipLastSeenMs) {
             vipLastSeenMs = sysNow
+            prefs.edit().putLong("vip_last_seen_ms", vipLastSeenMs).apply()
         }
         return maxOf(sysNow, vipLastSeenMs)
     }
@@ -392,7 +393,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun todayDateKey(): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(effectiveNowMs()))
 
     private fun ensureDailyDeviceQuotaCurrent() {
         val today = todayDateKey()
@@ -430,7 +431,8 @@ class MainActivity : HelperBaseComponentActivity() {
             })
         } else {
             loadRewardedAd()
-            addTwoHoursToSession()
+            statusMessage = "Ad is loading, please try again in a few seconds"
+            plog("Rewarded ad not ready yet; requested reload")
         }
     }
 
@@ -1135,6 +1137,20 @@ class MainActivity : HelperBaseComponentActivity() {
                         onSelect = { prof ->
                             connectionProfile = prof
                             prefs.edit().putString("conn_profile", prof.name).apply()
+                            when (prof) {
+                                ConnectionProfile.GAMING -> {
+                                    PennyServerScanner.applyBpbCoreOptimizations(fragLength = "20-50", fragInterval = "1")
+                                    MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "1.1.1.1")
+                                    MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
+                                }
+                                ConnectionProfile.STREAMING -> {
+                                    PennyServerScanner.applyBpbCoreOptimizations(fragLength = "100-200", fragInterval = "1")
+                                    MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://1.1.1.1/dns-query")
+                                }
+                                ConnectionProfile.SMART -> {
+                                    PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
+                                }
+                            }
                             statusMessage = "${prof.label} profile active (${prof.tag})"
                             plog("Switched routing profile to ${prof.label}")
                         }
@@ -2099,6 +2115,8 @@ class MainActivity : HelperBaseComponentActivity() {
             checking = false
         }
 
+        var diagnosing by remember { mutableStateOf(false) }
+
         AlertDialog(
             onDismissRequest = { showUpdateDialog = false },
             containerColor = Color(0xFF191A20),
@@ -2114,15 +2132,15 @@ class MainActivity : HelperBaseComponentActivity() {
                 ) {
                     UpdateArrowIcon(size = 17.dp, color = Color(0xFFE2E5EE))
                     Text(
-                        text = "Update",
+                        text = "Update & Network Doctor",
                         color = Color(0xFFF2F4F8),
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 16.sp
+                        fontSize = 15.5.sp
                     )
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         color = Color(0xFF23252D),
                         shape = RoundedCornerShape(12.dp),
@@ -2133,7 +2151,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2163,11 +2181,8 @@ class MainActivity : HelperBaseComponentActivity() {
                             onClick = {
                                 bpbFragmentMode = "NORMAL"
                                 prefs.edit().putString("bpb_frag_mode", "NORMAL").apply()
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "100-200")
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
-                                statusNote = "Fragment: Normal"
+                                PennyServerScanner.applyBpbCoreOptimizations(fragLength = "100-200", fragInterval = "1")
+                                statusNote = "Fragment: Normal (100-200B)"
                             },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
@@ -2183,11 +2198,8 @@ class MainActivity : HelperBaseComponentActivity() {
                             onClick = {
                                 bpbFragmentMode = "SMART"
                                 prefs.edit().putString("bpb_frag_mode", "SMART").apply()
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "1-5")
-                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
-                                statusNote = "Fragment: Smart"
+                                PennyServerScanner.applyBpbCoreOptimizations(fragLength = "10-30", fragInterval = "1")
+                                statusNote = "Fragment: Deep Smart (10-30B)"
                             },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
@@ -2199,6 +2211,32 @@ class MainActivity : HelperBaseComponentActivity() {
                                 fontWeight = if (!isNormal) FontWeight.ExtraBold else FontWeight.Medium
                             )
                         }
+                    }
+
+                    Button(
+                        onClick = {
+                            if (diagnosing) return@Button
+                            diagnosing = true
+                            statusNote = "Scanning Clean IPs & ISP DPI..."
+                            lifecycleScope.launch {
+                                val report = PennyServerScanner.runNetworkDoctor(this@MainActivity, ::plog)
+                                statusNote = report
+                                diagnosing = false
+                            }
+                        },
+                        enabled = !diagnosing && phase == Phase.IDLE,
+                        shape = RoundedCornerShape(11.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2E3A)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.55f), RoundedCornerShape(11.dp))
+                    ) {
+                        Text(
+                            text = if (diagnosing) "Running Network Doctor..." else "Network Doctor & Clean IP Scan",
+                            color = Color(0xFFE6CFAF),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.5.sp
+                        )
                     }
 
                     Button(
@@ -2243,8 +2281,9 @@ class MainActivity : HelperBaseComponentActivity() {
                         Text(
                             text = note,
                             color = Color(0xFFE6CFAF),
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
                         )
                     }
                 }
@@ -2536,7 +2575,8 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun runScan(): Boolean {
-        PennyServerScanner.applyBpbCoreOptimizations()
+        PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
+        PennyServerScanner.scanCleanCloudflareIps(::plog)
         val scanningVip = vipActive && useVipServers
         val sources = getSubscriptionSources(scanningVip)
 
@@ -2568,18 +2608,19 @@ class MainActivity : HelperBaseComponentActivity() {
         val before = MmkvManager.decodeServerList("").toSet()
         for (content in contents) {
             try {
-                val r = AngConfigManager.importBatchConfig(content, "", true)
+                val r = AngConfigManager.importBatchConfig(content, PennyServerScanner.MANAGED_SUB_ID, true)
                 plog("import result: $r")
             } catch (e: Exception) {
                 plog("import error: ${e.message}")
             }
         }
         val allAfter = MmkvManager.decodeServerList("")
-        val newGuids = allAfter.filter { it !in before }.ifEmpty { allAfter }
-        newGuids.forEach { g ->
+        val newlyImported = allAfter.filter { it !in before }
+        newlyImported.forEach { g ->
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
                 if (cfg != null) {
+                    cfg.subscriptionId = PennyServerScanner.MANAGED_SUB_ID
                     if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true) {
                         cfg.server = PennyServerScanner.CLEAN_CF_ENDPOINTS.first()
                     }
@@ -2596,6 +2637,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 Log.w(TAG, "Sanitize remarks warning for $g: ${e.message}")
             }
         }
+        val newGuids = newlyImported.ifEmpty { allAfter }
         if (newGuids.isEmpty()) {
             ui { statusMessage = "No valid configs found in subscription!" }
             return false
@@ -2621,7 +2663,11 @@ class MainActivity : HelperBaseComponentActivity() {
         val protect = HashSet<String>().apply {
             addAll(keepSet); addAll(oldFree); addAll(oldVip); selected?.let { add(it) }
         }
-        val toRemove = MmkvManager.decodeServerList("").filter { it !in protect }
+        // فقط کانفیگ‌های قدیمی که متعلق به ساب مدیریت‌شده خود Penny VPN هستند پاک می‌شوند؛ کانفیگ‌های شخصی کاربر هرگز حذف نمی‌شوند
+        val toRemove = MmkvManager.decodeServerList("").filter { guid ->
+            guid !in protect &&
+                MmkvManager.decodeServerConfig(guid)?.subscriptionId == PennyServerScanner.MANAGED_SUB_ID
+        }
         if (toRemove.isNotEmpty()) {
             MmkvManager.removeServers(toRemove, "")
         }

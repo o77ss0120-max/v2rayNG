@@ -28,9 +28,9 @@ internal data class PennyServer(
 
 internal object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =
-        if (vip) "1 Month 50 GB Active • Dedicated Servers" else "Smart Fastest Server Selector"
+        if (vip) "1 Month 50 GB Active • Dedicated Servers" else "Connects When Others Can't"
 
-    fun splashTagline(l: AppLang) = "Fast, Smart & Secure Protection"
+    fun splashTagline(l: AppLang) = "Connects When Others Can't"
     fun ready(l: AppLang) = "Ready to Connect"
     fun connectedBadge(l: AppLang, vip: Boolean) =
         if (vip) "Connected to VIP (1M / 50GB)" else "Connected"
@@ -82,19 +82,29 @@ internal object Strings {
 internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
     return list.sortedBy { it.ms }.mapIndexed { index, s ->
         val groupChar = ('A'.code + (index / 4).coerceAtMost(5)).toChar()
-        val num = (index % 2) + 1
+        val num = (index % 4) + 1
         val isNodeGroup = (index % 4) < 2
         val codeTag = "$groupChar-$num"
-        val baseLabel = if (isNodeGroup) "Node $codeTag" else "Server $codeTag"
+        var customRemarks: String? = null
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
-            if (cfg != null && cfg.remarks != "Penny VPN") {
-                cfg.remarks = "Penny VPN"
-                MmkvManager.encodeServerConfig(s.guid, cfg)
+            if (cfg != null) {
+                if (cfg.subscriptionId == "PENNY_MANAGED_SUB" ||
+                    cfg.remarks.startsWith("PennyVPN", ignoreCase = true) ||
+                    cfg.remarks.contains("BPB", ignoreCase = true)
+                ) {
+                    if (cfg.remarks != "Penny VPN") {
+                        cfg.remarks = "Penny VPN"
+                        MmkvManager.encodeServerConfig(s.guid, cfg)
+                    }
+                } else if (cfg.remarks.isNotBlank() && cfg.remarks != "Penny VPN") {
+                    customRemarks = cfg.remarks.take(24)
+                }
             }
         } catch (e: Exception) {
-            Log.w("PennyVPN", "Failed to sanitize remarks for ${s.guid}: ${e.message}")
+            Log.w("PennyVPN", "Failed to read remarks for ${s.guid}: ${e.message}")
         }
+        val baseLabel = customRemarks ?: if (isNodeGroup) "Node $codeTag" else "Server $codeTag"
         s.copy(
             codeTag = codeTag,
             label = baseLabel,

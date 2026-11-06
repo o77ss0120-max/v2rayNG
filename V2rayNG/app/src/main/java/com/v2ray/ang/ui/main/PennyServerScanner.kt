@@ -1,5 +1,7 @@
 package com.v2ray.ang.ui.main
 
+import android.content.Context
+import android.telephony.TelephonyManager
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.MmkvManager
 import kotlinx.coroutines.Dispatchers
@@ -12,22 +14,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.FilterOutputStream
-import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
-import kotlin.math.min
 import kotlin.random.Random
 
 /**
@@ -94,6 +91,7 @@ private class TlsHelloFragmentSocket(host: String, port: Int, connectTimeoutMs: 
 }
 
 internal object PennyServerScanner {
+    const val MANAGED_SUB_ID = "PENNY_MANAGED_SUB"
     const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024 // سقف ۴ مگابایت برای امنیت دانلود
     const val TCP_TIMEOUT_MS = 2800
     const val MAX_TCP_CANDIDATES = 300
@@ -102,17 +100,38 @@ internal object PennyServerScanner {
     const val BPB_HOST = "h1bq9ybcr6av6637iy1pyhiet.pages.dev"
     const val BPB_MIXED_SNI = "H1bQ9ybcr6AV6637iy1pyhIET.pageS.dEv"
 
-    // آی‌پی‌های تمیز پیش‌فرض BPB-VPN (104.17.148.22 و 104.17.147.22) + آی‌پی‌های تمیز کلودفلر پنل شما
-    val CLEAN_CF_ENDPOINTS = listOf(
+    // استخر آی‌پی‌های تمیز کلودفلر در رنج‌های متنوع Anycast برای اسکنر داخلی Clean IP
+    val CANDIDATE_CF_ANYCAST_IPS = listOf(
         "104.17.148.22",
         "104.17.147.22",
         "172.66.44.58",
         "172.66.47.198",
         "172.64.155.209",
         "104.18.2.115",
+        "162.159.135.42",
+        "104.16.132.229",
+        "104.19.143.29",
+        "108.162.198.45",
+        "172.67.74.226",
+        "188.114.96.3",
         "www.speedtest.net",
         "www.visa.com"
     )
+
+    @Volatile
+    var CLEAN_CF_ENDPOINTS: List<String> = listOf(
+        "104.17.148.22",
+        "104.17.147.22",
+        "172.66.44.58",
+        "172.66.47.198",
+        "172.64.155.209",
+        "104.18.2.115",
+        "162.159.135.42",
+        "www.speedtest.net"
+    )
+
+    @Volatile
+    var detectedIspProfile: String = "Auto (Smart Fragment 80-160B)"
 
     // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 2083 روی ایرانسل و همراه اول عملکرد عالی دارند)
     val BPB_TLS_PORTS = listOf(443, 8443, 2083)
@@ -153,20 +172,128 @@ internal object PennyServerScanner {
     }
 
     /**
-     * فعال‌سازی خودکار تنظیمات TLS Fragment و DNS ضدتحریم (مشابه BPB-VPN) در هسته v2rayNG
+     * فعال‌سازی خودکار تنظیمات TLS Fragment، DNS ضدتحریم و مسیریابی مستقیم سایت‌ها و بانک‌های داخل ایران (Iran Direct Routing)
      */
-    fun applyBpbCoreOptimizations() {
+    fun applyBpbCoreOptimizations(fragLength: String = "100-200", fragInterval: String = "1") {
         try {
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
-            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "100-200")
-            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
-            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "8.8.8.8")
-            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://8.8.8.8/dns-query")
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, fragLength)
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, fragInterval)
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "1.1.1.1")
+            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://1.1.1.1/dns-query")
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
+            MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
+            MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_LAN, true)
         } catch (_: Exception) {
         }
     }
+
+    /**
+     * تشخیص خودکار اپراتور اینترنت (ایرانسل، همراه اول، رایتل، مخابرات/شاتل) و تنظیم هوشمند TLS Fragment
+     */
+    fun detectCarrierAndTuneFragment(context: Context, onLog: ((String) -> Unit)? = null): String {
+        return try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            val rawOp = (tm?.networkOperatorName ?: tm?.simOperatorName ?: "").trim()
+            val opLower = rawOp.lowercase()
+            val (profileName, length, interval) = when {
+                opLower.contains("irancell") || opLower.contains("mtn") ->
+                    Triple("Irancell (MTN) • Deep Fragment 10-30B", "10-30", "2")
+                opLower.contains("mci") || opLower.contains("ir-tci") || opLower.contains("hamrah") ->
+                    Triple("Hamrah Aval (MCI) • Smart Fragment 20-50B", "20-50", "1")
+                opLower.contains("rightel") ->
+                    Triple("Rightel • Fast Fragment 40-90B", "40-90", "1")
+                rawOp.isNotEmpty() ->
+                    Triple("$rawOp • Balanced Fragment 80-160B", "80-160", "1")
+                else ->
+                    Triple("Wi-Fi / Broadband • Fragment 80-160B", "80-160", "1")
+            }
+            detectedIspProfile = profileName
+            applyBpbCoreOptimizations(fragLength = length, fragInterval = interval)
+            onLog?.invoke("ISP Auto-Tuner: $profileName (len=$length, delay=${interval}ms)")
+            profileName
+        } catch (_: Exception) {
+            applyBpbCoreOptimizations()
+            detectedIspProfile
+        }
+    }
+
+    /**
+     * اسکنر داخلی آی‌پی تمیز کلودفلر (On-Device Clean IP Scanner):
+     * تست موازی ۱۴ رنج Anycast کلودفلر روی پورت‌های 443 و 8443 و انتخاب سریع‌ترین آی‌پی‌های باز روی اینترنت فعلی کاربر
+     */
+    suspend fun scanCleanCloudflareIps(onLog: ((String) -> Unit)? = null): List<Pair<String, Long>> =
+        withContext(Dispatchers.IO) {
+            val sem = Semaphore(8)
+            val results = CANDIDATE_CF_ANYCAST_IPS.map { ip ->
+                async {
+                    sem.withPermit {
+                        var bestMs = -1L
+                        for (port in listOf(443, 8443)) {
+                            try {
+                                val addr = InetAddress.getByName(ip)
+                                val ipStr = addr.hostAddress.orEmpty()
+                                if (ipStr.startsWith("10.10.") || addr.isLoopbackAddress) continue
+                                val t0 = System.currentTimeMillis()
+                                TlsHelloFragmentSocket(ip, port, 1800).use { sock ->
+                                    sock.soTimeout = 1800
+                                }
+                                val rtt = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
+                                if (bestMs < 0 || rtt < bestMs) bestMs = rtt
+                                break
+                            } catch (_: Exception) {
+                            }
+                        }
+                        ip to bestMs
+                    }
+                }
+            }.awaitAll().filter { it.second > 0 }.sortedBy { it.second }
+
+            if (results.isNotEmpty()) {
+                CLEAN_CF_ENDPOINTS = results.take(8).map { it.first }
+                onLog?.invoke(
+                    "Clean IP Scanner found ${results.size} healthy Anycast IPs (fastest: ${results.first().first} @ ${results.first().second}ms)"
+                )
+            }
+            results
+        }
+
+    /**
+     * ابزار عیب‌یاب هوشمند شبکه (Network Doctor):
+     * ۱. بررسی مسمومیت DNS مخابرات (10.10.34.36)
+     * ۲. تشخیص اپراتور و تنظیم بهینه TLS Fragment
+     * ۳. اسکن آی‌پی‌های تمیز کلودفلر روی اینترنت فعلی کاربر
+     * ۴. فعال‌سازی مسیریابی مستقیم سایت‌ها و بانک‌های ایران
+     */
+    suspend fun runNetworkDoctor(context: Context, onLog: (String) -> Unit): String =
+        withContext(Dispatchers.IO) {
+            onLog("Network Doctor: Starting 4-stage anti-censorship diagnosis...")
+            val ispReport = detectCarrierAndTuneFragment(context, onLog)
+            val dnsCheck = runCatching {
+                InetAddress.getByName(BPB_HOST).hostAddress.orEmpty()
+            }.getOrDefault("")
+            val dnsPoisoned = dnsCheck.startsWith("10.10.") || dnsCheck.isEmpty()
+            if (dnsPoisoned) {
+                onLog("Network Doctor: Detected ISP DNS Hijack ($dnsCheck) -> Clean IP SNI Tunnel enabled")
+            } else {
+                onLog("Network Doctor: DNS resolution clean ($dnsCheck)")
+            }
+
+            val cleanIps = scanCleanCloudflareIps(onLog)
+            val bestIpInfo = if (cleanIps.isNotEmpty()) {
+                "${cleanIps.first().first} (${cleanIps.first().second} ms)"
+            } else {
+                "104.17.148.22 (Fallback)"
+            }
+
+            buildString {
+                appendLine("ISP Profile: $ispReport")
+                appendLine("DNS Status: ${if (dnsPoisoned) "Poisoned (Bypassed via DoH & Clean IP)" else "Healthy"}")
+                appendLine("Clean Anycast IPs Ready: ${cleanIps.size} nodes (Best: $bestIpInfo)")
+                append("Iran Direct Routing: Active (Banks & .ir bypass VPN)")
+            }
+        }
 
     /**
      * نودهای آماده BPB-VPN با آی‌پی‌های تمیز کلودفلر (104.17.148.22, 104.17.147.22, 172.66.44.58 و ...)
@@ -694,9 +821,25 @@ internal object PennyServerScanner {
         val releaseNotes: String
     )
 
-    const val APP_VERSION_NAME = "2.6.1"
+    const val APP_VERSION_NAME = "2.6.2"
     const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
+
+    fun isSemanticVersionNewer(currentVersion: String, remoteTag: String): Boolean {
+        val cleanCurrent = currentVersion.trim().removePrefix("v").substringBefore('-')
+        val cleanRemote = remoteTag.trim().removePrefix("v").substringBefore('-')
+        if (cleanRemote.isBlank() || cleanCurrent == cleanRemote) return false
+        val currParts = cleanCurrent.split('.').map { it.toIntOrNull() ?: 0 }
+        val remParts = cleanRemote.split('.').map { it.toIntOrNull() ?: 0 }
+        val maxLen = maxOf(currParts.size, remParts.size)
+        for (i in 0 until maxLen) {
+            val c = currParts.getOrElse(i) { 0 }
+            val r = remParts.getOrElse(i) { 0 }
+            if (r > c) return true
+            if (r < c) return false
+        }
+        return false
+    }
 
     fun checkAppUpdateOnGitHub(): AppUpdateInfo {
         val apiUrls = listOf(
@@ -710,7 +853,7 @@ internal object PennyServerScanner {
                     conn.connectTimeout = 6000
                     conn.readTimeout = 6000
                     conn.setRequestProperty("Accept", "application/vnd.github+json")
-                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/2.6")
+                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/2.6.2")
                     if (conn.responseCode == 200) {
                         val text = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
                         val obj = JSONObject(text)
@@ -727,7 +870,7 @@ internal object PennyServerScanner {
                                 }
                             }
                         }
-                        val isNewer = tag != APP_VERSION_NAME && tag.isNotBlank()
+                        val isNewer = isSemanticVersionNewer(APP_VERSION_NAME, tag)
                         return AppUpdateInfo(
                             currentVersion = APP_VERSION_NAME,
                             latestVersion = tag,

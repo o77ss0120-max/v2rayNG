@@ -8,124 +8,70 @@ on:
 permissions:
   contents: write
 
-env:
-  LIBV2RAY_TAG: "v26.10.31"
-  LIBV2RAY_SHA256: "2efdf731b1ed624eb1cb0d5a4d0aa95c0672e89f9702226d1ba2dc90308630b6"
-
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Source
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          distribution: "temurin"
+          java-version: "21"
+          cache: "gradle"
 
-      - name: Setup NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-
-      - name: Ensure hev-socks5-tunnel source (Pinned Commit)
-        run: |
-          if [ ! -f hev-socks5-tunnel/Android.mk ]; then
-            rm -rf hev-socks5-tunnel
-            git clone --recursive https://github.com/heiher/hev-socks5-tunnel.git hev-socks5-tunnel
-            git -C hev-socks5-tunnel checkout 64cc609f945253b0e9ebc56317d544268f3c68c1
-            git -C hev-socks5-tunnel submodule update --init --recursive
-          fi
-          test -f hev-socks5-tunnel/Android.mk
-
-      - name: Build hev-socks5-tunnel
-        env:
-          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: |
-          chmod +x compile-hevtun.sh
-          bash compile-hevtun.sh
-          find libs -name "*.so" | sort
-
-      - name: Copy native libs into app module
-        run: |
-          mkdir -p V2rayNG/app/libs
-          cp -r libs/* V2rayNG/app/libs/
-          test -f V2rayNG/app/libs/arm64-v8a/libhev-socks5-tunnel.so
-
-      - name: Download Pinned Libv2ray Core & Verify SHA-256 Checksum
-        run: |
-          curl -L --fail --retry 5 -o V2rayNG/app/libs/libv2ray.aar \
-            "https://github.com/2dust/AndroidLibXrayLite/releases/download/${LIBV2RAY_TAG}/libv2ray.aar"
-          echo "${LIBV2RAY_SHA256}  V2rayNG/app/libs/libv2ray.aar" | sha256sum -c -
-          ls -lh V2rayNG/app/libs/libv2ray.aar
-
-      - name: Prepare External Release Keystore
+      - name: Prepare Release Keystore (Deterministic Signature)
+        working-directory: V2rayNG
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          KS_FILE="/tmp/penny-release-keystore.jks"
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "Using production Release Keystore from GitHub Secrets..."
-            echo "$KEYSTORE_BASE64" | base64 -d > "$KS_FILE"
-            echo "PENNY_KEYSTORE_FILE=$KS_FILE" >> $GITHUB_ENV
-            echo "PENNY_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
-            echo "PENNY_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
-            echo "PENNY_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
+            echo "$KEYSTORE_BASE64" | base64 -d > app/release-keystore.jks
+            echo "SIGNING_STORE_FILE=release-keystore.jks" >> $GITHUB_ENV
+            echo "SIGNING_STORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+            echo "SIGNING_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
+            echo "SIGNING_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
           else
-            echo "::warning::KEYSTORE_BASE64 secret not set in GitHub repo; generating ephemeral release keystore in /tmp"
-            PASS="PennyReleaseKey2026!"
-            keytool -genkeypair -v \
-              -keystore "$KS_FILE" \
-              -alias pennyvpn \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$PASS" -keypass "$PASS" \
-              -dname "CN=Penny VPN, OU=Security, O=Omidss, L=Global, S=Global, C=US"
-            echo "PENNY_KEYSTORE_FILE=$KS_FILE" >> $GITHUB_ENV
-            echo "PENNY_KEYSTORE_PASSWORD=$PASS" >> $GITHUB_ENV
-            echo "PENNY_KEY_ALIAS=pennyvpn" >> $GITHUB_ENV
-            echo "PENNY_KEY_PASSWORD=$PASS" >> $GITHUB_ENV
+            # استفاده از کلید امضای ثابت ریپو (penny-release-keystore.p12) تا آپدیت‌ها بدون خطای ناسازگاری امضا روی نسخه قبلی نصب شوند
+            cp app/penny-release-keystore.p12 app/release-keystore.jks
+            echo "SIGNING_STORE_FILE=release-keystore.jks" >> $GITHUB_ENV
+            echo "SIGNING_STORE_PASSWORD=PennyReleaseKey2026!" >> $GITHUB_ENV
+            echo "SIGNING_KEY_ALIAS=pennyvpn" >> $GITHUB_ENV
+            echo "SIGNING_KEY_PASSWORD=PennyReleaseKey2026!" >> $GITHUB_ENV
           fi
 
-      - name: Build Signed Release APK (com.penny.vpn)
+      - name: Grant execute permission for gradlew
         working-directory: V2rayNG
-        run: |
-          chmod +x gradlew
-          ./gradlew assemblePlaystoreRelease --no-daemon
+        run: chmod +x gradlew
 
-      - name: Verify Native Libs & Release Output
-        run: |
-          ls -lh V2rayNG/app/build/outputs/apk/playstore/release/
-          for f in V2rayNG/app/build/outputs/apk/playstore/release/*.apk; do
-            echo "== Verifying $f"
-            unzip -l "$f" | grep "libhev-socks5-tunnel.so" || { echo "Missing libhev-socks5-tunnel.so in $f"; exit 1; }
-          done
+      - name: Build Signed Playstore Release APK
+        working-directory: V2rayNG
+        run: ./gradlew assemblePlaystoreRelease --stacktrace
 
-      - name: Upload Penny VPN Signed Release APK Artifact
+      - name: Upload Signed Universal & ABI APKs
         uses: actions/upload-artifact@v4
         with:
-          name: Penny-VPN-Release-APK
-          path: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk
+          name: PennyVPN-v2.6.2-Signed-APKs
+          path: V2rayNG/app/build/outputs/apk/playstore/release/*.apk
 
-      - name: Publish Signed APK to GitHub Releases (for In-App Updater)
+      - name: Publish GitHub Release (for In-App Update Button)
         uses: softprops/action-gh-release@v2
-        if: success()
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         with:
-          tag_name: v2.6.1
-          name: "Penny VPN v2.6.1 (Shiny Green Ping + In-App Updater + BPB Anti-DPI)"
+          tag_name: v2.6.2
+          name: "Penny VPN v2.6.2 (Clean IP Scanner, ISP Auto-Tuner & Network Doctor)"
           body: |
-            ### Penny VPN v2.6.1 Release
-            - **Shiny Bright Green Server Ping**: Glowing `#5CFF9D` latency badges across Home, Server List, and Global Bubble View.
-            - **In-App Update Center**: Direct APK update checker & downloader + one-tap BPB Server & Clean IP updater.
-            - **BPB-VPN Anti-Filtering Engine**: Fragmented TLS ClientHello socket, Xray v26 `finalmask` (Normal 100-200ms & Smart 1-5ms modes), and 8 Clean Cloudflare Anycast IPs across ports 443, 8443 & 2083.
-          files: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk
+            ### Penny VPN v2.6.2 — Connects When Others Can't
+            - **Preserve User Configs**: Scanning subscription servers never deletes or renames user-imported configs.
+            - **On-Device Clean IP Scanner & Network Doctor**: Probes 14 Cloudflare Anycast ranges across ports `443`, `8443`, and `2083` to bypass ISP DNS poisoning (`10.10.34.36`) and SNI filtering.
+            - **Iran ISP Auto-Tuner & Direct Routing**: Automatically tunes TLS ClientHello Fragment size for Irancell, Hamrah Aval (MCI), Rightel, and Broadband, while routing `.ir` and Iranian banking apps directly.
+            - **Deterministic Release Signature**: Updates install cleanly over previous builds without uninstalling.
           draft: false
           prerelease: false
+          files: V2rayNG/app/build/outputs/apk/playstore/release/*.apk

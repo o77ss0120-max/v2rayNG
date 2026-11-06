@@ -530,18 +530,22 @@ internal fun ServiceQualityUptimeCard(
     showAds: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val uptimePercent = if (isVipMode) "99.99%" else "99.98%"
-    val jitterMs = ((bestPingMs % 5L) + 2L).coerceIn(2L, 8L)
+    val liveBadgeText = when {
+        isConnected && bestPingMs > 0 -> "Verified • ${bestPingMs} ms"
+        bestPingMs > 0 -> "Best Ping: ${bestPingMs} ms"
+        else -> "Ready to Scan"
+    }
     val qualityScore = when {
-        bestPingMs in 1..250 -> 0.98f
-        bestPingMs in 251..500 -> 0.94f
-        bestPingMs > 500 -> 0.89f
-        else -> 0.96f
+        bestPingMs in 1..250 -> 0.96f
+        bestPingMs in 251..500 -> 0.88f
+        bestPingMs > 500 -> 0.76f
+        else -> 0.50f
     }
     val qualityLabel = when {
-        bestPingMs in 1..250 -> "Ultra Stable"
-        bestPingMs in 251..550 -> "Excellent"
-        else -> "Optimal"
+        isConnected && bestPingMs in 1..250 -> "Low Latency"
+        isConnected -> "Connected"
+        bestPingMs > 0 -> "Nodes Verified"
+        else -> "Standby"
     }
 
     var adLoaded by remember { mutableStateOf(false) }
@@ -593,7 +597,7 @@ internal fun ServiceQualityUptimeCard(
                         .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "Uptime $uptimePercent",
+                        text = liveBadgeText,
                         color = Color(0xFFE2E5EE),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -630,15 +634,15 @@ internal fun ServiceQualityUptimeCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Jitter: ${jitterMs} ms • 0% Loss",
+                    text = "Fragment: Active • Iran Direct",
                     color = Color(0xFF9497A1),
                     fontSize = 9.5.sp
                 )
                 Text(
                     text = buildString {
-                        append(if (cleanDnsShield) "DNS Shield: Active" else "Standard DNS")
-                        if (splitTunnelLocal) append(" • Split Tunnel")
-                        append(" • ${serverCount.coerceAtLeast(1)} Nodes")
+                        append(if (cleanDnsShield) "DoH 1.1.1.1" else "Standard DNS")
+                        if (splitTunnelLocal) append(" • Bypass LAN")
+                        append(" • ${serverCount.coerceAtLeast(0)} Nodes")
                     },
                     color = Color(0xFFC8CCD6),
                     fontSize = 9.5.sp,

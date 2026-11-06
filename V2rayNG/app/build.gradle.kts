@@ -13,8 +13,8 @@ android {
         applicationId = "com.penny.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 755
-        versionName = "2.3.15"
+        versionCode = 762
+        versionName = "2.6.2"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {

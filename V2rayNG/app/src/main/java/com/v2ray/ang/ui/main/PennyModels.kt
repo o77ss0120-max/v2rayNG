@@ -104,20 +104,27 @@ internal fun isDedicatedServerTag(codeTag: String): Boolean {
 internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
     val tagged = list.map { s ->
         val origin = detectServerOriginTag(s.guid)
-        s to origin
+        val realVerified = (MmkvManager.decodeServerAffiliationInfo(s.guid)?.testDelayMillis ?: 0L) > 0L
+        Triple(s, origin, realVerified)
     }
-    // اولویت اول با سرورهای اختصاصی خودمان (CF-1 و CF-2 و BPB) بر اساس پینگ، سپس سرورهای عمومی (PUB)
+    // ۱. ابتدا سرورهایی که تست واقعی Xray (RealPing) را پاس کرده‌اند (اول اختصاصی CF-1/CF-2، بعد عمومی)
+    // ۲. سپس در صورت فال‌بک TCP، ترتیب ترکیبی حفظ شود تا هم سرور اختصاصی و هم عمومی تست شوند
     val sorted = tagged.sortedWith(
-        compareBy<Pair<PennyServer, String>> { (_, origin) ->
-            when (origin) {
+        compareBy<Triple<PennyServer, String, Boolean>> { (_, _, realVerified) ->
+            if (realVerified) 0 else 1
+        }.thenBy { (_, origin, realVerified) ->
+            if (!realVerified) 0
+            else when (origin) {
                 "CF-1", "CF-2" -> 0
                 "BPB" -> 1
                 else -> 2
             }
-        }.thenBy { (s, _) -> s.ms }
+        }.thenBy { (s, _, realVerified) ->
+            if (realVerified) s.ms else 0L
+        }
     )
 
-    return sorted.mapIndexed { index, (s, origin) ->
+    return sorted.mapIndexed { index, (s, origin, _) ->
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
             if (cfg != null) {

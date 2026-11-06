@@ -80,6 +80,8 @@ import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.core.CoreConfigManager
+import com.v2ray.ang.core.CoreNativeManager
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.dto.TestServiceMessage
@@ -2603,8 +2605,18 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         if (ok) return
 
-        plog("Active tunnel unresponsive; auto-switching...")
         val current = mainViewModel.uiState.value.selectedGuid
+        if (current != null) {
+            val nativePing = withContext(Dispatchers.IO) {
+                runCatching {
+                    val cfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, current)
+                    if (cfg.status) CoreNativeManager.measureOutboundDelay(cfg.content, SettingsManager.getDelayTestUrl()) else -1L
+                }.getOrDefault(-1L)
+            }
+            if (nativePing > 0L) return
+        }
+
+        plog("Active tunnel unresponsive; auto-switching...")
         if (current != null) failedGuids.add(current)
         ui {
             phase = Phase.CONNECTING
@@ -2670,6 +2682,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 if (cfg != null) {
                     if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true ||
                         cfg.server?.endsWith(".workers.dev", ignoreCase = true) == true ||
+                        cfg.server?.startsWith("172.66.") == true ||
                         cfg.server.equals("www.speedtest.net", ignoreCase = true)
                     ) {
                         cfg.server = cleanPool[idx % cleanPool.size]
@@ -2801,10 +2814,14 @@ class MainActivity : HelperBaseComponentActivity() {
             }
             else -> {
                 plog("Real ping returned no positive delays; falling back to verified TCP ping (${tcpOk.size} servers)")
-                keep.mapNotNull { g ->
-                    val ms = tcpMap[g] ?: PennyServerScanner.testServerTcpPing(g)
-                    if (ms > 0L) g to ms else null
-                }.sortedBy { it.second }.take(BEST_LIST_SIZE)
+                val interleaved = mutableListOf<Pair<String, Long>>()
+                val maxIdx = maxOf(tcpCf1.size, tcpCf2.size, tcpPub.size)
+                for (i in 0 until maxIdx) {
+                    if (i < tcpCf1.size) interleaved.add(tcpCf1[i])
+                    if (i < tcpCf2.size) interleaved.add(tcpCf2[i])
+                    if (i < tcpPub.size) interleaved.add(tcpPub[i])
+                }
+                interleaved.distinctBy { it.first }.take(BEST_LIST_SIZE)
             }
         }
 
@@ -2944,6 +2961,17 @@ class MainActivity : HelperBaseComponentActivity() {
         if (mainViewModel.uiState.value.isRunning && localPortReady && measuredDelay > 0L) {
             plog("Local proxy active & Xray RealPing verified (${measuredDelay}ms); accepting connection")
             return measuredDelay
+        }
+        val nativeDelay = withContext(Dispatchers.IO) {
+            runCatching {
+                val cfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, guid)
+                if (cfg.status) CoreNativeManager.measureOutboundDelay(cfg.content, SettingsManager.getDelayTestUrl()) else -1L
+            }.getOrDefault(-1L)
+        }
+        if (mainViewModel.uiState.value.isRunning && nativeDelay > 0L) {
+            MmkvManager.encodeServerTestDelayMillis(guid, nativeDelay)
+            plog("Xray native outbound verified (${nativeDelay}ms); accepting connection")
+            return nativeDelay
         }
         return -1L
     }

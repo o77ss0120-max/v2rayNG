@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -821,18 +822,62 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                     scaleY = sc
                 }
             )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = Strings.splashTagline(lang),
-                color = Color(0xFFC8CCD6),
-                fontSize = 15.5.sp,
-                fontWeight = FontWeight.SemiBold,
+            Spacer(Modifier.height(10.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
                 modifier = Modifier.graphicsLayer {
                     val p = subAnim.value
                     alpha = p
                     translationY = (1f - p) * 26f
                 }
-            )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(22.dp)
+                        .height(1.5.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color.Transparent, Color(0xFFE6CFAF), Color(0xFFFFFFFF))
+                            )
+                        )
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = Strings.splashTagline(lang),
+                    fontSize = 16.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontStyle = FontStyle.Italic,
+                    fontFamily = FontFamily.SansSerif,
+                    letterSpacing = 1.4.sp,
+                    style = TextStyle(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFFFFFFF),
+                                Color(0xFFF7E8D2),
+                                Color(0xFFE6CFAF),
+                                Color(0xFFFFFFFF)
+                            )
+                        ),
+                        shadow = Shadow(
+                            color = Color(0xFFE6CFAF).copy(alpha = 0.95f),
+                            offset = Offset(0f, 0f),
+                            blurRadius = glowPulse * 0.9f
+                        )
+                    )
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .width(22.dp)
+                        .height(1.5.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFFFFFFFF), Color(0xFFE6CFAF), Color.Transparent)
+                            )
+                        )
+                )
+            }
             Spacer(Modifier.height(14.dp))
             Text(
                 text = "powered by Omidss",
@@ -876,6 +921,15 @@ internal fun NeonBrandHeader(
         ),
         label = "neonBlur"
     )
+    val sloganGlowAlpha by inf.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            tween(1350, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "sloganGlowAlpha"
+    )
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -911,21 +965,69 @@ internal fun NeonBrandHeader(
                 )
             )
         }
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(5.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
+            Box(
+                modifier = Modifier
+                    .width(18.dp)
+                    .height(1.3.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Transparent,
+                                Color(0xFFE6CFAF).copy(alpha = sloganGlowAlpha),
+                                Color(0xFFFFFFFF).copy(alpha = sloganGlowAlpha)
+                            )
+                        )
+                    )
+            )
+            Spacer(Modifier.width(7.dp))
             if (isVipMode) {
                 GlassDiamondIcon(size = 12.dp)
                 Spacer(Modifier.width(5.dp))
             }
             Text(
                 text = Strings.subtitle(lang, isVipMode),
-                color = if (isVipMode) Color(0xFFE8ECF4) else Color(0xFF9EA1AB),
-                fontSize = 11.5.sp,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontStyle = FontStyle.Italic,
+                fontFamily = FontFamily.SansSerif,
+                letterSpacing = 1.25.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFFFFFFF),
+                            Color(0xFFF7E8D2),
+                            Color(0xFFE6CFAF),
+                            Color(0xFFFFFFFF)
+                        )
+                    ),
+                    shadow = Shadow(
+                        color = Color(0xFFE6CFAF).copy(alpha = 0.92f * sloganGlowAlpha),
+                        offset = Offset(0f, 0f),
+                        blurRadius = blurRadius * 0.95f
+                    )
+                )
+            )
+            Spacer(Modifier.width(7.dp))
+            Box(
+                modifier = Modifier
+                    .width(18.dp)
+                    .height(1.3.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color(0xFFFFFFFF).copy(alpha = sloganGlowAlpha),
+                                Color(0xFFE6CFAF).copy(alpha = sloganGlowAlpha),
+                                Color.Transparent
+                            )
+                        )
+                    )
             )
         }
     }

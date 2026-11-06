@@ -28,7 +28,7 @@ internal data class PennyServer(
 
 internal object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =
-        if (vip) "1 Month 50 GB Active • Dedicated Servers" else "Connects When Others Can't"
+        if (vip) "Connects When Others Can't • VIP" else "Connects When Others Can't"
 
     fun splashTagline(l: AppLang) = "Connects When Others Can't"
     fun ready(l: AppLang) = "Ready to Connect"

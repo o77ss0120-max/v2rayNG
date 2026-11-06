@@ -1374,7 +1374,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         isConnected = mode == UiMode.CONNECTED,
                         isVipMode = isVipMode,
                         serverCount = currentList.size,
-                        bestPingMs = current?.ms ?: 180L,
+                        bestPingMs = current?.ms ?: 0L,
                         cleanDnsShield = cleanDnsShield,
                         splitTunnelLocal = splitTunnelLocal,
                         adUnitId = ADMOB_BANNER_UNIT_ID,
@@ -2575,8 +2575,6 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun runScan(): Boolean {
-        PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
-        PennyServerScanner.scanCleanCloudflareIps(::plog)
         val scanningVip = vipActive && useVipServers
         val sources = getSubscriptionSources(scanningVip)
 
@@ -2585,6 +2583,7 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 0.05f
             statusMessage = if (scanningVip) "Fetching VIP subscription servers..." else "Fetching subscription servers..."
         }
+        PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
         plog("Scan started (VIP=$scanningVip, sources=${sources.size})")
 
         val downloadedContents = coroutineScope {
@@ -2605,10 +2604,11 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 0.15f
             statusMessage = "Importing subscription servers..."
         }
+        runCatching { MmkvManager.removeServerViaSubid(PennyServerScanner.MANAGED_SUB_ID) }
         val before = MmkvManager.decodeServerList("").toSet()
         for (content in contents) {
             try {
-                val r = AngConfigManager.importBatchConfig(content, PennyServerScanner.MANAGED_SUB_ID, true)
+                val r = AngConfigManager.importBatchConfig(content, "", true)
                 plog("import result: $r")
             } catch (e: Exception) {
                 plog("import error: ${e.message}")
@@ -2616,11 +2616,11 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         val allAfter = MmkvManager.decodeServerList("")
         val newlyImported = allAfter.filter { it !in before }
-        newlyImported.forEach { g ->
+        val targetGuids = newlyImported.ifEmpty { allAfter }
+        targetGuids.forEach { g ->
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
                 if (cfg != null) {
-                    cfg.subscriptionId = PennyServerScanner.MANAGED_SUB_ID
                     if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true) {
                         cfg.server = PennyServerScanner.CLEAN_CF_ENDPOINTS.first()
                     }
@@ -2630,14 +2630,16 @@ class MainActivity : HelperBaseComponentActivity() {
                     ) {
                         cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
-                    cfg.remarks = "Penny VPN"
+                    if (g in newlyImported || cfg.remarks.startsWith("PennyVPN", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true)) {
+                        cfg.remarks = "Penny VPN"
+                    }
                     MmkvManager.encodeServerConfig(g, cfg)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Sanitize remarks warning for $g: ${e.message}")
             }
         }
-        val newGuids = newlyImported.ifEmpty { allAfter }
+        val newGuids = targetGuids
         if (newGuids.isEmpty()) {
             ui { statusMessage = "No valid configs found in subscription!" }
             return false
@@ -2663,10 +2665,11 @@ class MainActivity : HelperBaseComponentActivity() {
         val protect = HashSet<String>().apply {
             addAll(keepSet); addAll(oldFree); addAll(oldVip); selected?.let { add(it) }
         }
-        // فقط کانفیگ‌های قدیمی که متعلق به ساب مدیریت‌شده خود Penny VPN هستند پاک می‌شوند؛ کانفیگ‌های شخصی کاربر هرگز حذف نمی‌شوند
+        // فقط کانفیگ‌های قدیمی که توسط اسکنر Penny VPN اضافه شده‌اند پاک می‌شوند؛ کانفیگ‌های شخصی کاربر حفظ می‌شوند
         val toRemove = MmkvManager.decodeServerList("").filter { guid ->
-            guid !in protect &&
-                MmkvManager.decodeServerConfig(guid)?.subscriptionId == PennyServerScanner.MANAGED_SUB_ID
+            if (guid in protect) return@filter false
+            val rem = MmkvManager.decodeServerConfig(guid)?.remarks.orEmpty()
+            rem == "Penny VPN" || rem.startsWith("PennyVPN", ignoreCase = true) || rem.contains("BPB", ignoreCase = true)
         }
         if (toRemove.isNotEmpty()) {
             MmkvManager.removeServers(toRemove, "")

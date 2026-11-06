@@ -181,7 +181,7 @@ internal fun MenuLinesIcon(
 @Composable
 internal fun UpdateArrowIcon(
     size: Dp = 15.dp,
-    color: Color = Color(0xFF5CFF9D),
+    color: Color = Color(0xFFE2E5EE),
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier.size(size)) {
@@ -272,21 +272,31 @@ internal fun ShinyGreenPingBadge(
         initialValue = 0.55f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            tween(1150, easing = FastOutSlowInEasing),
+            tween(1100, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
         ),
         label = "pingGlowAlpha"
     )
+    val dotScale by inf.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            tween(1100, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "pingDotScale"
+    )
 
+    // رنگ‌بندی هماهنگ با بخش Service Quality (نقره‌ای پلاتینی و شامپاینی درخشان، بدون رنگ سبز)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(9.dp))
             .background(
                 Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF0E291C),
-                        Color(0xFF143826),
-                        Color(0xFF0E291C)
+                        Color(0xFF22242D),
+                        Color(0xFF2B2E3A),
+                        Color(0xFF22242D)
                     )
                 )
             )
@@ -294,9 +304,9 @@ internal fun ShinyGreenPingBadge(
                 width = 1.1.dp,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF39FF88).copy(alpha = 0.55f + 0.35f * glowAlpha),
-                        Color(0xFF8BFFB8).copy(alpha = 0.90f),
-                        Color(0xFF00E676).copy(alpha = 0.55f + 0.35f * glowAlpha)
+                        Color(0xFF8E93A2).copy(alpha = 0.65f + 0.30f * glowAlpha),
+                        Color(0xFFD8DCE6).copy(alpha = 0.95f),
+                        Color(0xFFE6CFAF).copy(alpha = 0.65f + 0.30f * glowAlpha)
                     )
                 ),
                 shape = RoundedCornerShape(9.dp)
@@ -313,20 +323,21 @@ internal fun ShinyGreenPingBadge(
             Box(
                 modifier = Modifier
                     .size(6.dp)
+                    .scale(dotScale)
                     .clip(CircleShape)
-                    .background(Color(0xFF4CFF96).copy(alpha = glowAlpha))
+                    .background(Color(0xFFE6CFAF).copy(alpha = glowAlpha))
             )
             Text(
                 text = "$ms ms",
-                color = Color(0xFF5CFF9D),
+                color = Color(0xFFECEEF4),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = FontFamily.Monospace,
                 style = TextStyle(
                     shadow = Shadow(
-                        color = Color(0xFF00FF7F).copy(alpha = 0.78f * glowAlpha),
+                        color = Color(0xFFD8DCE6).copy(alpha = 0.75f * glowAlpha),
                         offset = Offset(0f, 0f),
-                        blurRadius = 10f
+                        blurRadius = 9f
                     )
                 )
             )
@@ -917,7 +928,13 @@ internal fun NeonBrandHeader(
 }
 
 @Composable
-internal fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLang, isVip: Boolean) {
+internal fun PulsingStatusText(
+    mode: UiMode,
+    statusMessage: String,
+    lang: AppLang,
+    isVip: Boolean,
+    dailyRemainingText: String? = null
+) {
     val isConnected = mode == UiMode.CONNECTED
     val inf = rememberInfiniteTransition(label = "statusPulse")
     val pulseScale by inf.animateFloat(
@@ -967,14 +984,14 @@ internal fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLan
             )
         }
 
-        if (isConnected && !isVip) {
+        if (isConnected && !isVip && !dailyRemainingText.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
             Surface(
-                color = Color(0xFF231F1B),
+                color = Color(0xFF252730),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.border(
                     1.dp,
-                    Color(0xFFE6CFAF).copy(alpha = 0.45f),
+                    Color(0xFF484B57),
                     RoundedCornerShape(8.dp)
                 )
             ) {
@@ -987,12 +1004,12 @@ internal fun PulsingStatusText(mode: UiMode, statusMessage: String, lang: AppLan
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE6CFAF))
+                            .background(Color(0xFFD8DCE6))
                     )
                     Text(
-                        text = "Speed Throttled: 256 KB/s",
-                        color = Color(0xFFE6CFAF),
-                        fontSize = 10.5.sp,
+                        text = dailyRemainingText,
+                        color = Color(0xFFE2E5EE),
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -1014,8 +1031,8 @@ internal fun PowerButton(
     val target = when (mode) {
         UiMode.IDLE -> if (isVipMode) Color(0xFFB8B2A6) else Color(0xFF8A8E99)
         UiMode.SCANNING -> Color(0xFFC4C8D4)
-        UiMode.CONNECTING -> Color(0xFFD4D8E2)
-        UiMode.CONNECTED -> Color(0xFFE4E7F0)
+        UiMode.CONNECTING -> Color(0xFFD8DCE6)
+        UiMode.CONNECTED -> Color(0xFFECEEF6)
     }
     val color by animateColorAsState(target, tween(700), label = "pbColor")
     val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
@@ -1035,7 +1052,7 @@ internal fun PowerButton(
     val inf = rememberInfiniteTransition(label = "pbInf")
     val pulse by inf.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2100, easing = LinearEasing)),
         label = "pbPulse"
     )
     val spin by inf.animateFloat(
@@ -1044,37 +1061,59 @@ internal fun PowerButton(
         label = "pbSpin"
     )
     val breathe by inf.animateFloat(
-        initialValue = 1f, targetValue = 1.04f,
+        initialValue = 1f,
+        targetValue = if (isConnected) 1.055f else 1.035f,
         animationSpec = infiniteRepeatable(
-            tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse
+            tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse
         ),
         label = "pbBreathe"
     )
 
-    val boxHeight = if (isConnected) 256.dp else 224.dp
+    val boxHeight = if (isConnected) 268.dp else 236.dp
 
     Box(
         modifier = Modifier
-            .width(236.dp)
+            .width(268.dp)
             .height(boxHeight),
         contentAlignment = Alignment.BottomCenter
     ) {
         Box(
-            modifier = Modifier.size(220.dp),
+            modifier = Modifier.size(252.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val c = Offset(size.width / 2f, size.height / 2f)
-                val r = size.minDimension * 0.35f
+                val r = 81.dp.toPx()
                 when (mode) {
                     UiMode.CONNECTED, UiMode.CONNECTING -> {
-                        for (k in 0..1) {
-                            val t = (pulse + k / 2f) % 1f
-                            drawCircle(
-                                color = color.copy(alpha = (1f - t) * 0.28f),
-                                radius = r + 6.dp.toPx() + t * size.minDimension * 0.12f,
+                        // هاله نورانی وسیع در پس‌زمینه دکمه هنگام اتصال
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFE6CFAF).copy(alpha = 0.24f),
+                                    Color(0xFFD8DCE6).copy(alpha = 0.12f),
+                                    Color.Transparent
+                                ),
                                 center = c,
-                                style = Stroke(width = 2.dp.toPx())
+                                radius = r * 1.65f
+                            ),
+                            radius = r * 1.65f,
+                            center = c
+                        )
+                        // ۳ موج پالس وسیع و پویا که تا لبه بیرونی پخش می‌شوند
+                        for (k in 0..2) {
+                            val t = (pulse + k / 3f) % 1f
+                            val waveRadius = r + 4.dp.toPx() + t * (size.minDimension * 0.22f)
+                            val waveAlpha = (1f - t) * (if (isConnected) 0.52f else 0.36f)
+                            drawCircle(
+                                color = if (k % 2 == 0) {
+                                    color.copy(alpha = waveAlpha)
+                                } else {
+                                    Color(0xFFE6CFAF).copy(alpha = waveAlpha * 0.85f)
+                                },
+                                radius = waveRadius,
+                                center = c,
+                                style = Stroke(width = (3.2f - t * 1.8f).dp.toPx())
                             )
                         }
                     }
@@ -1100,17 +1139,17 @@ internal fun PowerButton(
                     else -> {}
                 }
                 drawCircle(
-                    color = color.copy(alpha = 0.32f + 0.28f * glow),
+                    color = color.copy(alpha = 0.35f + 0.35f * glow),
                     radius = r + 5.dp.toPx(),
                     center = c,
-                    style = Stroke(width = 1.8.dp.toPx())
+                    style = Stroke(width = 2.dp.toPx())
                 )
             }
 
             Box(
                 modifier = Modifier
                     .size(162.dp)
-                    .scale(if (mode == UiMode.IDLE) breathe else 1f)
+                    .scale(if (mode == UiMode.IDLE || mode == UiMode.CONNECTED) breathe else 1f)
                     .clip(CircleShape)
                     .background(
                         if (isConnected) {

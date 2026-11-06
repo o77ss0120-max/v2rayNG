@@ -19,6 +19,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -132,10 +133,12 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
-        // ── مدل درآمدزایی Time-Boxed + محدودیت نمایش (Frequency Capping) ──
+        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت برای هر دیوایس ──
         private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
         private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای ویدیو جایزه‌دار
+        private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
+        private const val REWARD_ADD_DATA_BYTES = 1L * 1024L * 1024L * 1024L // +۱ گیگابایت حجم اضافه با تماشای ویدیو جایزه‌دار
     }
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -144,13 +147,16 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val socksPort: Int get() = SettingsManager.getSocksPort()
 
-    // ── وضعیت AdMob ──
+    // ── وضعیت AdMob و سهمیه روزانه ۱ گیگ به ازای هر دیوایس ──
     private var interstitialAd: InterstitialAd? = null
     private var isAdLoading = false
     private var lastInterstitialShownMs by mutableStateOf(0L)
     private var rewardedAd: RewardedAd? = null
     private var isRewardedLoading = false
     private var freeSessionRemainingSec by mutableStateOf(BASE_FREE_SESSION_SEC)
+    private var dailyQuotaDayKey by mutableStateOf("")
+    private var dailyUsedBytes by mutableStateOf(0L)
+    private var dailyMaxBytes by mutableStateOf(BASE_DAILY_FREE_BYTES)
 
     // ── وضعیت UI ──
     private var showSplash by mutableStateOf(true)
@@ -385,11 +391,35 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
+    private fun todayDateKey(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    private fun ensureDailyDeviceQuotaCurrent() {
+        val today = todayDateKey()
+        val storedDay = prefs.getString("daily_quota_day_$deviceId", "") ?: ""
+        if (storedDay != today || dailyQuotaDayKey != today) {
+            dailyQuotaDayKey = today
+            dailyUsedBytes = 0L
+            dailyMaxBytes = BASE_DAILY_FREE_BYTES
+            prefs.edit()
+                .putString("daily_quota_day_$deviceId", today)
+                .putLong("daily_used_bytes_$deviceId", 0L)
+                .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
+                .apply()
+        }
+    }
+
     private fun addTwoHoursToSession() {
+        ensureDailyDeviceQuotaCurrent()
         freeSessionRemainingSec += REWARD_ADD_TIME_SEC
-        prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
-        statusMessage = "+2 Hours Added • Remaining: ${fmtDuration(freeSessionRemainingSec)}"
-        plog("Rewarded Video watched: +2 Hours added to session (Total left: ${fmtDuration(freeSessionRemainingSec)})")
+        dailyMaxBytes += REWARD_ADD_DATA_BYTES
+        prefs.edit()
+            .putLong("free_session_rem_sec", freeSessionRemainingSec)
+            .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
+            .apply()
+        val remData = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
+        statusMessage = "+1 GB Data & +2h Added • ${fmtBytes(remData)} left today"
+        plog("Rewarded Video watched: +1 GB daily data & +2h added (Daily left: ${fmtBytes(remData)})")
     }
 
     private fun showRewardedAdForAddTime() {
@@ -593,8 +623,26 @@ class MainActivity : HelperBaseComponentActivity() {
         lastInterstitialShownMs = prefs.getLong("last_interstitial_ms", 0L)
         freeSessionRemainingSec = prefs.getLong("free_session_rem_sec", BASE_FREE_SESSION_SEC).coerceAtLeast(60L)
 
+        val today = todayDateKey()
+        val savedDay = prefs.getString("daily_quota_day_$deviceId", "") ?: ""
+        if (savedDay == today) {
+            dailyQuotaDayKey = today
+            dailyUsedBytes = prefs.getLong("daily_used_bytes_$deviceId", 0L).coerceAtLeast(0L)
+            dailyMaxBytes = prefs.getLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
+                .coerceAtLeast(BASE_DAILY_FREE_BYTES)
+        } else {
+            dailyQuotaDayKey = today
+            dailyUsedBytes = 0L
+            dailyMaxBytes = BASE_DAILY_FREE_BYTES
+            prefs.edit()
+                .putString("daily_quota_day_$deviceId", today)
+                .putLong("daily_used_bytes_$deviceId", 0L)
+                .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
+                .apply()
+        }
+
         vipActive = prefs.getBoolean("vip_active", false)
-        PennySpeedLimiter.isVipUnrestricted = vipActive
+        PennySpeedLimiter.isVipUnrestricted = true
         useVipServers = prefs.getBoolean("use_vip_servers", vipActive)
         vipCode = prefs.getString("vip_code", "") ?: ""
         vipSerial = prefs.getString("vip_serial", "") ?: ""
@@ -727,8 +775,8 @@ class MainActivity : HelperBaseComponentActivity() {
                     stepDeltaBytes = dRx + dTx
                     val rawDown = (dRx * 1000L / dt).coerceAtLeast(0L)
                     val rawUp = (dTx * 1000L / dt).coerceAtLeast(0L)
-                    downSpeed = if (vipActive) rawDown else rawDown.coerceAtMost(PennySpeedLimiter.FREE_MAX_DOWN_BYTES_PER_SEC)
-                    upSpeed = if (vipActive) rawUp else rawUp.coerceAtMost(PennySpeedLimiter.FREE_MAX_UP_BYTES_PER_SEC)
+                    downSpeed = rawDown
+                    upSpeed = rawUp
                     totalDown = (rx - rx0).coerceAtLeast(0L)
                     totalUp = (tx - tx0).coerceAtLeast(0L)
                     lastRx = rx
@@ -750,8 +798,8 @@ class MainActivity : HelperBaseComponentActivity() {
                     stepDeltaBytes = (d + u).coerceAtLeast(0L)
                     val rawDown = (d * 1000L / dt).coerceAtLeast(0L)
                     val rawUp = (u * 1000L / dt).coerceAtLeast(0L)
-                    downSpeed = if (vipActive) rawDown else rawDown.coerceAtMost(PennySpeedLimiter.FREE_MAX_DOWN_BYTES_PER_SEC)
-                    upSpeed = if (vipActive) rawUp else rawUp.coerceAtMost(PennySpeedLimiter.FREE_MAX_UP_BYTES_PER_SEC)
+                    downSpeed = rawDown
+                    upSpeed = rawUp
                     totalDown += d
                     totalUp += u
                 }
@@ -759,6 +807,21 @@ class MainActivity : HelperBaseComponentActivity() {
                 elapsedSec = (System.currentTimeMillis() - connectStartMs) / 1000L
 
                 if (!vipActive) {
+                    ensureDailyDeviceQuotaCurrent()
+                    if (stepDeltaBytes > 0L) {
+                        dailyUsedBytes += stepDeltaBytes
+                        if (tickCount % 5 == 0) {
+                            prefs.edit().putLong("daily_used_bytes_$deviceId", dailyUsedBytes).apply()
+                        }
+                    }
+                    if (dailyUsedBytes >= dailyMaxBytes) {
+                        prefs.edit().putLong("daily_used_bytes_$deviceId", dailyUsedBytes).apply()
+                        plog("Daily device quota (${fmtBytes(dailyMaxBytes)}) reached; disconnecting")
+                        statusMessage = "Daily 1 GB limit reached • Watch video ad for +1 GB"
+                        LauncherManager.stopService(this@MainActivity)
+                        continue
+                    }
+
                     if (freeSessionRemainingSec > 0L) {
                         freeSessionRemainingSec -= 1L
                         if (tickCount % 10 == 0) {
@@ -766,7 +829,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     } else {
                         plog("1-hour free session timer ended; disconnecting")
-                        statusMessage = "Session time ended • Tap Connect or + Add Time"
+                        statusMessage = "Session time ended • Tap Connect or +1 GB / +2h"
                         LauncherManager.stopService(this@MainActivity)
                     }
                 }
@@ -794,6 +857,32 @@ class MainActivity : HelperBaseComponentActivity() {
                 ?: currentList.firstOrNull { it.guid == lastConnectedGuid }
                 ?: currentList.firstOrNull()
 
+        // تغییر پویا و محسوس نور پس‌زمینه هنگام اتصال (Connected Ambient Illumination)
+        val isConnectedMode = mode == UiMode.CONNECTED
+        val bgTopColor by animateColorAsState(
+            targetValue = if (isConnectedMode) Color(0xFF393632) else Color(0xFF212026),
+            animationSpec = tween(900),
+            label = "bgTopColor"
+        )
+        val bgMidColor by animateColorAsState(
+            targetValue = if (isConnectedMode) Color(0xFF22242E) else Color(0xFF141418),
+            animationSpec = tween(900),
+            label = "bgMidColor"
+        )
+        val bgBottomColor by animateColorAsState(
+            targetValue = if (isConnectedMode) Color(0xFF101218) else Color(0xFF0A0A0D),
+            animationSpec = tween(900),
+            label = "bgBottomColor"
+        )
+        val ambientGlowAlpha by animateFloatAsState(
+            targetValue = if (isConnectedMode) 0.34f else 0.0f,
+            animationSpec = tween(950),
+            label = "ambientGlowAlpha"
+        )
+
+        val dailyRemBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
+        val dailyRemText = "Full Speed • Daily Left: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}"
+
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(
                 modifier = Modifier
@@ -801,13 +890,30 @@ class MainActivity : HelperBaseComponentActivity() {
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xFF232127),
-                                Color(0xFF151519),
-                                Color(0xFF0B0B0D)
+                                bgTopColor,
+                                bgMidColor,
+                                bgBottomColor
                             )
                         )
                     )
             ) {
+                if (ambientGlowAlpha > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFFE6CFAF).copy(alpha = ambientGlowAlpha),
+                                        Color(0xFFD8DCE6).copy(alpha = ambientGlowAlpha * 0.55f),
+                                        Color.Transparent
+                                    ),
+                                    radius = 950f
+                                )
+                            )
+                    )
+                }
+
                 Image(
                     painter = painterResource(id = R.drawable.penny_cat_logo),
                     contentDescription = null,
@@ -815,7 +921,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     modifier = Modifier
                         .size(260.dp)
                         .align(Alignment.Center)
-                        .alpha(0.04f)
+                        .alpha(if (isConnectedMode) 0.07f else 0.04f)
                 )
 
                 Column(
@@ -849,7 +955,8 @@ class MainActivity : HelperBaseComponentActivity() {
                         mode = mode,
                         statusMessage = statusMessage,
                         lang = appLang,
-                        isVip = isVipMode
+                        isVip = isVipMode,
+                        dailyRemainingText = dailyRemText
                     )
 
                     AnimatedVisibility(
@@ -878,49 +985,77 @@ class MainActivity : HelperBaseComponentActivity() {
                                         Modifier.weight(1f)
                                     )
                                     StatCell(
-                                        fmtBytes(totalDown + totalUp),
-                                        Strings.totalData(appLang),
+                                        if (vipActive) fmtBytes(totalDown + totalUp) else "${fmtBytes(dailyUsedBytes)} / ${fmtBytes(dailyMaxBytes)}",
+                                        if (vipActive) Strings.totalData(appLang) else "Daily Device Usage",
                                         Modifier.weight(1f)
                                     )
                                 }
 
                                 Spacer(Modifier.height(8.dp))
+                                val dailyProgress = if (vipActive) {
+                                    ((vipMaxBytes - vipUsedBytes).coerceAtLeast(0L).toFloat() / vipMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+                                } else {
+                                    (dailyRemBytes.toFloat() / dailyMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+                                }
                                 Surface(
-                                    color = if (vipActive) Color(0xFF20252E) else Color(0xFF231F1B),
+                                    color = Color(0xFF20222A),
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 4.dp)
                                         .border(
                                             1.dp,
-                                            if (vipActive) Color(0xFFD8DCE6).copy(alpha = 0.4f) else Color(0xFFE6CFAF).copy(alpha = 0.35f),
+                                            Color(0xFF484B57),
                                             RoundedCornerShape(10.dp)
                                         )
                                 ) {
-                                    Row(
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .padding(horizontal = 10.dp, vertical = 7.dp)
                                     ) {
-                                        Text(
-                                            text = if (vipActive) {
-                                                "VIP Speed: Unlimited Full Bandwidth"
-                                            } else {
-                                                "Speed Throttled: 256 KB/s"
-                                            },
-                                            color = if (vipActive) Color(0xFFE4E9F2) else Color(0xFFE6CFAF),
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = if (vipActive) "MAX SPEED" else "LIMITED",
-                                            color = if (vipActive) Color(0xFFD8DCE6) else Color(0xFFB8B4AE),
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = if (vipActive) {
+                                                    "VIP Speed: Full Unlimited Bandwidth"
+                                                } else {
+                                                    "Daily Device Quota: ${fmtBytes(dailyRemBytes)} left"
+                                                },
+                                                color = Color(0xFFECEEF4),
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "FULL SPEED",
+                                                color = Color(0xFFE6CFAF),
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        Spacer(Modifier.height(5.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(4.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(Color(0xFF2B2D38))
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(dailyProgress)
+                                                    .fillMaxHeight()
+                                                    .background(
+                                                        Brush.horizontalGradient(
+                                                            listOf(Color(0xFF8E93A2), Color(0xFFD8DCE6), Color(0xFFE6CFAF))
+                                                        )
+                                                    )
+                                            )
+                                        }
                                     }
                                 }
 
@@ -962,13 +1097,13 @@ class MainActivity : HelperBaseComponentActivity() {
                                         ) {
                                             Column {
                                                 Text(
-                                                    text = "+ Add Time (+2 Hours)",
+                                                    text = "+ Add 1 GB Data & +2h Time",
                                                     color = Color(0xFFF5E6D3),
                                                     fontSize = 12.5.sp,
                                                     fontWeight = FontWeight.ExtraBold
                                                 )
                                                 Text(
-                                                    text = "Extend connection by watching a short video",
+                                                    text = "Watch a short video ad to boost daily GB",
                                                     color = Color(0xFFB8B4AE),
                                                     fontSize = 9.5.sp
                                                 )
@@ -980,7 +1115,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                                     .padding(horizontal = 9.dp, vertical = 4.dp)
                                             ) {
                                                 Text(
-                                                    text = "+2h FREE",
+                                                    text = "+1 GB FREE",
                                                     color = Color(0xFF171512),
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.ExtraBold
@@ -1150,24 +1285,24 @@ class MainActivity : HelperBaseComponentActivity() {
                                 }
 
                                 Surface(
-                                    color = Color(0xFF17271F),
+                                    color = Color(0xFF23242B),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(14.dp))
-                                        .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.50f), RoundedCornerShape(14.dp))
+                                        .border(1.dp, Color(0xFF3E3D46), RoundedCornerShape(14.dp))
                                         .clickable { showUpdateDialog = true }
                                 ) {
                                     Column(
                                         modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        UpdateArrowIcon(size = 15.dp, color = Color(0xFF5CFF9D))
+                                        UpdateArrowIcon(size = 15.dp, color = Color(0xFFE8ECF4))
                                         Spacer(Modifier.height(3.dp))
                                         Text(
                                             text = "Update",
-                                            color = Color(0xFF5CFF9D),
+                                            color = Color(0xFFA6A39E),
                                             fontSize = 10.sp,
-                                            fontWeight = FontWeight.ExtraBold
+                                            fontWeight = FontWeight.SemiBold
                                         )
                                     }
                                 }
@@ -1294,12 +1429,12 @@ class MainActivity : HelperBaseComponentActivity() {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
-                        color = Color(0xFF15261E),
+                        color = Color(0xFF23252D),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.55f), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
                             .clickable {
                                 showMenu = false
                                 showUpdateDialog = true
@@ -1311,23 +1446,16 @@ class MainActivity : HelperBaseComponentActivity() {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                UpdateArrowIcon(size = 15.dp, color = Color(0xFF5CFF9D))
+                                UpdateArrowIcon(size = 15.dp, color = Color(0xFFE8ECF4))
                                 Spacer(Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = "Check for App & Server Update",
-                                        color = Color(0xFF5CFF9D),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        text = "Version ${PennyServerScanner.APP_VERSION_NAME} • BPB Fragment Engine",
-                                        color = Color(0xFF9EA1AB),
-                                        fontSize = 10.sp
-                                    )
-                                }
+                                Text(
+                                    text = "App & Server Update (v${PennyServerScanner.APP_VERSION_NAME})",
+                                    color = Color(0xFFF2F4F8),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
                             }
-                            Text("›", color = Color(0xFF5CFF9D), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("›", color = Color(0xFFD0D4DF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1841,13 +1969,13 @@ class MainActivity : HelperBaseComponentActivity() {
                                         )
                                         Text(
                                             text = "${s.ms}ms",
-                                            color = if (active) Color(0xFF0B2918) else Color(0xFF5CFF9D),
+                                            color = if (active) Color(0xFF23252E) else Color(0xFFECEEF4),
                                             fontSize = 9.5.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             fontFamily = FontFamily.Monospace,
                                             style = TextStyle(
                                                 shadow = Shadow(
-                                                    color = Color(0xFF00FF7F).copy(alpha = if (active) 0.35f else 0.75f),
+                                                    color = Color(0xFFD8DCE6).copy(alpha = if (active) 0.25f else 0.70f),
                                                     offset = Offset(0f, 0f),
                                                     blurRadius = 8f
                                                 )
@@ -1956,7 +2084,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     latestVersion = PennyServerScanner.APP_VERSION_NAME,
                     hasUpdate = false,
                     downloadUrl = PennyServerScanner.GITHUB_RELEASES_PAGE,
-                    releaseNotes = "Checking GitHub Releases & BPB Fragment status..."
+                    releaseNotes = ""
                 )
             )
         }
@@ -1973,7 +2101,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         AlertDialog(
             onDismissRequest = { showUpdateDialog = false },
-            containerColor = Color(0xFF181A20),
+            containerColor = Color(0xFF191A20),
             confirmButton = {
                 TextButton(onClick = { showUpdateDialog = false }) {
                     Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
@@ -1984,9 +2112,9 @@ class MainActivity : HelperBaseComponentActivity() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    UpdateArrowIcon(size = 18.dp, color = Color(0xFF5CFF9D))
+                    UpdateArrowIcon(size = 17.dp, color = Color(0xFFE2E5EE))
                     Text(
-                        text = "Penny VPN Update Center",
+                        text = "Update",
                         color = Color(0xFFF2F4F8),
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 16.sp
@@ -1994,116 +2122,82 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Surface(
-                        color = Color(0xFF12231B),
-                        shape = RoundedCornerShape(13.dp),
+                        color = Color(0xFF23252D),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.50f), RoundedCornerShape(13.dp))
+                            .border(1.dp, Color(0xFF3E404C), RoundedCornerShape(12.dp))
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Current Build: v${updateInfo.currentVersion}",
-                                    color = Color(0xFFF2F4F8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = if (checking) "CHECKING..." else if (updateInfo.hasUpdate) "UPDATE READY" else "UP TO DATE",
-                                    color = Color(0xFF5CFF9D),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
                             Text(
-                                text = "Latest Release: v${updateInfo.latestVersion}",
-                                color = Color(0xFFD0D4DF),
-                                fontSize = 11.sp,
+                                text = "Version v${updateInfo.currentVersion}",
+                                color = Color(0xFFF2F4F8),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
                             )
-                            Spacer(Modifier.height(2.dp))
                             Text(
-                                text = updateInfo.releaseNotes,
-                                color = Color(0xFFA8B0BE),
+                                text = if (checking) "CHECKING..." else if (updateInfo.hasUpdate) "NEW: v${updateInfo.latestVersion}" else "UP TO DATE",
+                                color = Color(0xFFE6CFAF),
                                 fontSize = 10.5.sp,
-                                maxLines = 4,
-                                overflow = TextOverflow.Ellipsis
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
                             )
                         }
                     }
 
-                    // انتخاب حالت فرگمنت BPB-VPN (Normal 100-200ms یا Smart 1-5ms)
-                    Surface(
-                        color = Color(0xFF21232B),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF383A46), RoundedCornerShape(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isNormal = bpbFragmentMode == "NORMAL"
+                        OutlinedButton(
+                            onClick = {
+                                bpbFragmentMode = "NORMAL"
+                                prefs.edit().putString("bpb_frag_mode", "NORMAL").apply()
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "100-200")
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
+                                statusNote = "Fragment: Normal"
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
-                                text = "BPB-VPN Anti-DPI Fragment Engine",
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                text = "Normal Mode",
+                                fontSize = 11.sp,
+                                color = if (isNormal) Color(0xFFF2F4F8) else Color(0xFF8E929E),
+                                fontWeight = if (isNormal) FontWeight.ExtraBold else FontWeight.Medium
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val isNormal = bpbFragmentMode == "NORMAL"
-                                OutlinedButton(
-                                    onClick = {
-                                        bpbFragmentMode = "NORMAL"
-                                        prefs.edit().putString("bpb_frag_mode", "NORMAL").apply()
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "100-200")
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
-                                        statusNote = "Switched to BPB Normal Fragment (100-200 bytes / 1ms)"
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(
-                                        text = "Normal (100-200)",
-                                        fontSize = 10.5.sp,
-                                        color = if (isNormal) Color(0xFF5CFF9D) else Color(0xFFB8BCC8),
-                                        fontWeight = if (isNormal) FontWeight.ExtraBold else FontWeight.Medium
-                                    )
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        bpbFragmentMode = "SMART"
-                                        prefs.edit().putString("bpb_frag_mode", "SMART").apply()
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "1-5")
-                                        MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
-                                        statusNote = "Switched to BPB Smart Fragment (1-5 bytes / 1ms)"
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(
-                                        text = "Smart (1-5)",
-                                        fontSize = 10.5.sp,
-                                        color = if (!isNormal) Color(0xFF5CFF9D) else Color(0xFFB8BCC8),
-                                        fontWeight = if (!isNormal) FontWeight.ExtraBold else FontWeight.Medium
-                                    )
-                                }
-                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                bpbFragmentMode = "SMART"
+                                prefs.edit().putString("bpb_frag_mode", "SMART").apply()
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "1-5")
+                                MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
+                                statusNote = "Fragment: Smart"
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Smart Mode",
+                                fontSize = 11.sp,
+                                color = if (!isNormal) Color(0xFFF2F4F8) else Color(0xFF8E929E),
+                                fontWeight = if (!isNormal) FontWeight.ExtraBold else FontWeight.Medium
+                            )
                         }
                     }
 
@@ -2113,65 +2207,43 @@ class MainActivity : HelperBaseComponentActivity() {
                             startScanOnly()
                         },
                         enabled = phase == Phase.IDLE,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F402E)),
+                        shape = RoundedCornerShape(11.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF343742)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.dp, Color(0xFF39FF88).copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.45f), RoundedCornerShape(11.dp))
                     ) {
                         Text(
-                            text = "Update BPB Servers & Clean IPs Now",
-                            color = Color(0xFF5CFF9D),
+                            text = "Update Servers",
+                            color = Color(0xFFF2F4F8),
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 12.5.sp
+                            fontSize = 12.sp
                         )
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
+                                startActivity(intent)
+                            }
+                        },
+                        shape = RoundedCornerShape(11.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
-                                    startActivity(intent)
-                                }
-                            },
-                            shape = RoundedCornerShape(11.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Download APK",
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(PennyServerScanner.GITHUB_ACTIONS_PAGE))
-                                    startActivity(intent)
-                                }
-                            },
-                            shape = RoundedCornerShape(11.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "GitHub Builds",
-                                color = Color(0xFFD8DCE6),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Text(
+                            text = "Download Latest APK",
+                            color = Color(0xFFD8DCE6),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
                     statusNote?.let { note ->
                         Text(
                             text = note,
-                            color = Color(0xFF5CFF9D),
-                            fontSize = 11.sp,
+                            color = Color(0xFFE6CFAF),
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -2223,6 +2295,15 @@ class MainActivity : HelperBaseComponentActivity() {
             return
         }
         if (checkVipExpiration()) return
+        if (!vipActive) {
+            ensureDailyDeviceQuotaCurrent()
+            if (dailyUsedBytes >= dailyMaxBytes) {
+                statusMessage = "Daily 1 GB limit reached • Watch video ad for +1 GB"
+                plog("Daily device quota reached (${fmtBytes(dailyUsedBytes)} / ${fmtBytes(dailyMaxBytes)}); prompting Rewarded Ad for +1 GB")
+                showRewardedAdForAddTime()
+                return
+            }
+        }
 
         if (SettingsManager.isVpnMode()) {
             val intent = VpnService.prepare(this)

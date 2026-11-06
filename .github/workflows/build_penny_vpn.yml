@@ -119,10 +119,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v2.6.0-BPB
-          name: "Penny VPN v2.6.0-BPB (Shiny Green Ping + In-App Updater + BPB Anti-DPI)"
+          tag_name: v2.6.1
+          name: "Penny VPN v2.6.1 (Shiny Green Ping + In-App Updater + BPB Anti-DPI)"
           body: |
-            ### Penny VPN v2.6.0-BPB Release
+            ### Penny VPN v2.6.1 Release
             - **Shiny Bright Green Server Ping**: Glowing `#5CFF9D` latency badges across Home, Server List, and Global Bubble View.
             - **In-App Update Center**: Direct APK update checker & downloader + one-tap BPB Server & Clean IP updater.
             - **BPB-VPN Anti-Filtering Engine**: Fragmented TLS ClientHello socket, Xray v26 `finalmask` (Normal 100-200ms & Smart 1-5ms modes), and 8 Clean Cloudflare Anycast IPs across ports 443, 8443 & 2083.

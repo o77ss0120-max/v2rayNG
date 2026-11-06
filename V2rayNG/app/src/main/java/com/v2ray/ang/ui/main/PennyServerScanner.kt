@@ -31,137 +31,25 @@ import kotlin.math.min
 import kotlin.random.Random
 
 /**
- * محدودکننده واقعی پهنای باند (Token-Bucket Speed Limiter) برای کاربران عادی (رایگان):
- * - کاربران عادی (Free Tier): سقف سرعت دانلود 256 KB/s (معادل 2.0 Mbps) و آپلود 128 KB/s (معادل 1.0 Mbps)
- * - کاربران VIP (اشتراک ۱ ماه ۵۰ گیگ): بدون هیچ‌گونه محدودیت سرعت (Full Unlimited Speed)
+ * بدون محدودیت سرعت برای همه کاربران (Full Unlimited Speed):
+ * ترافیک کاربران عادی به‌صورت روزانه به ازای هر دیوایس (۱ گیگابایت پایه در روز + امکان افزایش گیگ با تماشای تبلیغ) محاسبه می‌شود.
  */
 object PennySpeedLimiter {
-    const val FREE_MAX_DOWN_BYTES_PER_SEC = 256 * 1024L // 256 KB/s (~2.0 Mbps)
-    const val FREE_MAX_UP_BYTES_PER_SEC = 128 * 1024L   // 128 KB/s (~1.0 Mbps)
+    const val FREE_MAX_DOWN_BYTES_PER_SEC = Long.MAX_VALUE
+    const val FREE_MAX_UP_BYTES_PER_SEC = Long.MAX_VALUE
 
     @Volatile
-    var isVipUnrestricted: Boolean = false
-
-    private var serverSocket: ServerSocket? = null
-    private var activeListenPort: Int = -1
-    private var activeTargetPort: Int = -1
-    private val running = AtomicBoolean(false)
-    private val pool = Executors.newCachedThreadPool()
-
-    private class TokenBucket(private val rateBytesPerSec: Long) {
-        private var availableTokens: Double = rateBytesPerSec.toDouble()
-        private var lastRefillNs: Long = System.nanoTime()
-
-        @Synchronized
-        fun consume(bytes: Int) {
-            if (isVipUnrestricted || bytes <= 0 || rateBytesPerSec <= 0L) return
-            val now = System.nanoTime()
-            val elapsedSec = (now - lastRefillNs) / 1_000_000_000.0
-            if (elapsedSec > 0) {
-                availableTokens = min(
-                    rateBytesPerSec.toDouble(),
-                    availableTokens + elapsedSec * rateBytesPerSec.toDouble()
-                )
-                lastRefillNs = now
-            }
-            availableTokens -= bytes.toDouble()
-            if (availableTokens < 0) {
-                val waitMs = ((-availableTokens / rateBytesPerSec.toDouble()) * 1000.0).toLong()
-                    .coerceIn(5L, 250L)
-                try {
-                    Thread.sleep(waitMs)
-                } catch (_: InterruptedException) {
-                }
-            }
-        }
-    }
-
-    private val downBucket = TokenBucket(FREE_MAX_DOWN_BYTES_PER_SEC)
-    private val upBucket = TokenBucket(FREE_MAX_UP_BYTES_PER_SEC)
+    var isVipUnrestricted: Boolean = true
 
     @Synchronized
     fun startIfNeeded(listenPort: Int, targetPort: Int, vipActive: Boolean): Int {
-        isVipUnrestricted = vipActive
-        if (vipActive) {
-            return targetPort
-        }
-        if (running.get() && activeListenPort == listenPort && activeTargetPort == targetPort && serverSocket?.isClosed == false) {
-            return listenPort
-        }
-        stop()
-        return try {
-            val srv = ServerSocket()
-            srv.reuseAddress = true
-            srv.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), listenPort), 128)
-            serverSocket = srv
-            activeListenPort = listenPort
-            activeTargetPort = targetPort
-            running.set(true)
-            pool.execute {
-                while (running.get() && !srv.isClosed) {
-                    try {
-                        val client = srv.accept()
-                        client.tcpNoDelay = true
-                        pool.execute { handleConnection(client, targetPort) }
-                    } catch (_: Exception) {
-                        if (!running.get()) break
-                    }
-                }
-            }
-            listenPort
-        } catch (_: Exception) {
-            targetPort
-        }
-    }
-
-    private fun handleConnection(client: Socket, targetPort: Int) {
-        var upstream: Socket? = null
-        try {
-            upstream = Socket()
-            upstream.tcpNoDelay = true
-            upstream.connect(InetSocketAddress("127.0.0.1", targetPort), 3000)
-            val upSock = upstream
-            val tUp = pool.submit {
-                pipeWithLimit(client.getInputStream(), upSock.getOutputStream(), upBucket)
-                try { upSock.shutdownOutput() } catch (_: Exception) {}
-            }
-            val tDown = pool.submit {
-                pipeWithLimit(upSock.getInputStream(), client.getOutputStream(), downBucket)
-                try { client.shutdownOutput() } catch (_: Exception) {}
-            }
-            tUp.get()
-            tDown.get()
-        } catch (_: Exception) {
-        } finally {
-            try { upstream?.close() } catch (_: Exception) {}
-            try { client.close() } catch (_: Exception) {}
-        }
-    }
-
-    private fun pipeWithLimit(input: InputStream, output: OutputStream, bucket: TokenBucket) {
-        val buf = ByteArray(4096)
-        try {
-            while (true) {
-                val n = input.read(buf)
-                if (n <= 0) break
-                bucket.consume(n)
-                output.write(buf, 0, n)
-                output.flush()
-            }
-        } catch (_: Exception) {
-        }
+        isVipUnrestricted = true
+        return targetPort
     }
 
     @Synchronized
     fun stop() {
-        running.set(false)
-        try {
-            serverSocket?.close()
-        } catch (_: Exception) {
-        }
-        serverSocket = null
-        activeListenPort = -1
-        activeTargetPort = -1
+        // No local throttling proxy needed — full native speed on targetPort
     }
 }
 
@@ -806,7 +694,7 @@ internal object PennyServerScanner {
         val releaseNotes: String
     )
 
-    const val APP_VERSION_NAME = "2.6.0-BPB"
+    const val APP_VERSION_NAME = "2.6.1"
     const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
 
@@ -827,9 +715,6 @@ internal object PennyServerScanner {
                         val text = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
                         val obj = JSONObject(text)
                         val tag = obj.optString("tag_name", "").removePrefix("v").ifEmpty { APP_VERSION_NAME }
-                        val notes = obj.optString("body", "").ifEmpty {
-                            "BPB-VPN TLS Fragment engine, Clean IP auto-tuning, and shiny green ping display."
-                        }
                         var apkUrl = obj.optString("html_url", GITHUB_RELEASES_PAGE)
                         val assets = obj.optJSONArray("assets")
                         if (assets != null) {
@@ -848,7 +733,7 @@ internal object PennyServerScanner {
                             latestVersion = tag,
                             hasUpdate = isNewer,
                             downloadUrl = apkUrl,
-                            releaseNotes = notes
+                            releaseNotes = ""
                         )
                     }
                 } finally {
@@ -862,7 +747,7 @@ internal object PennyServerScanner {
             latestVersion = APP_VERSION_NAME,
             hasUpdate = false,
             downloadUrl = GITHUB_RELEASES_PAGE,
-            releaseNotes = "BPB-VPN TLS Fragment engine (100-200ms & Smart 1-5ms), Clean Cloudflare IPs (104.17.148.22 / 104.17.147.22) on ports 443/8443/2083."
+            releaseNotes = ""
         )
     }
 }

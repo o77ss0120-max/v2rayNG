@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui.main
 
+import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.MmkvManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -10,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.FilterOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -26,6 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlin.math.min
+import kotlin.random.Random
 
 /**
  * محدودکننده واقعی پهنای باند (Token-Bucket Speed Limiter) برای کاربران عادی (رایگان):
@@ -162,6 +165,46 @@ object PennySpeedLimiter {
     }
 }
 
+/**
+ * سوکت اختصاصی الهام‌گرفته از BPB-VPN برای تکهتکه کردن پکت TLS ClientHello (0x16)
+ * به قطعات 80 تا 160 بایتی با تاخیر 1 میلی‌ثانیه جهت عبور از DPI مخابرات/ایرانسل/همراه‌اول
+ */
+private class TlsHelloFragmentSocket(host: String, port: Int, connectTimeoutMs: Int) : Socket() {
+    private var firstTlsRecordFragmented = false
+
+    init {
+        tcpNoDelay = true
+        connect(InetSocketAddress(host, port), connectTimeoutMs)
+    }
+
+    override fun getOutputStream(): OutputStream {
+        val baseOut = super.getOutputStream()
+        return object : FilterOutputStream(baseOut) {
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                if (!firstTlsRecordFragmented && len > 20 && b[off] == 0x16.toByte()) {
+                    firstTlsRecordFragmented = true
+                    var cursor = off
+                    val end = off + len
+                    while (cursor < end) {
+                        val chunkLen = Random.nextInt(80, 160).coerceAtMost(end - cursor)
+                        baseOut.write(b, cursor, chunkLen)
+                        baseOut.flush()
+                        cursor += chunkLen
+                        if (cursor < end) {
+                            try {
+                                Thread.sleep(1)
+                            } catch (_: InterruptedException) {
+                            }
+                        }
+                    }
+                } else {
+                    baseOut.write(b, off, len)
+                }
+            }
+        }
+    }
+}
+
 internal object PennyServerScanner {
     const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024 // سقف ۴ مگابایت برای امنیت دانلود
     const val TCP_TIMEOUT_MS = 2800
@@ -171,28 +214,42 @@ internal object PennyServerScanner {
     const val BPB_HOST = "h1bq9ybcr6av6637iy1pyhiet.pages.dev"
     const val BPB_MIXED_SNI = "H1bQ9ybcr6AV6637iy1pyhIET.pageS.dEv"
 
-    // آی‌پی‌ها و دامنه‌های تمیز کلودفلر که مسمومیت DNS مخابرات/ایرانسل (10.10.34.36) را دور می‌زنند
+    // آی‌پی‌های تمیز پیش‌فرض BPB-VPN (104.17.148.22 و 104.17.147.22) + آی‌پی‌های تمیز کلودفلر پنل شما
     val CLEAN_CF_ENDPOINTS = listOf(
+        "104.17.148.22",
+        "104.17.147.22",
         "172.66.44.58",
         "172.66.47.198",
-        "104.17.147.22",
         "172.64.155.209",
         "104.18.2.115",
         "www.speedtest.net",
         "www.visa.com"
     )
 
-    // لینک ساب اختصاصی BPB شما به عنوان منبع اصلی سرورها + منابع پشتیبان
+    // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 2083 روی ایرانسل و همراه اول عملکرد عالی دارند)
+    val BPB_TLS_PORTS = listOf(443, 8443, 2083)
+
+    // تنظیمات استاندارد TLS Fragment و Smart Fragment مشابه BPB-VPN برای هسته Xray v26 (finalmask)
+    const val BPB_FINALMASK_NORMAL_JSON =
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"1"}}]}"""
+    const val BPB_FINALMASK_SMART_JSON =
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"1-5","delay":"1-1"}}]}"""
+
+    // لینک‌های ساب اختصاصی BPB شما (هر دو حالت Fragment و Normal) + منابع پشتیبان
+    const val DEDICATED_BPB_FRAGMENT_SUB_URL =
+        "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/fragment?app=xray#BPB-Fragment"
     const val DEDICATED_BPB_SUB_URL =
         "https://h1bq9ybcr6av6637iy1pyhiet.pages.dev/OOlxS8IA63x6/sub/normal?app=xray#%F0%9F%92%A6%20BPB%20Normal"
 
     val SIGNED_STANDARD_SUBSCRIPTION_SOURCES = listOf(
+        DEDICATED_BPB_FRAGMENT_SUB_URL,
         DEDICATED_BPB_SUB_URL,
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
         "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
     )
 
     val SIGNED_VIP_SUBSCRIPTION_SOURCES = listOf(
+        DEDICATED_BPB_FRAGMENT_SUB_URL,
         DEDICATED_BPB_SUB_URL,
         "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
         "https://gist.githubusercontent.com/o77ss0120-max/5e592995c7b0f82b924cec572c0422a9/raw/penny_configs.txt"
@@ -208,21 +265,47 @@ internal object PennyServerScanner {
     }
 
     /**
-     * نودهای اختصاصی BPB با آی‌پی‌های تمیز کلودفلر برای مواقعی که اینترنت کاربر قبل از اتصال VPN
-     * دانلود مستقیم لینک‌ها را مسدود کرده باشد.
+     * فعال‌سازی خودکار تنظیمات TLS Fragment و DNS ضدتحریم (مشابه BPB-VPN) در هسته v2rayNG
+     */
+    fun applyBpbCoreOptimizations() {
+        try {
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, "100-200")
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, "1")
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "8.8.8.8")
+            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://8.8.8.8/dns-query")
+            MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * نودهای آماده BPB-VPN با آی‌پی‌های تمیز کلودفلر (104.17.148.22, 104.17.147.22, 172.66.44.58 و ...)
+     * به همراه پورت‌های 443، 8443 و 2083 و پارامتر فرگمنت (fm) برای اتصال تضمینی در ایران
      */
     fun getBuiltinBpbFallbackConfigs(): String {
         val nodes = mutableListOf<String>()
+        val fmNormal = urlEncode(BPB_FINALMASK_NORMAL_JSON)
+        val fmSmart = urlEncode(BPB_FINALMASK_SMART_JSON)
+
         for (ip in CLEAN_CF_ENDPOINTS) {
-            nodes.add(
-                "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:443?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FqMJQ6U5MxKrwokJeqchPl%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#PennyVPN"
-            )
-            nodes.add(
-                "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:443?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FAElO3svXo1z79wnybrjziVJkWqNzoM%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#PennyVPN"
-            )
-            nodes.add(
-                "trojan://ODXencHfxA%2CT3yBpD@$ip:443?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#PennyVPN"
-            )
+            for (port in BPB_TLS_PORTS) {
+                // 1. VLESS + BPB TLS Fragment (100-200ms)
+                nodes.add(
+                    "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fp08StKN7UT3vN1ToQFedY5JYlt%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                )
+                // 2. VLESS + BPB Smart Fragment (1-5ms)
+                if (port == 443 || port == 8443) {
+                    nodes.add(
+                        "vless://5d91bcf1-9bbe-4c46-95f5-d1059fe98e9d@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FNGmVOkqMU67fFMyJQSgbXbR5AzgvF3%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmSmart#PennyVPN"
+                    )
+                }
+                // 3. Trojan + BPB TLS Fragment (100-200ms)
+                nodes.add(
+                    "trojan://ODXencHfxA%2CT3yBpD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FtpHAPr4mwS7BN4F4%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmNormal#PennyVPN"
+                )
+            }
         }
         return nodes.joinToString("\n")
     }
@@ -249,8 +332,8 @@ internal object PennyServerScanner {
     }
 
     /**
-     * دانلود مستقیم از طریق آی‌پی‌های تمیز کلودفلر + SNI ترکیبی (Mixed-Case)
-     * برای دور زدن کامل مسمومیت DNS ایران (10.10.34.36) روی دامنه‌های *.pages.dev
+     * دانلود مستقیم از طریق آی‌پی‌های تمیز BPB-VPN (104.17.148.22 و ...) + پورت‌های 443/8443/2083
+     * + تکهتکه کردن TLS ClientHello (TlsHelloFragmentSocket) جهت عبور از مسمومیت DNS (10.10.34.36) و DPI ایران
      */
     private fun downloadViaCleanIpTls(cleanUrl: String, onLog: (String) -> Unit): String {
         val parsed = URL(cleanUrl)
@@ -262,15 +345,23 @@ internal object PennyServerScanner {
             toMixedCaseSni(originalHost)
         }
         val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
+        val probeTargets = listOf(
+            "104.17.148.22" to 8443,
+            "104.17.147.22" to 8443,
+            "172.66.44.58" to 443,
+            "172.66.47.198" to 8443,
+            "104.17.148.22" to 443,
+            "104.17.147.22" to 2083,
+            "www.speedtest.net" to 443
+        )
 
-        for (endpoint in CLEAN_CF_ENDPOINTS) {
+        for ((endpoint, port) in probeTargets) {
             var rawSocket: Socket? = null
             var sslSocket: SSLSocket? = null
             try {
-                rawSocket = Socket()
-                rawSocket.connect(InetSocketAddress(endpoint, 443), 5000)
+                rawSocket = TlsHelloFragmentSocket(endpoint, port, 4500)
                 rawSocket.soTimeout = 7000
-                sslSocket = sslFactory.createSocket(rawSocket, sniHost, 443, true) as SSLSocket
+                sslSocket = sslFactory.createSocket(rawSocket, sniHost, port, true) as SSLSocket
                 sslSocket.startHandshake()
 
                 val req = buildString {
@@ -304,7 +395,7 @@ internal object PennyServerScanner {
                 val body = fullText.substring(splitIdx + 4).trim()
                 val statusLine = headerBlock.lineSequence().firstOrNull().orEmpty()
                 if (statusLine.contains(" 200 ") && body.isNotEmpty()) {
-                    onLog("Bypassed DNS poisoning via Clean IP ($endpoint): ${body.length} chars")
+                    onLog("BPB-Fragment TLS download OK via $endpoint:$port (${body.length} chars)")
                     return body
                 }
             } catch (_: Exception) {
@@ -322,65 +413,64 @@ internal object PennyServerScanner {
             "Only HTTPS URLs are permitted"
         }
 
-        // اگر دامنه از نوع pages.dev است، ابتدا یا در صورت مسمومیت DNS (10.10.34.36) از Clean IP مستقیم استفاده کن
-        val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true)
+        val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true) ||
+            cleanUrl.contains(".workers.dev", ignoreCase = true)
+
+        // برای دامنه‌های pages.dev و workers.dev، ابتدا مستقیماً از تانل Clean IP + TLS Fragment (مشابه BPB-VPN) استفاده کن
+        if (isPagesDev) {
+            val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
+            if (bypassed.isNotEmpty()) return bypassed
+        }
+
         val sep = if ('?' in cleanUrl) '&' else '?'
         val urlWithTs = "${cleanUrl}${sep}t=${System.currentTimeMillis()}"
 
-        try {
-            val url = URL(urlWithTs)
-            // بررسی مسمومیت DNS ایران (10.10.34.x) قبل از باز کردن HttpURLConnection
-            val resolvedIp = runCatching { InetAddress.getByName(url.host).hostAddress.orEmpty() }.getOrDefault("")
-            if (resolvedIp.startsWith("10.10.") || resolvedIp == "127.0.0.1" || resolvedIp == "0.0.0.0") {
-                onLog?.invoke("Detected ISP DNS poisoning ($resolvedIp) for ${url.host}; switching to Clean IP TLS")
-                val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
-                if (bypassed.isNotEmpty()) return bypassed
-            }
+        val url = URL(urlWithTs)
+        val resolvedIp = runCatching { InetAddress.getByName(url.host).hostAddress.orEmpty() }.getOrDefault("")
+        if (resolvedIp.startsWith("10.10.") || resolvedIp == "127.0.0.1" || resolvedIp == "0.0.0.0") {
+            onLog?.invoke("Detected ISP DNS poisoning ($resolvedIp) for ${url.host}; switching to Clean IP TLS")
+            val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
+            if (bypassed.isNotEmpty()) return bypassed
+        }
 
-            val conn = url.openConnection() as HttpURLConnection
-            try {
-                conn.connectTimeout = 7000
-                conn.readTimeout = 7000
-                conn.instanceFollowRedirects = true
-                conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.5")
-                val code = conn.responseCode
-                if (code != HttpURLConnection.HTTP_OK) {
-                    throw IllegalStateException("HTTP $code")
-                }
-                val contentLen = conn.contentLengthLong
-                if (contentLen > MAX_DOWNLOAD_BYTES) {
-                    throw IllegalStateException("Response too large ($contentLen bytes)")
-                }
-                conn.inputStream.use { input ->
-                    val out = ByteArrayOutputStream()
-                    val buf = ByteArray(8192)
-                    var total = 0
-                    while (true) {
-                        val read = input.read(buf)
-                        if (read < 0) break
-                        total += read
-                        if (total > MAX_DOWNLOAD_BYTES) {
-                            throw IllegalStateException("Exceeded 4 MB download limit")
-                        }
-                        out.write(buf, 0, read)
+        val conn = url.openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 7000
+            conn.readTimeout = 7000
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.5")
+            val code = conn.responseCode
+            if (code != HttpURLConnection.HTTP_OK) {
+                throw IllegalStateException("HTTP $code")
+            }
+            val contentLen = conn.contentLengthLong
+            if (contentLen > MAX_DOWNLOAD_BYTES) {
+                throw IllegalStateException("Response too large ($contentLen bytes)")
+            }
+            conn.inputStream.use { input ->
+                val out = ByteArrayOutputStream()
+                val buf = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val read = input.read(buf)
+                    if (read < 0) break
+                    total += read
+                    if (total > MAX_DOWNLOAD_BYTES) {
+                        throw IllegalStateException("Exceeded 4 MB download limit")
                     }
-                    return out.toString(StandardCharsets.UTF_8.name()).trim()
+                    out.write(buf, 0, read)
                 }
-            } finally {
-                conn.disconnect()
+                return out.toString(StandardCharsets.UTF_8.name()).trim()
             }
-        } catch (e: Exception) {
-            if (isPagesDev) {
-                val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
-                if (bypassed.isNotEmpty()) return bypassed
-            }
-            throw e
+        } finally {
+            conn.disconnect()
         }
     }
 
     /**
      * تبدیل خودکار خروجی JSON پنل‌های BPB (?app=xray) به لینک‌های استاندارد vless://, trojan://
-     * + جایگزینی دامنه‌های مسموم‌شده (*.pages.dev) با آی‌پی‌های تمیز کلودفلر
+     * همراه با استخراج و تزریق پارامتر `fm` (finalmask TLS Fragment مشابه BPB-VPN)
+     * و جایگزینی دامنه‌های مسموم‌شده (*.pages.dev) با آی‌پی‌های تمیز BPB-VPN (104.17.148.22 و ...)
      */
     fun extractPlayableConfigs(rawContent: String, onLog: (String) -> Unit): String {
         val trimmed = rawContent.trim()
@@ -415,6 +505,7 @@ internal object PennyServerScanner {
                         val xhttp = stream.optJSONObject("xhttpSettings")
                         val tls = stream.optJSONObject("tlsSettings")
                         val reality = stream.optJSONObject("realitySettings")
+                        val finalmaskObj = stream.optJSONObject("finalmask")
 
                         val host = ws?.optString("host", "")?.takeIf { it.isNotEmpty() }
                             ?: httpup?.optString("host", "")?.takeIf { it.isNotEmpty() }
@@ -441,6 +532,14 @@ internal object PennyServerScanner {
                         }
                         val alpn = alpnList.joinToString(",")
 
+                        // استخراج finalmask از JSON پنل BPB یا تزریق خودکار فرگمنت BPB-VPN برای دامنه‌های pages.dev
+                        val fmJson = finalmaskObj?.toString()?.takeIf { it.isNotEmpty() }
+                            ?: if (host.endsWith(".pages.dev", ignoreCase = true) || sni.endsWith(".pages.dev", ignoreCase = true)) {
+                                BPB_FINALMASK_NORMAL_JSON
+                            } else {
+                                ""
+                            }
+
                         val queryPairs = mutableListOf<String>()
                         queryPairs.add("security=${urlEncode(sec)}")
                         queryPairs.add("type=${urlEncode(net)}")
@@ -449,6 +548,7 @@ internal object PennyServerScanner {
                         if (sni.isNotEmpty()) queryPairs.add("sni=${urlEncode(sni)}")
                         if (fp.isNotEmpty()) queryPairs.add("fp=${urlEncode(fp)}")
                         if (alpn.isNotEmpty()) queryPairs.add("alpn=${urlEncode(alpn)}")
+                        if (fmJson.isNotEmpty()) queryPairs.add("fm=${urlEncode(fmJson)}")
 
                         grpc?.optString("serviceName", "")?.takeIf { it.isNotEmpty() }?.let {
                             queryPairs.add("serviceName=${urlEncode(it)}")
@@ -477,14 +577,13 @@ internal object PennyServerScanner {
                             if (flow.isNotEmpty()) vlessQuery.add("flow=${urlEncode(flow)}")
                             vlessQuery.addAll(queryPairs)
 
-                            // اگر آدرس نود خودش pages.dev است، به دلیل مسمومیت DNS در ایران (10.10.34.36) آن را به آی‌پی‌های تمیز بسط می‌دهیم
                             val targetAddresses = if (rawAddr.endsWith(".pages.dev", ignoreCase = true)) {
                                 CLEAN_CF_ENDPOINTS
                             } else {
                                 listOf(rawAddr)
                             }
                             for (addr in targetAddresses) {
-                                val dedupKey = "vless:$uid@$addr:$port:$path"
+                                val dedupKey = "vless:$uid@$addr:$port:$path:$fmJson"
                                 if (seenKeys.add(dedupKey)) {
                                     extractedUris.add(
                                         "vless://${urlEncode(uid)}@$addr:$port?${vlessQuery.joinToString("&")}#PennyVPN"
@@ -507,7 +606,7 @@ internal object PennyServerScanner {
                                 listOf(rawAddr)
                             }
                             for (addr in targetAddresses) {
-                                val dedupKey = "trojan:$pwd@$addr:$port:$path"
+                                val dedupKey = "trojan:$pwd@$addr:$port:$path:$fmJson"
                                 if (seenKeys.add(dedupKey)) {
                                     extractedUris.add(
                                         "trojan://${urlEncode(pwd)}@$addr:$port?${queryPairs.joinToString("&")}#PennyVPN"
@@ -519,7 +618,7 @@ internal object PennyServerScanner {
                 }
 
                 if (extractedUris.isNotEmpty()) {
-                    onLog("Extracted ${extractedUris.size} clean-IP VLESS/Trojan nodes from BPB subscription")
+                    onLog("Extracted ${extractedUris.size} BPB-Fragment VLESS/Trojan nodes")
                     return extractedUris.joinToString("\n")
                 }
             } catch (e: Exception) {
@@ -531,7 +630,7 @@ internal object PennyServerScanner {
 
     /**
      * دریافت لیست سرورها با پشتیبانی از:
-     * ۱. لینک ساب اختصاصی BPB با دور زدن مسمومیت DNS (10.10.34.36)
+     * ۱. لینک‌های ساب اختصاصی BPB (Fragment و Normal) با دور زدن مسمومیت DNS (10.10.34.36) و تکهتکه کردن TLS ClientHello
      * ۲. دنبال کردن خودکار لینک‌های اشاره‌گر (مثل Gist حاوی لینک https://... دیگر)
      * ۳. لیست‌های امضاشده با کلید ECDSA P-256 (#PENNY-SIG:)
      */

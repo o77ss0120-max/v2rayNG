@@ -572,6 +572,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun loadSaved() {
         appLang = AppLang.EN
         statusMessage = Strings.ready(appLang)
+        PennyServerScanner.applyBpbCoreOptimizations()
         autoSwitch = prefs.getBoolean("auto_switch", true)
         autoReconnect = prefs.getBoolean("auto_reconnect", true)
         splitTunnelLocal = prefs.getBoolean("split_tunnel_local", true)
@@ -596,8 +597,8 @@ class MainActivity : HelperBaseComponentActivity() {
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
         vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
         effectiveNowMs()
-        customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_BPB_SUB_URL)
-            ?.takeIf { it.isNotBlank() } ?: PennyServerScanner.DEDICATED_BPB_SUB_URL
+        customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_BPB_FRAGMENT_SUB_URL)
+            ?.takeIf { it.isNotBlank() } ?: PennyServerScanner.DEDICATED_BPB_FRAGMENT_SUB_URL
         licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
             ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
@@ -2148,6 +2149,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun runScan(): Boolean {
+        PennyServerScanner.applyBpbCoreOptimizations()
         val scanningVip = vipActive && useVipServers
         val sources = getSubscriptionSources(scanningVip)
 
@@ -2193,6 +2195,12 @@ class MainActivity : HelperBaseComponentActivity() {
                 if (cfg != null) {
                     if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true) {
                         cfg.server = PennyServerScanner.CLEAN_CF_ENDPOINTS.first()
+                    }
+                    if (cfg.finalMask.isNullOrBlank() &&
+                        (cfg.host?.endsWith(".pages.dev", ignoreCase = true) == true ||
+                            cfg.sni?.endsWith(".pages.dev", ignoreCase = true) == true)
+                    ) {
+                        cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
                     cfg.remarks = "Penny VPN"
                     MmkvManager.encodeServerConfig(g, cfg)

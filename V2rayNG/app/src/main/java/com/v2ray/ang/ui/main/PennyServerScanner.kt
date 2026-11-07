@@ -55,106 +55,30 @@ object PennySpeedLimiter {
 }
 
 /**
- * سوکت اختصاصی با تکنیک TLS Record-Layer SNI Splitting:
- * به‌جای تکهتکه کردن ساده TCP (که فایروال همراه اول با TCP Reassembly دوباره سرهم می‌کند)،
- * رکورد TLS ClientHello (0x16) را دقیقاً در وسط رشته دامنه (pa | ges. | dev) به ۳ رکورد مستقل و معتبر TLS (هر کدام با هدر ۵ بایتی 0x16 0x03 0x01) تبدیل می‌کند.
+ * سوکت اختصاصی الهام‌گرفته از BPB-VPN برای تکهتکه کردن پکت TLS ClientHello (0x16)
+ * به قطعات 50 تا 120 بایتی با تاخیر 1 میلی‌ثانیه جهت عبور از DPI همراه اول و ایرانسل
  */
 private class TlsHelloFragmentSocket(host: String, port: Int, connectTimeoutMs: Int) : Socket() {
-    private val delegate = Socket()
     private var firstTlsRecordFragmented = false
 
     init {
-        delegate.tcpNoDelay = true
-        delegate.connect(InetSocketAddress(host, port), connectTimeoutMs)
-    }
-
-    override fun isConnected(): Boolean = delegate.isConnected
-    override fun isClosed(): Boolean = delegate.isClosed
-    override fun isBound(): Boolean = delegate.isBound
-    override fun setSoTimeout(timeout: Int) {
-        delegate.soTimeout = timeout
-    }
-    override fun getSoTimeout(): Int = delegate.soTimeout
-    override fun getInetAddress(): InetAddress? = delegate.inetAddress
-    override fun getPort(): Int = delegate.port
-    override fun getLocalPort(): Int = delegate.localPort
-    override fun getInputStream() = delegate.inputStream
-
-    @Synchronized
-    override fun close() {
-        delegate.close()
+        tcpNoDelay = true
+        connect(InetSocketAddress(host, port), connectTimeoutMs)
     }
 
     override fun getOutputStream(): OutputStream {
-        val baseOut = delegate.outputStream
+        val baseOut = super.getOutputStream()
         return object : FilterOutputStream(baseOut) {
             override fun write(b: ByteArray, off: Int, len: Int) {
-                if (!firstTlsRecordFragmented && len > 25 && b[off] == 0x16.toByte()) {
+                if (!firstTlsRecordFragmented && len > 20 && b[off] == 0x16.toByte()) {
                     firstTlsRecordFragmented = true
-                    val verMajor = b[off + 1]
-                    val verMinor = b[off + 2]
-                    val recLen = ((b[off + 3].toInt() and 0xFF) shl 8) or (b[off + 4].toInt() and 0xFF)
-                    if (5 + recLen <= len && recLen > 40) {
-                        val payloadStart = off + 5
-                        val payloadStr = String(b, payloadStart, recLen, StandardCharsets.ISO_8859_1).lowercase()
-                        val targetIdx = payloadStr.indexOf("pages.dev").takeIf { it >= 0 }
-                            ?: payloadStr.indexOf("workers.dev").takeIf { it >= 0 }
-                        val s1 = if (targetIdx != null && targetIdx + 6 < recLen) {
-                            targetIdx + 2
-                        } else {
-                            (recLen / 3).coerceAtLeast(20)
-                        }
-                        val s2 = if (targetIdx != null && targetIdx + 6 < recLen) {
-                            targetIdx + 6
-                        } else {
-                            ((recLen * 2) / 3).coerceAtLeast(s1 + 4)
-                        }
-
-                        fun writeTlsRecord(sliceOffset: Int, sliceLen: Int) {
-                            if (sliceLen <= 0) return
-                            val packet = ByteArray(5 + sliceLen)
-                            packet[0] = 0x16.toByte()
-                            packet[1] = verMajor
-                            packet[2] = verMinor
-                            packet[3] = ((sliceLen ushr 8) and 0xFF).toByte()
-                            packet[4] = (sliceLen and 0xFF).toByte()
-                            System.arraycopy(b, sliceOffset, packet, 5, sliceLen)
-                            baseOut.write(packet)
-                            baseOut.flush()
-                        }
-
-                        writeTlsRecord(payloadStart, s1)
-                        try {
-                            Thread.sleep(2)
-                        } catch (_: InterruptedException) {
-                        }
-                        writeTlsRecord(payloadStart + s1, s2 - s1)
-                        try {
-                            Thread.sleep(2)
-                        } catch (_: InterruptedException) {
-                        }
-                        writeTlsRecord(payloadStart + s2, recLen - s2)
-                        val tailLen = len - (5 + recLen)
-                        if (tailLen > 0) {
-                            baseOut.write(b, off + 5 + recLen, tailLen)
-                            baseOut.flush()
-                        }
-                        return
-                    }
-                    // Fallback: bounded 25-45B chunks (max 12 splits)
                     var cursor = off
                     val end = off + len
-                    var splits = 0
                     while (cursor < end) {
-                        val chunkLen = if (splits < 12) {
-                            Random.nextInt(25, 45).coerceAtMost(end - cursor)
-                        } else {
-                            end - cursor
-                        }
+                        val chunkLen = Random.nextInt(50, 120).coerceAtMost(end - cursor)
                         baseOut.write(b, cursor, chunkLen)
                         baseOut.flush()
                         cursor += chunkLen
-                        splits++
                         if (cursor < end) {
                             try {
                                 Thread.sleep(1)
@@ -209,10 +133,14 @@ internal object PennyServerScanner {
     private val BPB2_UUID: String by lazy { decodeXorHex(ENC_BPB2_UUID) }
     private val BPB2_TR_PWD: String by lazy { decodeXorHex(ENC_BPB2_TR_PWD) }
 
-    // استخر آی‌پی‌های تمیز کلودفلر (حذف رنج 172.66.x.x که آی‌پی پیش‌فرض pages.dev است و روی همراه اول محدود می‌شود)
+    // استخر آی‌پی‌های تمیز کلودفلر برای اسکنر داخلی Clean IP
     val CANDIDATE_CF_ANYCAST_IPS = listOf(
         "104.17.148.22",
         "104.17.147.22",
+        "172.66.47.198",
+        "172.66.44.58",
+        "172.66.44.229",
+        "172.66.47.27",
         "104.18.2.115",
         "172.64.155.209",
         "162.159.135.42",
@@ -226,23 +154,25 @@ internal object PennyServerScanner {
     var CLEAN_CF_ENDPOINTS: List<String> = listOf(
         "104.17.148.22",
         "104.17.147.22",
+        "172.66.47.198",
+        "172.66.44.58",
+        "172.66.44.229",
+        "172.66.47.27",
         "104.18.2.115",
-        "172.64.155.209",
-        "162.159.135.42",
-        "104.16.132.229"
+        "172.64.155.209"
     )
 
     @Volatile
-    var detectedIspProfile: String = "Auto (Smart Fragment 20-40B)"
+    var detectedIspProfile: String = "Auto (Smart Fragment 20-50B)"
 
     // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 443 و 2083)
-    val BPB_TLS_PORTS = listOf(443, 8443, 2083)
+    val BPB_TLS_PORTS = listOf(8443, 443, 2083)
 
-    // تنظیمات TLS Record Fragment با ۳ پروفایل متنوع (Deep 10-25B، Smart 20-35B و Fast 40-80B)
+    // تنظیمات استاندارد TLS Fragment هماهنگ با هسته Xray-core (بدون maxSplit یا UDP noise که باعث رد شدن کانفیگ شود)
     const val BPB_FINALMASK_NORMAL_JSON =
-        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"40-80","delay":"1","maxSplit":"8"}}]}"""
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"1"}}]}"""
     const val BPB_FINALMASK_SMART_JSON =
-        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"10-25","delay":"1-2","maxSplit":"22"}}]}"""
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"20-50","delay":"1"}}]}"""
 
     val DEDICATED_BPB_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_FRAG) }
     val DEDICATED_BPB_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_NORM) }
@@ -252,7 +182,8 @@ internal object PennyServerScanner {
         listOf(
             DEDICATED_BPB_FRAGMENT_SUB_URL,
             DEDICATED_BPB2_FRAGMENT_SUB_URL,
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
         )
     }
 
@@ -260,7 +191,8 @@ internal object PennyServerScanner {
         listOf(
             DEDICATED_BPB_FRAGMENT_SUB_URL,
             DEDICATED_BPB2_FRAGMENT_SUB_URL,
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
         )
     }
 
@@ -274,17 +206,17 @@ internal object PennyServerScanner {
     }
 
     /**
-     * فعال‌سازی خودکار تنظیمات TLS Fragment، DNS ضدتحریم و مسیریابی مستقیم سایت‌ها و بانک‌های داخل ایران (Iran Direct Routing)
+     * تنظیم بهینه DNS ضدتحریم و مسیریابی مستقیم سایت‌ها و بانک‌های داخل ایران.
+     * نکته حیاتی: PREF_FRAGMENT_ENABLED سراسری را false نگه می‌داریم تا روی سرورهای عمومی (VLESS-REALITY و ...)
+     * تنظیمات UDP noise و فرگمنت اجباری تزریق نشود؛ سرورهای کلودفلر خودشان پارامتر اختصاصی finalMask (fm) دارند.
      */
-    fun applyBpbCoreOptimizations(fragLength: String = "20-40", fragInterval: String = "1-2") {
+    fun applyBpbCoreOptimizations(fragLength: String = "20-50", fragInterval: String = "1") {
         try {
-            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, false)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, fragLength)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, fragInterval)
-            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_MAXSPLIT, "14")
-            MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, "https://www.gstatic.com/generate_204")
-            MmkvManager.encodeSettings(AppConfig.PREF_REAL_PING_CONCURRENCY, "8")
+            MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, AppConfig.DELAY_TEST_URL)
             MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "1.1.1.1")
             MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://1.1.1.1/dns-query")
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
@@ -304,19 +236,19 @@ internal object PennyServerScanner {
             val opLower = rawOp.lowercase()
             val (profileName, length, interval) = when {
                 opLower.contains("irancell") || opLower.contains("mtn") ->
-                    Triple("Irancell (MTN) • Smart Fragment 20-35B", "20-35", "1-2")
+                    Triple("Irancell (MTN) • Deep Fragment 20-50B", "20-50", "1")
                 opLower.contains("mci") || opLower.contains("ir-tci") || opLower.contains("hamrah") ->
-                    Triple("Hamrah Aval (MCI) • Smart Fragment 20-40B", "20-40", "1-2")
+                    Triple("Hamrah Aval (MCI) • Smart Fragment 20-50B", "20-50", "1")
                 opLower.contains("rightel") ->
-                    Triple("Rightel • Fast Fragment 25-45B", "25-45", "1-2")
+                    Triple("Rightel • Fast Fragment 40-90B", "40-90", "1")
                 rawOp.isNotEmpty() ->
-                    Triple("$rawOp • Balanced Fragment 25-45B", "25-45", "1-2")
+                    Triple("$rawOp • Balanced Fragment 50-100B", "50-100", "1")
                 else ->
-                    Triple("Wi-Fi / Broadband • Fragment 25-45B", "25-45", "1-2")
+                    Triple("Wi-Fi / Broadband • Fragment 50-100B", "50-100", "1")
             }
             detectedIspProfile = profileName
             applyBpbCoreOptimizations(fragLength = length, fragInterval = interval)
-            onLog?.invoke("ISP Auto-Tuner: $profileName (len=$length, delay=${interval}ms, maxSplit=14)")
+            onLog?.invoke("ISP Auto-Tuner: $profileName (len=$length, delay=${interval}ms)")
             profileName
         } catch (_: Exception) {
             applyBpbCoreOptimizations()
@@ -670,9 +602,8 @@ internal object PennyServerScanner {
                         val alpn = alpnList.joinToString(",")
 
                         val isPagesNode = host.endsWith(".pages.dev", ignoreCase = true) || sni.endsWith(".pages.dev", ignoreCase = true)
-                        // برای نودهای pages.dev اجازه می‌دهیم CoreOutboundBuilder خودش فرگمنت استاندارد با maxSplit=14 و UDP noise را اعمال کند
                         val fmJson = if (isPagesNode) {
-                            ""
+                            BPB_FINALMASK_SMART_JSON
                         } else {
                             finalmaskObj?.toString()?.takeIf { it.isNotEmpty() } ?: ""
                         }
@@ -929,31 +860,22 @@ internal object PennyServerScanner {
 
     fun testThroughLocalProxy(testUrl: String, socksPort: Int, onLog: (String) -> Unit): Long {
         return try {
-            val httpPort = runCatching { SettingsManager.getHttpPort() }.getOrDefault(0).takeIf { it > 0 } ?: socksPort
-            val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", httpPort))
-            val client = OkHttpClient.Builder()
-                .proxy(proxy)
-                .connectTimeout(5000, TimeUnit.MILLISECONDS)
-                .readTimeout(5000, TimeUnit.MILLISECONDS)
-                .writeTimeout(5000, TimeUnit.MILLISECONDS)
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .retryOnConnectionFailure(true)
-                .build()
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
             val start = System.currentTimeMillis()
-            val request = Request.Builder()
-                .url(testUrl)
-                .get()
-                .header("Connection", "close")
-                .build()
-            client.newCall(request).execute().use { response ->
-                val code = response.code
+            val conn = URL(testUrl).openConnection(proxy) as HttpURLConnection
+            try {
+                conn.connectTimeout = 6500
+                conn.readTimeout = 6500
+                conn.useCaches = false
+                val code = conn.responseCode
                 if (code == 204 || code == 200) {
                     (System.currentTimeMillis() - start).coerceAtLeast(1L)
                 } else {
                     onLog("Proxy test HTTP $code")
                     -1L
                 }
+            } finally {
+                conn.disconnect()
             }
         } catch (e: Exception) {
             onLog("Proxy test failed: ${e.javaClass.simpleName}: ${e.message}")

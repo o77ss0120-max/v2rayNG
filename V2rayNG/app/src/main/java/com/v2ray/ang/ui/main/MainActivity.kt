@@ -101,6 +101,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -2609,6 +2611,7 @@ class MainActivity : HelperBaseComponentActivity() {
         if (current != null) {
             val nativePing = withContext(Dispatchers.IO) {
                 runCatching {
+                    CoreNativeManager.initCoreEnv(this@MainActivity)
                     val cfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, current)
                     if (cfg.status) CoreNativeManager.measureOutboundDelay(cfg.content, SettingsManager.getDelayTestUrl()) else -1L
                 }.getOrDefault(-1L)
@@ -2640,6 +2643,9 @@ class MainActivity : HelperBaseComponentActivity() {
             phase = Phase.SCANNING
             scanProgress = 0.05f
             statusMessage = if (scanningVip) "Fetching VIP subscription servers..." else "Fetching subscription servers..."
+        }
+        withContext(Dispatchers.IO) {
+            runCatching { CoreNativeManager.initCoreEnv(this@MainActivity) }
         }
         PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
         plog("Scan started (VIP=$scanningVip, sources=${sources.size})")
@@ -2680,17 +2686,23 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
                 if (cfg != null) {
+                    val isCfEdge = cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true ||
+                        cfg.server?.endsWith(".workers.dev", ignoreCase = true) == true ||
+                        cfg.host?.endsWith(".pages.dev", ignoreCase = true) == true ||
+                        cfg.sni?.endsWith(".pages.dev", ignoreCase = true) == true ||
+                        cfg.host?.endsWith(".workers.dev", ignoreCase = true) == true ||
+                        cfg.sni?.endsWith(".workers.dev", ignoreCase = true) == true
                     if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true ||
                         cfg.server?.endsWith(".workers.dev", ignoreCase = true) == true ||
-                        cfg.server?.startsWith("172.66.") == true ||
                         cfg.server.equals("www.speedtest.net", ignoreCase = true)
                     ) {
                         cfg.server = cleanPool[idx % cleanPool.size]
                     }
-                    if (cfg.finalMask?.contains("100-200") == true ||
-                        cfg.finalMask?.contains("1-5") == true ||
-                        cfg.finalMask?.contains("5-12") == true
-                    ) {
+                    if (isCfEdge) {
+                        if (cfg.finalMask.isNullOrBlank() || cfg.finalMask?.contains("maxSplit") == true) {
+                            cfg.finalMask = PennyServerScanner.BPB_FINALMASK_SMART_JSON
+                        }
+                    } else if (cfg.finalMask?.contains("maxSplit") == true) {
                         cfg.finalMask = null
                     }
                     val originTag = detectServerOriginTag(g)
@@ -2717,7 +2729,7 @@ class MainActivity : HelperBaseComponentActivity() {
         // جداسازی سرورهای اختصاصی کلودفلر خودمان (CF-1, CF-2, BPB) از سرورهای عمومی تا سرورهای عمومی باعث حذف سرورهای اختصاصی نشوند
         val ownCandidates = newGuids.filter { isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
         val pubCandidates = newGuids.filter { !isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
-        val prioritizedSample = (ownCandidates.take(160) + pubCandidates.take(140)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
+        val prioritizedSample = (ownCandidates.take(140) + pubCandidates.take(160)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
 
         ui {
             scanProgress = 0.28f
@@ -2731,12 +2743,12 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("TCP probe hits: ${tcpOwn.size} Dedicated OWN (CF1=${tcpCf1.size}, CF2=${tcpCf2.size}), ${tcpPub.size} Public")
 
         val keep = if (tcpOk.isNotEmpty()) {
-            (tcpCf1.take(7).map { it.first } + tcpCf2.take(7).map { it.first } + tcpPub.take(10).map { it.first })
+            (tcpCf1.take(6).map { it.first } + tcpCf2.take(6).map { it.first } + tcpPub.take(16).map { it.first })
                 .distinct()
                 .take(REAL_TEST_COUNT)
         } else {
-            plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 20)} servers via Xray core")
-            (ownCandidates.take(12) + pubCandidates.take(8)).take(20)
+            plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 24)} servers via Xray core")
+            (ownCandidates.take(10) + pubCandidates.take(14)).take(24)
         }
 
         val keepSet = keep.toHashSet()
@@ -2761,33 +2773,58 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 0.40f
             statusMessage = "Real ping test (0/${keep.size})..."
         }
-        withContext(Dispatchers.Main) {
-            MessageHelper.sendMsg2TestService(
-                this@MainActivity,
-                TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_START, serverGuids = keep),
-                UUID.randomUUID().toString()
-            )
-        }
 
-        val timeoutMs = if (keep.size <= 16) 14_000L else REAL_TEST_TIMEOUT_MS
-        val startT = System.currentTimeMillis()
-        var done = 0
-        while (System.currentTimeMillis() - startT < timeoutMs) {
-            delay(450)
-            done = keep.count { (MmkvManager.decodeServerAffiliationInfo(it)?.testDelayMillis ?: 0L) != 0L }
-            val d = done
-            ui {
-                scanProgress = 0.40f + 0.50f * d / keep.size.coerceAtLeast(1)
-                statusMessage = "Real ping test ($d/${keep.size})..."
-            }
-            if (done >= keep.size) break
-        }
-        if (done < keep.size) {
-            withContext(Dispatchers.Main) {
-                MessageHelper.sendMsg2TestService(
-                    this@MainActivity, TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_CANCEL)
-                )
-            }
+        // تست موازی و مستقیم با هسته Xray در همین پروسه (همراه با تست خودکار فرگمنت جایگزین برای سرورهای کلودفلر)
+        val pingSem = Semaphore(8)
+        val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val testUrlPrimary = AppConfig.DELAY_TEST_URL
+        val testUrlFallback = "https://cp.cloudflare.com/generate_204"
+
+        coroutineScope {
+            keep.map { g ->
+                async(Dispatchers.IO) {
+                    pingSem.withPermit {
+                        var measured = -1L
+                        try {
+                            val cfgResult = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, g)
+                            if (cfgResult.status) {
+                                measured = CoreNativeManager.measureOutboundDelay(cfgResult.content, testUrlPrimary)
+                                if (measured <= 0L) {
+                                    measured = CoreNativeManager.measureOutboundDelay(cfgResult.content, testUrlFallback)
+                                }
+                            }
+                            if (measured <= 0L && isDedicatedServerTag(detectServerOriginTag(g))) {
+                                val item = MmkvManager.decodeServerConfig(g)
+                                if (item != null) {
+                                    for (altFm in listOf(PennyServerScanner.BPB_FINALMASK_NORMAL_JSON, null)) {
+                                        item.finalMask = altFm
+                                        MmkvManager.encodeServerConfig(g, item)
+                                        val altCfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, g)
+                                        if (altCfg.status) {
+                                            val d = CoreNativeManager.measureOutboundDelay(altCfg.content, testUrlPrimary)
+                                            if (d > 0L) {
+                                                measured = d
+                                                break
+                                            }
+                                        }
+                                    }
+                                    if (measured <= 0L) {
+                                        item.finalMask = PennyServerScanner.BPB_FINALMASK_SMART_JSON
+                                        MmkvManager.encodeServerConfig(g, item)
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {
+                        }
+                        MmkvManager.encodeServerTestDelayMillis(g, if (measured > 0L) measured else -1L)
+                        val d = completedCount.incrementAndGet()
+                        ui {
+                            scanProgress = 0.40f + 0.50f * d / keep.size.coerceAtLeast(1)
+                            statusMessage = "Real ping test ($d/${keep.size})..."
+                        }
+                    }
+                }
+            }.awaitAll()
         }
 
         val realValid = keep.mapNotNull { g ->
@@ -2799,15 +2836,13 @@ class MainActivity : HelperBaseComponentActivity() {
         val realPub = realValid.filter { !isDedicatedServerTag(detectServerOriginTag(it.first)) }
         plog("Real ping hits: ${realOwn.size} Dedicated OWN, ${realPub.size} Public")
 
-        val tcpMap = tcpOk.toMap()
         val valid = when {
             realOwn.isNotEmpty() -> {
-                (realOwn.take(5) + realPub.take(5)).take(BEST_LIST_SIZE)
+                (realOwn.take(8) + realPub.take(7)).take(BEST_LIST_SIZE)
             }
-            realPub.isNotEmpty() && tcpOwn.isNotEmpty() -> {
-                plog("Including top TCP-verified OWN servers (CF-1 & CF-2) alongside ${realPub.size} Public nodes")
+            realPub.isNotEmpty() -> {
                 val ownFallback = (tcpCf1.take(1) + tcpCf2.take(1)).distinctBy { it.first }
-                (ownFallback + realPub.take(BEST_LIST_SIZE - ownFallback.size)).take(BEST_LIST_SIZE)
+                (realPub.take(BEST_LIST_SIZE - ownFallback.size) + ownFallback).take(BEST_LIST_SIZE)
             }
             realValid.isNotEmpty() -> {
                 realValid.take(BEST_LIST_SIZE)
@@ -2815,11 +2850,11 @@ class MainActivity : HelperBaseComponentActivity() {
             else -> {
                 plog("Real ping returned no positive delays; falling back to verified TCP ping (${tcpOk.size} servers)")
                 val interleaved = mutableListOf<Pair<String, Long>>()
-                val maxIdx = maxOf(tcpCf1.size, tcpCf2.size, tcpPub.size)
+                val maxIdx = maxOf(tcpPub.size, tcpCf1.size, tcpCf2.size)
                 for (i in 0 until maxIdx) {
+                    if (i < tcpPub.size) interleaved.add(tcpPub[i])
                     if (i < tcpCf1.size) interleaved.add(tcpCf1[i])
                     if (i < tcpCf2.size) interleaved.add(tcpCf2[i])
-                    if (i < tcpPub.size) interleaved.add(tcpPub[i])
                 }
                 interleaved.distinctBy { it.first }.take(BEST_LIST_SIZE)
             }
@@ -2865,9 +2900,7 @@ class MainActivity : HelperBaseComponentActivity() {
             val startIdx = snapshot.indexOfFirst { it.guid == startAfter }
             if (startIdx >= 0) snapshot.drop(startIdx + 1) + snapshot.take(startIdx + 1) else snapshot
         } else {
-            val preferred = snapshot.firstOrNull { it.guid == lastConnectedGuid }
-            if (preferred != null) listOf(preferred) + snapshot.filter { it.guid != preferred.guid }
-            else snapshot
+            snapshot
         }
         val order = rotated.filter { it.guid !in failedGuids && it.guid != startAfter }
 
@@ -2964,6 +2997,7 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         val nativeDelay = withContext(Dispatchers.IO) {
             runCatching {
+                CoreNativeManager.initCoreEnv(this@MainActivity)
                 val cfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, guid)
                 if (cfg.status) CoreNativeManager.measureOutboundDelay(cfg.content, SettingsManager.getDelayTestUrl()) else -1L
             }.getOrDefault(-1L)

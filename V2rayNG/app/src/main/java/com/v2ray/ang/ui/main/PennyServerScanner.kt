@@ -351,8 +351,12 @@ internal object PennyServerScanner {
         }
 
     /**
-     * نودهای داخلی سرور اختصاصی VPS (پشتیبانی از هر ۷ پروتکل panel-vps: VLESS-WS, VLESS-HTTPUpgrade,
-     * VMess-WS, Trojan-WS, VLESS-gRPC, Shadowsocks, Hysteria2 + هدرهای Host اسپوف‌شده داخلی برای همراه اول و ایرانسل)
+     * نودهای داخلی سرور اختصاصی VPS به ترتیب متنوع‌ترین پروتکل‌ها برای تست دانلود واقعی:
+     * ۱. VLESS-WS (با Host اسپوف‌شده ورزش۳ و مستقیم)
+     * ۲. VLESS-HTTPUpgrade (با Host اسپوف‌شده و مستقیم)
+     * ۳. Hysteria2 (UDP + Salamander)
+     * ۴. Trojan-WS و VMess-WS
+     * ۵. Shadowsocks (aes-256-gcm) و VLESS-gRPC
      */
     fun getBuiltinBpbFallbackConfigs(): String {
         val nodes = mutableListOf<String>()
@@ -367,18 +371,7 @@ internal object PennyServerScanner {
         val huPath = urlEncode("/parham-confing-hu?u=$tk")
         val trPath = urlEncode("/parham-confing-trojan?u=$tk")
 
-        // ۱. پروتکل‌های WebSocket و HTTPUpgrade و Trojan با Host اصلی و Hostهای اسپوف‌شده (ورزش۳، اسپیدتست، آپارات)
-        val spoofHosts = listOf(h, "cdn.varzesh3.com", "www.speedtest.net", "www.aparat.com")
-        for (spoofHost in spoofHosts) {
-            nodes.add(
-                "vless://$u@$h:$p?encryption=none&security=none&type=ws&host=$spoofHost&path=$wsPath#OWN-VPS1"
-            )
-            nodes.add(
-                "vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=$spoofHost&path=$huPath#OWN-VPS1"
-            )
-            nodes.add(
-                "trojan://$u@$h:$p?security=none&type=ws&host=$spoofHost&path=$trPath#OWN-VPS1"
-            )
+        fun buildVmess(hostHeader: String): String {
             val vmessJson = JSONObject()
                 .put("v", "2")
                 .put("ps", "OWN-VPS1")
@@ -389,7 +382,7 @@ internal object PennyServerScanner {
                 .put("scy", "auto")
                 .put("net", "ws")
                 .put("type", "none")
-                .put("host", spoofHost)
+                .put("host", hostHeader)
                 .put("path", "/parham-confing-vmess?ed=2048&u=$tk")
                 .put("tls", "")
                 .put("sni", "")
@@ -398,19 +391,23 @@ internal object PennyServerScanner {
                 vmessJson.toByteArray(StandardCharsets.UTF_8),
                 android.util.Base64.NO_WRAP
             )
-            nodes.add("vmess://$vmessB64")
+            return "vmess://$vmessB64"
         }
 
-        // ۲. پروتکل‌های VLESS-gRPC، Shadowsocks و Hysteria2 (UDP + Salamander) روی سرور اختصاصی VPS
-        nodes.add(
-            "vless://$u@$h:$p?encryption=none&security=none&type=grpc&serviceName=parham-confing-grpc#OWN-VPS1"
-        )
-        nodes.add(
-            "ss://$ssCred@$h:$p#OWN-VPS1"
-        )
-        nodes.add(
-            "hysteria2://$u@$h:$p?sni=www.google.com&obfs=salamander&obfs-password=$hyObfs&insecure=1#OWN-VPS1"
-        )
+        // چیدمان متنوع پروتکل‌ها در ابتدای لیست تا در صورت مسدود بودن یک پروتکل، بلافاصله پروتکل بعدی تست دانلود شود
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=cdn.varzesh3.com&path=$wsPath#OWN-VPS1")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=$h&path=$wsPath#OWN-VPS1")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=cdn.varzesh3.com&path=$huPath#OWN-VPS1")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=$h&path=$huPath#OWN-VPS1")
+        nodes.add("hysteria2://$u@$h:$p?sni=www.google.com&obfs=salamander&obfs-password=$hyObfs&insecure=1#OWN-VPS1")
+        nodes.add("trojan://$u@$h:$p?security=none&type=ws&host=cdn.varzesh3.com&path=$trPath#OWN-VPS1")
+        nodes.add(buildVmess("cdn.varzesh3.com"))
+        nodes.add("ss://$ssCred@$h:$p#OWN-VPS1")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=grpc&serviceName=parham-confing-grpc#OWN-VPS1")
+        nodes.add("trojan://$u@$h:$p?security=none&type=ws&host=$h&path=$trPath#OWN-VPS1")
+        nodes.add(buildVmess(h))
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=www.speedtest.net&path=$wsPath#OWN-VPS1")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=www.aparat.com&path=$wsPath#OWN-VPS1")
 
         return nodes.joinToString("\n")
     }
@@ -924,27 +921,155 @@ internal object PennyServerScanner {
         }
     }
 
-    fun testThroughLocalProxy(testUrl: String, socksPort: Int, onLog: (String) -> Unit): Long {
-        return try {
-            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
-            val start = System.currentTimeMillis()
-            val conn = URL(testUrl).openConnection(proxy) as HttpURLConnection
-            try {
-                conn.connectTimeout = 6500
-                conn.readTimeout = 6500
-                conn.useCaches = false
-                val code = conn.responseCode
-                if (code == 204 || code == 200) {
-                    (System.currentTimeMillis() - start).coerceAtLeast(1L)
-                } else {
-                    onLog("Proxy test HTTP $code")
-                    -1L
+    private fun readExactBytes(input: java.io.InputStream, count: Int): ByteArray? {
+        val out = ByteArray(count)
+        var offset = 0
+        while (offset < count) {
+            val r = input.read(out, offset, count - offset)
+            if (r <= 0) return null
+            offset += r
+        }
+        return out
+    }
+
+    private fun socks5DownloadProbe(
+        host: String,
+        port: Int,
+        path: String,
+        useTls: Boolean,
+        socksPort: Int,
+        timeoutMs: Int
+    ): Pair<Long, Int> {
+        val start = System.currentTimeMillis()
+        Socket().use { rawSocket ->
+            rawSocket.soTimeout = timeoutMs
+            rawSocket.connect(InetSocketAddress("127.0.0.1", socksPort), 1500)
+            val rawIn = rawSocket.getInputStream()
+            val rawOut = rawSocket.getOutputStream()
+
+            // 1) SOCKS5 Greeting (VER=0x05, NMETHODS=1, NO_AUTH=0x00)
+            rawOut.write(byteArrayOf(0x05, 0x01, 0x00))
+            rawOut.flush()
+            val greet = readExactBytes(rawIn, 2) ?: return Pair(-1L, 0)
+            if (greet[0] != 0x05.toByte() || greet[1] != 0x00.toByte()) return Pair(-1L, 0)
+
+            // 2) SOCKS5 CONNECT with ATYP=0x03 (Domain Name - bypasses poisoned local ISP DNS)
+            val hostBytes = host.toByteArray(StandardCharsets.US_ASCII)
+            val req = ByteArray(4 + 1 + hostBytes.size + 2)
+            req[0] = 0x05
+            req[1] = 0x01 // CONNECT
+            req[2] = 0x00 // RSV
+            req[3] = 0x03 // ATYP = Domain Name
+            req[4] = hostBytes.size.toByte()
+            System.arraycopy(hostBytes, 0, req, 5, hostBytes.size)
+            req[5 + hostBytes.size] = ((port shr 8) and 0xFF).toByte()
+            req[6 + hostBytes.size] = (port and 0xFF).toByte()
+            rawOut.write(req)
+            rawOut.flush()
+
+            val replyHdr = readExactBytes(rawIn, 4) ?: return Pair(-1L, 0)
+            if (replyHdr[0] != 0x05.toByte() || replyHdr[1] != 0x00.toByte()) return Pair(-1L, 0)
+            when (replyHdr[3].toInt() and 0xFF) {
+                0x01 -> readExactBytes(rawIn, 6) ?: return Pair(-1L, 0)
+                0x03 -> {
+                    val lenByte = readExactBytes(rawIn, 1) ?: return Pair(-1L, 0)
+                    val dLen = lenByte[0].toInt() and 0xFF
+                    readExactBytes(rawIn, dLen + 2) ?: return Pair(-1L, 0)
                 }
-            } finally {
-                conn.disconnect()
+                0x04 -> readExactBytes(rawIn, 18) ?: return Pair(-1L, 0)
+                else -> return Pair(-1L, 0)
+            }
+
+            // 3) Send HTTP GET and verify real downloaded bytes through the tunnel
+            val targetSocket: Socket = if (useTls) {
+                val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
+                (sslFactory.createSocket(rawSocket, host, port, true) as SSLSocket).apply {
+                    soTimeout = timeoutMs
+                    startHandshake()
+                }
+            } else {
+                rawSocket
+            }
+
+            val inStream = targetSocket.getInputStream()
+            val outStream = targetSocket.getOutputStream()
+            val httpReq = buildString {
+                append("GET ").append(path.ifEmpty { "/" }).append(" HTTP/1.1\r\n")
+                append("Host: ").append(host).append("\r\n")
+                append("User-Agent: Mozilla/5.0 (Linux; Android 14)\r\n")
+                append("Accept: */*\r\n")
+                append("Connection: close\r\n\r\n")
+            }
+            outStream.write(httpReq.toByteArray(StandardCharsets.US_ASCII))
+            outStream.flush()
+
+            val buf = ByteArray(4096)
+            var totalBytes = 0
+            var firstChunk = ""
+            while (totalBytes < 4096) {
+                val n = inStream.read(buf, 0, buf.size)
+                if (n <= 0) break
+                if (firstChunk.isEmpty()) {
+                    firstChunk = String(buf, 0, minOf(n, 256), StandardCharsets.ISO_8859_1)
+                }
+                totalBytes += n
+                if (firstChunk.contains("\r\n\r\n") && totalBytes >= 16) break
+            }
+
+            if (totalBytes > 0 && firstChunk.startsWith("HTTP/1.")) {
+                val statusLine = firstChunk.lineSequence().firstOrNull().orEmpty()
+                val parts = statusLine.split(' ')
+                val code = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                if (code in 200..399) {
+                    val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(1L)
+                    return Pair(elapsed, totalBytes)
+                }
+            }
+            return Pair(-1L, 0)
+        }
+    }
+
+    fun testThroughLocalProxy(testUrl: String, socksPort: Int, onLog: (String) -> Unit): Long {
+        val parsed = runCatching { URL(testUrl) }.getOrNull()
+        val host = parsed?.host?.takeIf { it.isNotBlank() } ?: "www.gstatic.com"
+        val path = parsed?.file?.takeIf { it.isNotBlank() } ?: "/generate_204"
+
+        // ابتدا تست دانلود سریع روی پورت ۸۰ از داخل تانل رمزنگاری‌شده SOCKS5 (ATYP=0x03 بدون DNS محلی)
+        try {
+            val (elapsedHttp, bytesHttp) = socks5DownloadProbe(
+                host = host,
+                port = 80,
+                path = path,
+                useTls = false,
+                socksPort = socksPort,
+                timeoutMs = 3600
+            )
+            if (elapsedHttp > 0L && bytesHttp > 0) {
+                onLog("Download OK ($host -> ${bytesHttp}B in ${elapsedHttp}ms)")
+                return elapsedHttp
+            }
+        } catch (_: Exception) {
+        }
+
+        // در صورت مسدود بودن پورت ۸۰ روی خروجی، تست دانلود HTTPS روی پورت ۴۴۳ از داخل تانل SOCKS5
+        return try {
+            val (elapsedTls, bytesTls) = socks5DownloadProbe(
+                host = host,
+                port = 443,
+                path = path,
+                useTls = true,
+                socksPort = socksPort,
+                timeoutMs = 4000
+            )
+            if (elapsedTls > 0L && bytesTls > 0) {
+                onLog("Download OK TLS ($host -> ${bytesTls}B in ${elapsedTls}ms)")
+                elapsedTls
+            } else {
+                onLog("Download test returned 0B ($host)")
+                -1L
             }
         } catch (e: Exception) {
-            onLog("Proxy test failed: ${e.javaClass.simpleName}: ${e.message}")
+            onLog("Download test failed ($host): ${e.javaClass.simpleName}: ${e.message}")
             -1L
         }
     }

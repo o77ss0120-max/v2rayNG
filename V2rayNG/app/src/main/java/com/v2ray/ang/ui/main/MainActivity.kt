@@ -132,7 +132,7 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val REAL_TEST_COUNT = 60
         private const val REAL_TEST_TIMEOUT_MS = 45_000L
         private const val BEST_LIST_SIZE = 15
-        private const val MAX_CONNECT_ATTEMPTS = 6
+        private const val MAX_CONNECT_ATTEMPTS = 10
 
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
@@ -2684,7 +2684,8 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         val allAfter = MmkvManager.decodeServerList("")
         val newlyImported = allAfter.filter { it !in before }
-        val targetGuids = newlyImported.ifEmpty { allAfter }
+        val existingDedicated = allAfter.filter { isDedicatedServerTag(detectServerOriginTag(it)) }
+        val targetGuids = (existingDedicated + newlyImported).distinct().ifEmpty { allAfter }
         val cleanPool = PennyServerScanner.CLEAN_CF_ENDPOINTS
         targetGuids.forEachIndexed { idx, g ->
             try {
@@ -2722,14 +2723,20 @@ class MainActivity : HelperBaseComponentActivity() {
             return false
         }
 
-        // جداسازی سرورهای اختصاصی VPS و کلودفلر از سرورهای عمومی
-        val ownCandidates = newGuids.filter { isDedicatedServerTag(detectServerOriginTag(it)) }
+        // جداسازی سرورهای اختصاصی VPS از سرورهای عمومی (اولویت اول با VPS اختصاصی)
+        val vps1Candidates = newGuids.filter { detectServerOriginTag(it) == "VPS-1" }
+        val otherOwnCandidates = newGuids.filter {
+            val tag = detectServerOriginTag(it)
+            isDedicatedServerTag(tag) && tag != "VPS-1"
+        }
+        val ownCandidates = vps1Candidates + otherOwnCandidates
         val pubCandidates = newGuids.filter { !isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
-        val prioritizedSample = (ownCandidates.take(40) + pubCandidates.take(200)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
+        val prioritizedSample = (vps1Candidates.take(24) + otherOwnCandidates.take(16) + pubCandidates.take(200))
+            .take(PennyServerScanner.MAX_TCP_CANDIDATES)
 
         ui {
             scanProgress = 0.28f
-            statusMessage = "TCP probing ${prioritizedSample.size} servers (${ownCandidates.size} OWN)..."
+            statusMessage = "Probing ${prioritizedSample.size} servers (${vps1Candidates.size} VPS)..."
         }
         val tcpOk = PennyServerScanner.tcpFilter(prioritizedSample)
         val tcpVps1 = tcpOk.filter { detectServerOriginTag(it.first) == "VPS-1" }
@@ -2740,12 +2747,16 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("TCP probe hits: ${tcpOwn.size} Dedicated OWN (VPS=${tcpVps1.size}, CF1=${tcpCf1.size}, CF2=${tcpCf2.size}), ${tcpPub.size} Public")
 
         val keep = if (tcpOk.isNotEmpty()) {
-            (tcpVps1.take(18).map { it.first } + tcpCf1.take(4).map { it.first } + tcpCf2.take(4).map { it.first } + tcpPub.take(16).map { it.first })
+            (tcpVps1.take(16).map { it.first } +
+                vps1Candidates.take(12) +
+                tcpPub.take(18).map { it.first } +
+                tcpCf1.take(3).map { it.first } +
+                tcpCf2.take(3).map { it.first })
                 .distinct()
                 .take(REAL_TEST_COUNT)
         } else {
-            plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 24)} servers via Xray core")
-            (ownCandidates.take(16) + pubCandidates.take(12)).take(28)
+            plog("TCP probe returned 0 direct hits; preparing ${minOf(newGuids.size, 28)} servers for download test")
+            (vps1Candidates.take(14) + pubCandidates.take(14) + otherOwnCandidates.take(4)).distinct().take(28)
         }
 
         val keepSet = keep.toHashSet()
@@ -2767,11 +2778,11 @@ class MainActivity : HelperBaseComponentActivity() {
 
         MmkvManager.clearAllTestDelayResults(keep)
         ui {
-            scanProgress = 0.40f
-            statusMessage = "Real ping test (0/${keep.size})..."
+            scanProgress = 0.45f
+            statusMessage = "Checking server responsiveness (0/${keep.size})..."
         }
 
-        // تست موازی و مستقیم با هسته Xray در همین پروسه
+        // تست کمکی تاخیر؛ اما عدم پاسخ پینگ باعث حذف سرور نمی‌شود (ملاک نهایی دانلود واقعی در زمان اتصال است)
         val pingSem = Semaphore(12)
         val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
         val testUrlPrimary = AppConfig.DELAY_TEST_URL
@@ -2782,25 +2793,17 @@ class MainActivity : HelperBaseComponentActivity() {
                     pingSem.withPermit {
                         var measured = -1L
                         try {
-                            val origin = detectServerOriginTag(g)
                             val cfgResult = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, g)
                             if (cfgResult.status) {
                                 measured = CoreNativeManager.measureOutboundDelay(cfgResult.content, testUrlPrimary)
                             }
-                            if (isDedicatedServerTag(origin)) {
-                                val item = MmkvManager.decodeServerConfig(g)
-                                if (measured > 0L && item != null) {
-                                    plog("OWN RealPing OK ($origin • ${item.configType}/${item.network.orEmpty()} @ host=${item.host ?: item.server}): ${measured}ms")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            plog("RealPing error: ${e.javaClass.simpleName}: ${e.message}")
+                        } catch (_: Exception) {
                         }
                         MmkvManager.encodeServerTestDelayMillis(g, if (measured > 0L) measured else -1L)
                         val d = completedCount.incrementAndGet()
                         ui {
-                            scanProgress = 0.40f + 0.50f * d / keep.size.coerceAtLeast(1)
-                            statusMessage = "Real ping test ($d/${keep.size})..."
+                            scanProgress = 0.45f + 0.45f * d / keep.size.coerceAtLeast(1)
+                            statusMessage = "Preparing servers ($d/${keep.size})..."
                         }
                     }
                 }
@@ -2814,24 +2817,29 @@ class MainActivity : HelperBaseComponentActivity() {
 
         val realOwn = realValid.filter { isDedicatedServerTag(detectServerOriginTag(it.first)) }
         val realPub = realValid.filter { !isDedicatedServerTag(detectServerOriginTag(it.first)) }
-        plog("Real ping hits: ${realOwn.size} Dedicated OWN, ${realPub.size} Public")
 
-        // حذف کامل فال‌بک کاذب «فقط TCP»: فقط سرورهایی که واقعاً RealPing هسته Xray را پاس کرده‌اند وارد لیست می‌شوند
-        val valid = when {
-            realOwn.isNotEmpty() -> {
-                (realOwn.take(8) + realPub.take(7)).take(BEST_LIST_SIZE)
-            }
-            realValid.isNotEmpty() -> {
-                realValid.take(BEST_LIST_SIZE)
-            }
-            else -> {
-                emptyList()
-            }
-        }
+        // بسیاری از سرورهای سالم (به‌ویژه روی اینترنت ایران یا پروتکل‌های Hysteria2 / WS) پینگ سنتتیک ندارند اما دانلود کامل دارند.
+        // بنابراین سرورهای VPS اختصاصی و سرورهای عمومی که پورت آن‌ها باز است مستقیماً وارد لیست تست دانلود واقعی می‌شوند.
+        val tcpDelayMap = tcpOk.toMap()
+        val vpsReady = (tcpVps1.map { it.first to it.second } +
+            vps1Candidates.map { it to (tcpDelayMap[it] ?: 190L) })
+            .distinctBy { it.first }
+        val pubReady = (realPub + tcpPub.map { it.first to it.second } +
+            pubCandidates.take(10).map { it to (tcpDelayMap[it] ?: 320L) })
+            .distinctBy { it.first }
 
-        if (valid.isEmpty()) {
-            plog("No healthy servers passed Xray RealPing test (TCP-only fallback disabled)")
-            ui { statusMessage = "No healthy server found on current network." }
+        val combinedCandidates = (
+            realOwn +
+                vpsReady.take(9) +
+                realPub.take(6) +
+                pubReady.take(8)
+            ).distinctBy { it.first }
+            .take(BEST_LIST_SIZE)
+
+        plog("Servers ready for download verification: ${combinedCandidates.size} (VPS=${vpsReady.size}, Public=${pubReady.size}, PingOK=${realValid.size})")
+
+        if (combinedCandidates.isEmpty()) {
+            ui { statusMessage = "No reachable server found on current network." }
             return false
         }
 
@@ -2839,7 +2847,7 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 0.94f
             statusMessage = "Building best servers list..."
         }
-        val top = valid.take(BEST_LIST_SIZE)
+        val top = combinedCandidates.take(BEST_LIST_SIZE)
         val entries = assignLabels(
             top.map { (g, d) -> PennyServer(g, "", d, "", scanningVip) },
             isVipList = scanningVip
@@ -2880,17 +2888,17 @@ class MainActivity : HelperBaseComponentActivity() {
             attempts++
             ui {
                 phase = Phase.CONNECTING
-                statusMessage = "Connecting to ${s.label}..."
+                statusMessage = "Testing download on ${s.label} ($attempts/${minOf(order.size, MAX_CONNECT_ATTEMPTS)})..."
             }
             plog("Attempt $attempts: ${s.label}")
-            val ping = connectAndVerify(s.guid)
-            if (ping > 0) {
-                plog("Connected: ${s.label} (${ping}ms)")
-                markConnected(s.guid, ping)
+            val dlMs = connectAndVerify(s.guid)
+            if (dlMs > 0) {
+                plog("Connected & Download Verified: ${s.label} (${dlMs}ms)")
+                markConnected(s.guid, dlMs)
                 return s
             }
             failedGuids.add(s.guid)
-            plog("Failed: ${s.label}")
+            plog("No download on ${s.label}; trying next...")
         }
         return null
     }
@@ -2932,50 +2940,41 @@ class MainActivity : HelperBaseComponentActivity() {
             else LauncherManager.startService(this@MainActivity)
         }
 
-        delay(if (wasRunning) 2200L else 1400L)
+        delay(if (wasRunning) 900L else 700L)
         var waited = 0
-        while (!mainViewModel.uiState.value.isRunning && waited < 10000) {
-            delay(300)
-            waited += 300
+        while (!mainViewModel.uiState.value.isRunning && waited < 7500) {
+            delay(250)
+            waited += 250
         }
         if (!mainViewModel.uiState.value.isRunning) {
             plog("Service did not start (${waited}ms)")
             return -1L
         }
-        delay(1200)
 
-        val localPortReady = withContext(Dispatchers.IO) { PennyServerScanner.isLocalPortOpen(socksPort) }
-        if (!localPortReady) {
-            plog("Warning: SOCKS port $socksPort not open yet")
+        var localPortReady = false
+        var portWait = 0
+        while (portWait < 2500) {
+            localPortReady = withContext(Dispatchers.IO) { PennyServerScanner.isLocalPortOpen(socksPort) }
+            if (localPortReady) break
+            delay(250)
+            portWait += 250
         }
-        for (url in PennyServerScanner.TEST_URLS) {
-            val ping = withContext(Dispatchers.IO) {
+        if (!localPortReady) {
+            plog("Warning: SOCKS port $socksPort not open")
+            return -1L
+        }
+        delay(500)
+
+        // ملاک انتخاب سرور: فقط دانلود واقعی دیتای HTTP از طریق تانل SOCKS5 (بدون اتکا به پینگ)
+        val probeUrls = PennyServerScanner.TEST_URLS.take(2)
+        for (url in probeUrls) {
+            val dlMs = withContext(Dispatchers.IO) {
                 PennyServerScanner.testThroughLocalProxy(url, socksPort, ::plog)
             }
-            if (ping > 0) return ping
-        }
-        delay(800)
-        val retryPing = withContext(Dispatchers.IO) {
-            PennyServerScanner.testThroughLocalProxy(PennyServerScanner.TEST_URLS.first(), socksPort, ::plog)
-        }
-        if (retryPing > 0) return retryPing
-
-        val measuredDelay = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L
-        if (mainViewModel.uiState.value.isRunning && localPortReady && measuredDelay > 0L) {
-            plog("Local proxy active & Xray RealPing verified (${measuredDelay}ms); accepting connection")
-            return measuredDelay
-        }
-        val nativeDelay = withContext(Dispatchers.IO) {
-            runCatching {
-                CoreNativeManager.initCoreEnv(this@MainActivity)
-                val cfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, guid)
-                if (cfg.status) CoreNativeManager.measureOutboundDelay(cfg.content, SettingsManager.getDelayTestUrl()) else -1L
-            }.getOrDefault(-1L)
-        }
-        if (mainViewModel.uiState.value.isRunning && nativeDelay > 0L) {
-            MmkvManager.encodeServerTestDelayMillis(guid, nativeDelay)
-            plog("Xray native outbound verified (${nativeDelay}ms); accepting connection")
-            return nativeDelay
+            if (dlMs > 0L) {
+                MmkvManager.encodeServerTestDelayMillis(guid, dlMs)
+                return dlMs
+            }
         }
         return -1L
     }

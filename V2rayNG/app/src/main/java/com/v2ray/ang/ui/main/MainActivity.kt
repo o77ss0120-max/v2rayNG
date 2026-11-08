@@ -449,10 +449,13 @@ class MainActivity : HelperBaseComponentActivity() {
         } else {
             PennyServerScanner.SIGNED_STANDARD_SUBSCRIPTION_SOURCES
         }
-        return (if (custom.isNotEmpty()) {
+        return (if (custom.isNotEmpty() && !custom.contains(".pages.dev", ignoreCase = true)) {
             custom.split("\n", ",")
                 .map { it.trim() }
-                .filter { it.startsWith("https://", ignoreCase = true) } + baseList
+                .filter {
+                    it.startsWith("https://", ignoreCase = true) ||
+                        it.startsWith("http://", ignoreCase = true)
+                } + baseList
         } else {
             baseList
         }).distinct()
@@ -657,8 +660,9 @@ class MainActivity : HelperBaseComponentActivity() {
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
         vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
         effectiveNowMs()
-        customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_BPB_FRAGMENT_SUB_URL)
-            ?.takeIf { it.isNotBlank() } ?: PennyServerScanner.DEDICATED_BPB_FRAGMENT_SUB_URL
+        customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_VPS_SUB_URL)
+            ?.takeIf { it.isNotBlank() && !it.contains(".pages.dev", ignoreCase = true) }
+            ?: PennyServerScanner.DEDICATED_VPS_SUB_URL
         licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
             ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
@@ -2697,8 +2701,9 @@ class MainActivity : HelperBaseComponentActivity() {
                         cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
                     val originTag = detectServerOriginTag(g)
-                    if (g in newlyImported || cfg.remarks.startsWith("Penny", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true) || cfg.remarks.startsWith("OWN-", ignoreCase = true)) {
+                    if (g in newlyImported || cfg.remarks.startsWith("Penny", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true) || cfg.remarks.startsWith("OWN-", ignoreCase = true) || cfg.remarks.contains("Zenith", ignoreCase = true)) {
                         cfg.remarks = when (originTag) {
+                            "VPS-1" -> "PennyVPN OWN-VPS1"
                             "CF-1" -> "PennyVPN OWN-CF1"
                             "CF-2" -> "PennyVPN OWN-CF2"
                             "BPB" -> "PennyVPN OWN-BPB"
@@ -2717,29 +2722,30 @@ class MainActivity : HelperBaseComponentActivity() {
             return false
         }
 
-        // جداسازی سرورهای اختصاصی کلودفلر خودمان (CF-1, CF-2, BPB) از سرورهای عمومی
+        // جداسازی سرورهای اختصاصی VPS و کلودفلر از سرورهای عمومی
         val ownCandidates = newGuids.filter { isDedicatedServerTag(detectServerOriginTag(it)) }
         val pubCandidates = newGuids.filter { !isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
-        val prioritizedSample = (ownCandidates.take(36) + pubCandidates.take(200)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
+        val prioritizedSample = (ownCandidates.take(40) + pubCandidates.take(200)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
 
         ui {
             scanProgress = 0.28f
             statusMessage = "TCP probing ${prioritizedSample.size} servers (${ownCandidates.size} OWN)..."
         }
         val tcpOk = PennyServerScanner.tcpFilter(prioritizedSample)
+        val tcpVps1 = tcpOk.filter { detectServerOriginTag(it.first) == "VPS-1" }
         val tcpCf1 = tcpOk.filter { detectServerOriginTag(it.first) == "CF-1" }
         val tcpCf2 = tcpOk.filter { detectServerOriginTag(it.first) == "CF-2" }
         val tcpOwn = tcpOk.filter { isDedicatedServerTag(detectServerOriginTag(it.first)) }
         val tcpPub = tcpOk.filter { !isDedicatedServerTag(detectServerOriginTag(it.first)) }
-        plog("TCP probe hits: ${tcpOwn.size} Dedicated OWN (CF1=${tcpCf1.size}, CF2=${tcpCf2.size}), ${tcpPub.size} Public")
+        plog("TCP probe hits: ${tcpOwn.size} Dedicated OWN (VPS=${tcpVps1.size}, CF1=${tcpCf1.size}, CF2=${tcpCf2.size}), ${tcpPub.size} Public")
 
         val keep = if (tcpOk.isNotEmpty()) {
-            (tcpCf1.take(8).map { it.first } + tcpCf2.take(8).map { it.first } + tcpPub.take(16).map { it.first })
+            (tcpVps1.take(18).map { it.first } + tcpCf1.take(4).map { it.first } + tcpCf2.take(4).map { it.first } + tcpPub.take(16).map { it.first })
                 .distinct()
                 .take(REAL_TEST_COUNT)
         } else {
             plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 24)} servers via Xray core")
-            (ownCandidates.take(12) + pubCandidates.take(12)).take(24)
+            (ownCandidates.take(16) + pubCandidates.take(12)).take(28)
         }
 
         val keepSet = keep.toHashSet()
@@ -2765,7 +2771,7 @@ class MainActivity : HelperBaseComponentActivity() {
             statusMessage = "Real ping test (0/${keep.size})..."
         }
 
-        // تست موازی و مستقیم با هسته Xray در همین پروسه (با تست ۴ حالت فرگمنت 5-12، 100-200، 20-50 و OFF برای نودهای کلودفلر)
+        // تست موازی و مستقیم با هسته Xray در همین پروسه
         val pingSem = Semaphore(12)
         val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
         val testUrlPrimary = AppConfig.DELAY_TEST_URL
@@ -2784,13 +2790,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             if (isDedicatedServerTag(origin)) {
                                 val item = MmkvManager.decodeServerConfig(g)
                                 if (measured > 0L && item != null) {
-                                    val fmMode = when {
-                                        item.finalMask.isNullOrBlank() -> "OFF"
-                                        item.finalMask?.contains("5-12") == true -> "5-12"
-                                        item.finalMask?.contains("100-200") == true -> "100-200"
-                                        else -> "20-50"
-                                    }
-                                    plog("OWN RealPing OK ($origin @ ${item.server}:${item.serverPort}, frag=$fmMode): ${measured}ms")
+                                    plog("OWN RealPing OK ($origin • ${item.configType}/${item.network.orEmpty()} @ host=${item.host ?: item.server}): ${measured}ms")
                                 }
                             }
                         } catch (e: Exception) {

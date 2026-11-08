@@ -111,6 +111,14 @@ internal object PennyServerScanner {
         return String(out, StandardCharsets.UTF_8)
     }
 
+    private const val ENC_VPS1_HOST = "6b555d41444ebda5a4ac8e969f8d"
+    private const val ENC_VPS1_PORT = "68515a5b45"
+    private const val ENC_VPS1_UUID = "62580d5b4f19e7bfbfa992c6ca9888faafb0f5bdded8c3d6313b76747d4115020f777a2d"
+    private const val ENC_VPS1_TOKEN = "6811510a254ad1c1a1d0c7e09bd2dff2fca69ce683948e89704448767f4d5d6472002c28130d3c0a2829d9c6eaf7d1eefef2d9e788a8a4aaa9a6c895bb3c752a51424e567c581d1f6718"
+    private const val ENC_VPS1_HY2_OBFS = "630058591018e0eeabff98c3cc838fa6"
+    private const val ENC_VPS1_SS_B64 = "03363e153a29cdbadcf091c9f7878cf59fe3e190b4bba6cf546274524f146a79742f2738186e2628272fc2ddd4e2a19e"
+    private const val ENC_VPS1_SUB_URL = "32151c1f4c52abbaa6ac8e959d8c92f5ffffe9eeded7c6cb303d23386d404f1c0831712a056a31214130e7c0bbf2ff929cc6fc86a3b4aea990a4a8969f6d7d4452604c48736d1c2a080939260a1731ceded2f9c7e8c8c4ca8986e8b59bdc95cab1626e765c787d7f07786f343b37"
+
     private const val ENC_BPB1_HOST = "32500a1e4f04e6e8e0afc1d198838ff4a3a8e9af9f859d9e7627607679405f1d5e243e"
     private const val ENC_BPB1_SNI = "12500a3e4f04e6e8e0afe1f198838ff4a3a8e9af9f85bdbe5627607679407f1d5e043e"
     private const val ENC_BPB1_UUID = "6f05515e141ee2babfa0c2c5cb9888a0fee7f5e6d38bc1d6663820222743490a0224712b"
@@ -122,6 +130,14 @@ internal object PennyServerScanner {
     private const val ENC_BPB2_UUID = "69500e0c4619bceebfabc5c29c9888a2fae2f5bdd48891d636392323291c480b0e252c7e"
     private const val ENC_BPB2_TR_PWD = "1b272f3e3c09dbffe2ca8595edefce81fcabab85"
     private const val ENC_BPB2_SUB_FRAG = "32151c1f0547aba4e8eb9692dada84a9fba7adbed28c9f8a63637c222a154e4a17792361263c030e0157e4e2f8bae4c9e8cbfdf3879991b591b8b1a8872a7f66780e4e5d575a292e3c2d5f061e0541fbf8f0e1"
+
+    val VPS1_HOST: String by lazy { decodeXorHex(ENC_VPS1_HOST) }
+    val VPS1_PORT: Int by lazy { decodeXorHex(ENC_VPS1_PORT).toIntOrNull() ?: 20243 }
+    private val VPS1_UUID: String by lazy { decodeXorHex(ENC_VPS1_UUID) }
+    private val VPS1_TOKEN: String by lazy { decodeXorHex(ENC_VPS1_TOKEN) }
+    private val VPS1_HY2_OBFS: String by lazy { decodeXorHex(ENC_VPS1_HY2_OBFS) }
+    private val VPS1_SS_B64: String by lazy { decodeXorHex(ENC_VPS1_SS_B64) }
+    val DEDICATED_VPS_SUB_URL: String by lazy { decodeXorHex(ENC_VPS1_SUB_URL) }
 
     val BPB_HOST: String by lazy { decodeXorHex(ENC_BPB1_HOST) }
     val BPB_MIXED_SNI: String by lazy { decodeXorHex(ENC_BPB1_SNI) }
@@ -163,7 +179,7 @@ internal object PennyServerScanner {
     )
 
     @Volatile
-    var detectedIspProfile: String = "Auto (Smart Fragment 20-50B)"
+    var detectedIspProfile: String = "Auto (Dedicated VPS + Multi-Protocol)"
 
     // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 443 و 2083)
     val BPB_TLS_PORTS = listOf(8443, 443, 2083)
@@ -176,25 +192,23 @@ internal object PennyServerScanner {
     const val BPB_FINALMASK_MICRO_JSON =
         """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"5-12","delay":"1-2"}}]}"""
 
-    val DEDICATED_BPB_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_FRAG) }
+    val DEDICATED_BPB_FRAGMENT_SUB_URL: String by lazy { DEDICATED_VPS_SUB_URL }
     val DEDICATED_BPB_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_NORM) }
     val DEDICATED_BPB2_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB2_SUB_FRAG) }
 
     val SIGNED_STANDARD_SUBSCRIPTION_SOURCES: List<String> by lazy {
         listOf(
-            DEDICATED_BPB_FRAGMENT_SUB_URL,
-            DEDICATED_BPB2_FRAGMENT_SUB_URL,
-            "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/refs/heads/main/V2Ray-Config-By-EbraSha.txt",
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+            DEDICATED_VPS_SUB_URL,
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
         )
     }
 
     val SIGNED_VIP_SUBSCRIPTION_SOURCES: List<String> by lazy {
         listOf(
-            DEDICATED_BPB_FRAGMENT_SUB_URL,
-            DEDICATED_BPB2_FRAGMENT_SUB_URL,
-            "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/refs/heads/main/V2Ray-Config-By-EbraSha.txt",
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
+            DEDICATED_VPS_SUB_URL,
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
         )
     }
 
@@ -209,8 +223,9 @@ internal object PennyServerScanner {
     }
 
     /**
-     * تنظیم بهینه DNS (روی 8.8.8.8 مشابه پیش‌فرض خود BPB، چون کلودفلر اتصال خروجی Worker/Pages به 1.1.1.1 را مسدود می‌کند)
-     * و نگه داشتن PREF_FRAGMENT_ENABLED سراسری روی false تا فرگمنت فقط روی نودهایی که صراحتاً fm دارند اعمال شود.
+     * تنظیم بهینه DNS (روی 8.8.8.8) و PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD="2"
+     * تا در getV2rayConfig4Speedtest هنگامی که postProcessForSpeedtest مقدار v2rayConfig.dns = null قرار می‌دهد،
+     * آدرس دامنه‌ها مستقیماً به IP تبدیل شود و RealPing دچار خطا نشود.
      */
     fun applyBpbCoreOptimizations(fragLength: String = "100-200", fragInterval: String = "1") {
         try {
@@ -219,6 +234,7 @@ internal object PennyServerScanner {
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, fragLength)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, fragInterval)
             MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, AppConfig.DELAY_TEST_URL)
+            MmkvManager.encodeSettings(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "2")
             MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "8.8.8.8")
             MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://8.8.8.8/dns-query")
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
@@ -335,67 +351,79 @@ internal object PennyServerScanner {
         }
 
     /**
-     * نودهای داخلی BPB-VPN روی پورت‌های دقیق هر کلاستر (کلاستر ۱ روی 8443 و 2083، کلاستر ۲ روی 443)
-     * در ۳ حالت مجزا برای تفکیک دقیق رفتار فرگمنت در تست RealPing:
-     * ۱. بدون فرگمنت (Fragment OFF)
-     * ۲. فرگمنت پیش‌فرض BPB با طول بزرگ‌تر (100-200B)
-     * ۳. فرگمنت طول کوتاه‌تر (20-50B)
+     * نودهای داخلی سرور اختصاصی VPS (پشتیبانی از هر ۷ پروتکل panel-vps: VLESS-WS, VLESS-HTTPUpgrade,
+     * VMess-WS, Trojan-WS, VLESS-gRPC, Shadowsocks, Hysteria2 + هدرهای Host اسپوف‌شده داخلی برای همراه اول و ایرانسل)
      */
     fun getBuiltinBpbFallbackConfigs(): String {
         val nodes = mutableListOf<String>()
-        val fm5to12 = urlEncode(BPB_FINALMASK_MICRO_JSON)
-        val fm100to200 = urlEncode(BPB_FINALMASK_NORMAL_JSON)
-        val fm20to50 = urlEncode(BPB_FINALMASK_SMART_JSON)
+        val h = VPS1_HOST
+        val p = VPS1_PORT
+        val u = VPS1_UUID
+        val tk = VPS1_TOKEN
+        val hyObfs = VPS1_HY2_OBFS
+        val ssCred = VPS1_SS_B64
 
-        for (ip in CLEAN_CF_ENDPOINTS.take(4)) {
-            // کلاستر ۱ (BPB1: پورت‌های فعال در پنل 8443 و 2083 هستند)
-            for (port in listOf(8443, 2083)) {
-                // حالت ۱: فرگمنت ریز 5-12B (تضمین شکستن رشته 9 بایتی pages.dev روی همراه اول)
-                nodes.add(
-                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FtgcsAVE1RoC253ipi11%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm5to12#OWN-CF1"
-                )
-                // حالت ۲: فرگمنت طول بزرگ‌تر 100-200B (پیش‌فرض خود BPB)
-                nodes.add(
-                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2F67JG9ncV9i41rbKT4qQTDlYEa%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm100to200#OWN-CF1"
-                )
-                // حالت ۳: فرگمنت 20-50B
-                nodes.add(
-                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fo4TrBzAaFyxrxwzJiyHXIzI%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm20to50#OWN-CF1"
-                )
-                // حالت ۴: فرگمنت خاموش (OFF)
-                nodes.add(
-                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fr3b31nS5c7v64yK8y%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#OWN-CF1"
-                )
-            }
-            // کلاستر ۲ (BPB2: پورت فعال در پنل 443 است)
-            val port2 = 443
-            // حالت ۱: فرگمنت ریز 5-12B (تضمین شکستن رشته 9 بایتی pages.dev روی همراه اول)
+        val wsPath = urlEncode("/parham-confing-ws?ed=2048&u=$tk")
+        val huPath = urlEncode("/parham-confing-hu?u=$tk")
+        val trPath = urlEncode("/parham-confing-trojan?u=$tk")
+
+        // ۱. پروتکل‌های WebSocket و HTTPUpgrade و Trojan با Host اصلی و Hostهای اسپوف‌شده (ورزش۳، اسپیدتست، آپارات)
+        val spoofHosts = listOf(h, "cdn.varzesh3.com", "www.speedtest.net", "www.aparat.com")
+        for (spoofHost in spoofHosts) {
             nodes.add(
-                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FuwIlM9pFPfAVIc2Dx%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm5to12#OWN-CF2"
+                "vless://$u@$h:$p?encryption=none&security=none&type=ws&host=$spoofHost&path=$wsPath#OWN-VPS1"
             )
-            // حالت ۲: فرگمنت طول بزرگ‌تر 100-200B (پیش‌فرض خود BPB)
             nodes.add(
-                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FH6uz98LCHzhQtz25zpK%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm100to200#OWN-CF2"
+                "vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=$spoofHost&path=$huPath#OWN-VPS1"
             )
-            // حالت ۳: فرگمنت 20-50B
             nodes.add(
-                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FZNetuCivxyvKPN2XZ%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm20to50#OWN-CF2"
+                "trojan://$u@$h:$p?security=none&type=ws&host=$spoofHost&path=$trPath#OWN-VPS1"
             )
-            // حالت ۴: فرگمنت خاموش (OFF)
-            nodes.add(
-                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2Fw4rH9wYBf3p65nJ9z%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1#OWN-CF2"
+            val vmessJson = JSONObject()
+                .put("v", "2")
+                .put("ps", "OWN-VPS1")
+                .put("add", h)
+                .put("port", p.toString())
+                .put("id", u)
+                .put("aid", "0")
+                .put("scy", "auto")
+                .put("net", "ws")
+                .put("type", "none")
+                .put("host", spoofHost)
+                .put("path", "/parham-confing-vmess?ed=2048&u=$tk")
+                .put("tls", "")
+                .put("sni", "")
+                .toString()
+            val vmessB64 = android.util.Base64.encodeToString(
+                vmessJson.toByteArray(StandardCharsets.UTF_8),
+                android.util.Base64.NO_WRAP
             )
+            nodes.add("vmess://$vmessB64")
         }
+
+        // ۲. پروتکل‌های VLESS-gRPC، Shadowsocks و Hysteria2 (UDP + Salamander) روی سرور اختصاصی VPS
+        nodes.add(
+            "vless://$u@$h:$p?encryption=none&security=none&type=grpc&serviceName=parham-confing-grpc#OWN-VPS1"
+        )
+        nodes.add(
+            "ss://$ssCred@$h:$p#OWN-VPS1"
+        )
+        nodes.add(
+            "hysteria2://$u@$h:$p?sni=www.google.com&obfs=salamander&obfs-password=$hyObfs&insecure=1#OWN-VPS1"
+        )
+
         return nodes.joinToString("\n")
     }
 
     /**
      * پاک‌سازی URL (حذف fragment مثل #💦 BPB Normal قبل از افزودن پارامتر زمان)
-     * و اطمینان از وجود ?app=xray برای لینک‌های BPB Panel
+     * و اطمینان از وجود ?app=xray فقط برای لینک‌های BPB Panel روی کلودفلر
      */
     fun normalizeSubscriptionUrl(urlStr: String): String {
         var clean = urlStr.trim().substringBefore('#').trim()
-        if (clean.contains("/sub/") && !clean.contains("app=", ignoreCase = true)) {
+        val isBpbPages = clean.contains(".pages.dev", ignoreCase = true) ||
+            clean.contains(".workers.dev", ignoreCase = true)
+        if (isBpbPages && clean.contains("/sub") && !clean.contains("app=", ignoreCase = true)) {
             val sep = if ('?' in clean) '&' else '?'
             clean = "${clean}${sep}app=xray"
         }
@@ -483,8 +511,11 @@ internal object PennyServerScanner {
 
     fun downloadHttpsUrl(urlStr: String, onLog: ((String) -> Unit)? = null): String {
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
-        require(cleanUrl.startsWith("https://", ignoreCase = true)) {
-            "Only HTTPS URLs are permitted"
+        require(
+            cleanUrl.startsWith("https://", ignoreCase = true) ||
+                cleanUrl.startsWith("http://", ignoreCase = true)
+        ) {
+            "Only HTTP/HTTPS subscription URLs are permitted"
         }
 
         val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true) ||
@@ -715,7 +746,35 @@ internal object PennyServerScanner {
                 onLog("JSON subscription parse note: ${e.message}")
             }
         }
-        return trimmed
+
+        // رمزگشایی ساب‌اسکریپشن‌های Base64 (مانند خروجی panel-vps) و حذف نود نمایشی 127.0.0.1:1
+        val decodedText = if (!trimmed.contains("://")) {
+            runCatching {
+                String(android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT), StandardCharsets.UTF_8)
+            }.getOrDefault(trimmed)
+        } else {
+            trimmed
+        }
+
+        val outLines = mutableListOf<String>()
+        val vpsHost = VPS1_HOST
+        for (rawLine in decodedText.lines()) {
+            val line = rawLine.trim()
+            if (line.isEmpty() || line.startsWith("#")) continue
+            if (line.contains("@127.0.0.1:") ||
+                line.contains("@0.0.0.0:") ||
+                line.contains("00000000-0000-4000-8000-000000000000")
+            ) {
+                continue
+            }
+            outLines.add(line)
+            if (line.contains(vpsHost) && line.contains("host=$vpsHost")) {
+                for (spoof in listOf("cdn.varzesh3.com", "www.speedtest.net", "www.aparat.com")) {
+                    outLines.add(line.replace("host=$vpsHost", "host=$spoof"))
+                }
+            }
+        }
+        return if (outLines.isNotEmpty()) outLines.joinToString("\n") else trimmed
     }
 
     /**

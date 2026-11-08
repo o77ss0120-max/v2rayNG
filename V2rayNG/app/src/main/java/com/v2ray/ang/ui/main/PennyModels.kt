@@ -83,9 +83,11 @@ internal fun detectServerOriginTag(guid: String): String {
     return try {
         val cfg = MmkvManager.decodeServerConfig(guid) ?: return "PUB"
         val combined = "${cfg.host.orEmpty()} ${cfg.sni.orEmpty()} ${cfg.server.orEmpty()} ${cfg.remarks}".lowercase(Locale.US)
+        val vps1 = PennyServerScanner.VPS1_HOST.lowercase(Locale.US)
         val bpb1 = PennyServerScanner.BPB_HOST.lowercase(Locale.US)
         val bpb2 = PennyServerScanner.BPB2_HOST.lowercase(Locale.US)
         when {
+            combined.contains(vps1) || combined.contains("own-vps") || combined.contains("vps-1") || combined.contains("zenith") || combined.contains("parham-confing") -> "VPS-1"
             combined.contains(bpb1) || combined.contains("own-cf1") || combined.contains("cf-1") -> "CF-1"
             combined.contains(bpb2) || combined.contains("own-cf2") || combined.contains("cf-2") -> "CF-2"
             combined.contains(".pages.dev") || combined.contains("own-bpb") || combined.contains("bpb") -> "BPB"
@@ -98,7 +100,7 @@ internal fun detectServerOriginTag(guid: String): String {
 }
 
 internal fun isDedicatedServerTag(codeTag: String): Boolean {
-    return codeTag == "CF-1" || codeTag == "CF-2" || codeTag == "BPB" || codeTag.startsWith("OWN")
+    return codeTag == "VPS-1" || codeTag == "CF-1" || codeTag == "CF-2" || codeTag == "BPB" || codeTag.startsWith("OWN")
 }
 
 internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
@@ -108,10 +110,12 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         Triple(s, origin, realVerified)
     }
     // ۱. ابتدا سرورهایی که تست واقعی Xray (RealPing) را پاس کرده‌اند (به ترتیب کمترین پینگ واقعی)
-    // ۲. سپس سرورهای تاییدشده با TCP (به ترتیب کمترین پینگ)
+    // ۲. در صورت برابری، اولویت با سرور اختصاصی VPS-1
     val sorted = tagged.sortedWith(
         compareBy<Triple<PennyServer, String, Boolean>> { (_, _, realVerified) ->
             if (realVerified) 0 else 1
+        }.thenBy { (_, origin, _) ->
+            if (origin == "VPS-1") 0 else 1
         }.thenBy { (s, _, _) ->
             if (s.ms > 0L) s.ms else Long.MAX_VALUE
         }
@@ -122,6 +126,7 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
             val cfg = MmkvManager.decodeServerConfig(s.guid)
             if (cfg != null) {
                 val targetRemark = when (origin) {
+                    "VPS-1" -> "PennyVPN OWN-VPS1"
                     "CF-1" -> "PennyVPN OWN-CF1"
                     "CF-2" -> "PennyVPN OWN-CF2"
                     "BPB" -> "PennyVPN OWN-BPB"
@@ -137,6 +142,7 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         }
 
         val displayLabel = when (origin) {
+            "VPS-1" -> "OWN Dedicated VPS • #${index + 1}"
             "CF-1" -> "OWN Server 1 • #${index + 1}"
             "CF-2" -> "OWN Server 2 • #${index + 1}"
             "BPB" -> "OWN BPB • #${index + 1}"

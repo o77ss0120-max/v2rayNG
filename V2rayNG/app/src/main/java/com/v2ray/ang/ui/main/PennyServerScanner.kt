@@ -173,6 +173,8 @@ internal object PennyServerScanner {
         """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"1"}}]}"""
     const val BPB_FINALMASK_SMART_JSON =
         """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"20-50","delay":"1"}}]}"""
+    const val BPB_FINALMASK_MICRO_JSON =
+        """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"5-12","delay":"1-2"}}]}"""
 
     val DEDICATED_BPB_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_FRAG) }
     val DEDICATED_BPB_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_NORM) }
@@ -182,8 +184,8 @@ internal object PennyServerScanner {
         listOf(
             DEDICATED_BPB_FRAGMENT_SUB_URL,
             DEDICATED_BPB2_FRAGMENT_SUB_URL,
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
+            "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/refs/heads/main/V2Ray-Config-By-EbraSha.txt",
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
         )
     }
 
@@ -191,14 +193,15 @@ internal object PennyServerScanner {
         listOf(
             DEDICATED_BPB_FRAGMENT_SUB_URL,
             DEDICATED_BPB2_FRAGMENT_SUB_URL,
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
+            "https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/refs/heads/main/V2Ray-Config-By-EbraSha.txt",
+            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt"
         )
     }
 
+    // حذف cp.cloudflare.com چون Worker/Pages کلودفلر اجازه اتصال خروجی TCP به آی‌پی‌های خود کلودفلر را ندارد
     val TEST_URLS = listOf(
         "https://www.gstatic.com/generate_204",
-        "https://cp.cloudflare.com/generate_204"
+        "https://www.google.com/generate_204"
     )
 
     private fun urlEncode(value: String): String {
@@ -206,19 +209,18 @@ internal object PennyServerScanner {
     }
 
     /**
-     * تنظیم بهینه DNS ضدتحریم و مسیریابی مستقیم سایت‌ها و بانک‌های داخل ایران.
-     * نکته حیاتی: PREF_FRAGMENT_ENABLED سراسری را false نگه می‌داریم تا روی سرورهای عمومی (VLESS-REALITY و ...)
-     * تنظیمات UDP noise و فرگمنت اجباری تزریق نشود؛ سرورهای کلودفلر خودشان پارامتر اختصاصی finalMask (fm) دارند.
+     * تنظیم بهینه DNS (روی 8.8.8.8 مشابه پیش‌فرض خود BPB، چون کلودفلر اتصال خروجی Worker/Pages به 1.1.1.1 را مسدود می‌کند)
+     * و نگه داشتن PREF_FRAGMENT_ENABLED سراسری روی false تا فرگمنت فقط روی نودهایی که صراحتاً fm دارند اعمال شود.
      */
-    fun applyBpbCoreOptimizations(fragLength: String = "20-50", fragInterval: String = "1") {
+    fun applyBpbCoreOptimizations(fragLength: String = "100-200", fragInterval: String = "1") {
         try {
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, false)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, fragLength)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, fragInterval)
             MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, AppConfig.DELAY_TEST_URL)
-            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "1.1.1.1")
-            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://1.1.1.1/dns-query")
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, "8.8.8.8")
+            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://8.8.8.8/dns-query")
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
             MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
             MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, "1")
@@ -236,19 +238,19 @@ internal object PennyServerScanner {
             val opLower = rawOp.lowercase()
             val (profileName, length, interval) = when {
                 opLower.contains("irancell") || opLower.contains("mtn") ->
-                    Triple("Irancell (MTN) • Deep Fragment 20-50B", "20-50", "1")
+                    Triple("Irancell (MTN) • Fragment 100-200B / 20-50B", "100-200", "1")
                 opLower.contains("mci") || opLower.contains("ir-tci") || opLower.contains("hamrah") ->
-                    Triple("Hamrah Aval (MCI) • Smart Fragment 20-50B", "20-50", "1")
+                    Triple("Hamrah Aval (MCI) • Fragment 100-200B / 20-50B", "100-200", "1")
                 opLower.contains("rightel") ->
-                    Triple("Rightel • Fast Fragment 40-90B", "40-90", "1")
+                    Triple("Rightel • Fragment 100-200B", "100-200", "1")
                 rawOp.isNotEmpty() ->
-                    Triple("$rawOp • Balanced Fragment 50-100B", "50-100", "1")
+                    Triple("$rawOp • Fragment 100-200B", "100-200", "1")
                 else ->
-                    Triple("Wi-Fi / Broadband • Fragment 50-100B", "50-100", "1")
+                    Triple("Wi-Fi / Broadband • Fragment 100-200B", "100-200", "1")
             }
             detectedIspProfile = profileName
             applyBpbCoreOptimizations(fragLength = length, fragInterval = interval)
-            onLog?.invoke("ISP Auto-Tuner: $profileName (len=$length, delay=${interval}ms)")
+            onLog?.invoke("ISP Auto-Tuner: $profileName (DNS=8.8.8.8, delay=${interval}ms)")
             profileName
         } catch (_: Exception) {
             applyBpbCoreOptimizations()
@@ -258,7 +260,7 @@ internal object PennyServerScanner {
 
     /**
      * اسکنر داخلی آی‌پی تمیز کلودفلر (On-Device Clean IP Scanner):
-     * تست موازی ۱۴ رنج Anycast کلودفلر روی پورت‌های 443 و 8443 و انتخاب سریع‌ترین آی‌پی‌های باز روی اینترنت فعلی کاربر
+     * تست موازی رنج‌های Anycast کلودفلر روی پورت‌های 443 و 8443 و انتخاب سریع‌ترین آی‌پی‌های باز روی اینترنت فعلی کاربر
      */
     suspend fun scanCleanCloudflareIps(onLog: ((String) -> Unit)? = null): List<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
@@ -333,39 +335,56 @@ internal object PennyServerScanner {
         }
 
     /**
-     * نودهای آماده BPB-VPN با آی‌پی‌های تمیز کلودفلر (104.17.148.22, 104.17.147.22, 172.66.47.27, 172.66.44.229 و ...)
-     * به همراه پورت‌های 8443، 443 و 2083 با ترکیب هر دو حالت Native Fragment و Smart FinalMask
+     * نودهای داخلی BPB-VPN روی پورت‌های دقیق هر کلاستر (کلاستر ۱ روی 8443 و 2083، کلاستر ۲ روی 443)
+     * در ۳ حالت مجزا برای تفکیک دقیق رفتار فرگمنت در تست RealPing:
+     * ۱. بدون فرگمنت (Fragment OFF)
+     * ۲. فرگمنت پیش‌فرض BPB با طول بزرگ‌تر (100-200B)
+     * ۳. فرگمنت طول کوتاه‌تر (20-50B)
      */
     fun getBuiltinBpbFallbackConfigs(): String {
         val nodes = mutableListOf<String>()
-        val fmDeep = urlEncode(BPB_FINALMASK_SMART_JSON)
-        val fmFast = urlEncode(BPB_FINALMASK_NORMAL_JSON)
+        val fm5to12 = urlEncode(BPB_FINALMASK_MICRO_JSON)
+        val fm100to200 = urlEncode(BPB_FINALMASK_NORMAL_JSON)
+        val fm20to50 = urlEncode(BPB_FINALMASK_SMART_JSON)
 
-        for (ip in CLEAN_CF_ENDPOINTS) {
-            // کلاستر ۱ (BPB1: پورت‌های 8443، 443 و 2083 فعال هستند)
-            for (port in listOf(8443, 443, 2083)) {
+        for (ip in CLEAN_CF_ENDPOINTS.take(4)) {
+            // کلاستر ۱ (BPB1: پورت‌های فعال در پنل 8443 و 2083 هستند)
+            for (port in listOf(8443, 2083)) {
+                // حالت ۱: فرگمنت ریز 5-12B (تضمین شکستن رشته 9 بایتی pages.dev روی همراه اول)
                 nodes.add(
-                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FPpQoztI2kHNHs91QvklsrZIF%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#OWN-CF1"
+                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FtgcsAVE1RoC253ipi11%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm5to12#OWN-CF1"
                 )
+                // حالت ۲: فرگمنت طول بزرگ‌تر 100-200B (پیش‌فرض خود BPB)
                 nodes.add(
-                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2FolPcudqQC7WWnOTnqALts%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmDeep#OWN-CF1"
+                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2F67JG9ncV9i41rbKT4qQTDlYEa%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm100to200#OWN-CF1"
                 )
+                // حالت ۳: فرگمنت 20-50B
                 nodes.add(
-                    "trojan://$BPB1_TR_PWD@$ip:$port?security=tls&type=ws&host=$BPB_HOST&path=%2Ftr%2FVbomkD6DumfXUz3f6N1L3OfQ%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmFast#OWN-CF1"
+                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fo4TrBzAaFyxrxwzJiyHXIzI%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm20to50#OWN-CF1"
                 )
-            }
-            // کلاستر ۲ (BPB2: پورت اصلی 443 و 8443)
-            for (port in listOf(443, 8443)) {
+                // حالت ۴: فرگمنت خاموش (OFF)
                 nodes.add(
-                    "vless://$BPB2_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FP0DsgUrIHpxwVC17kqBm1v%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1#OWN-CF2"
-                )
-                nodes.add(
-                    "vless://$BPB2_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2Fy7wl1tInOhSUZ6Qi7tsll0%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmDeep#OWN-CF2"
-                )
-                nodes.add(
-                    "trojan://$BPB2_TR_PWD@$ip:$port?security=tls&type=ws&host=$BPB2_HOST&path=%2Ftr%2FkbLSeIYkZdqVY73yFdNf2LrR%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fmFast#OWN-CF2"
+                    "vless://$BPB1_UUID@$ip:$port?encryption=none&security=tls&type=ws&host=$BPB_HOST&path=%2Fvl%2Fr3b31nS5c7v64yK8y%3Fed%3D2560&sni=$BPB_MIXED_SNI&fp=chrome&alpn=http%2F1.1#OWN-CF1"
                 )
             }
+            // کلاستر ۲ (BPB2: پورت فعال در پنل 443 است)
+            val port2 = 443
+            // حالت ۱: فرگمنت ریز 5-12B (تضمین شکستن رشته 9 بایتی pages.dev روی همراه اول)
+            nodes.add(
+                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FuwIlM9pFPfAVIc2Dx%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm5to12#OWN-CF2"
+            )
+            // حالت ۲: فرگمنت طول بزرگ‌تر 100-200B (پیش‌فرض خود BPB)
+            nodes.add(
+                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FH6uz98LCHzhQtz25zpK%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm100to200#OWN-CF2"
+            )
+            // حالت ۳: فرگمنت 20-50B
+            nodes.add(
+                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2FZNetuCivxyvKPN2XZ%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1&fm=$fm20to50#OWN-CF2"
+            )
+            // حالت ۴: فرگمنت خاموش (OFF)
+            nodes.add(
+                "vless://$BPB2_UUID@$ip:$port2?encryption=none&security=tls&type=ws&host=$BPB2_HOST&path=%2Fvl%2Fw4rH9wYBf3p65nJ9z%3Fed%3D2560&sni=$BPB2_MIXED_SNI&fp=chrome&alpn=http%2F1.1#OWN-CF2"
+            )
         }
         return nodes.joinToString("\n")
     }
@@ -392,8 +411,7 @@ internal object PennyServerScanner {
     }
 
     /**
-     * دانلود مستقیم از طریق آی‌پی‌های تمیز BPB-VPN (104.17.148.22:8443, 104.17.147.22:8443, 104.18.2.115:443 و ...)
-     * با استفاده از تکنیک TLS Record-Layer SNI Splitting در TlsHelloFragmentSocket (Conscrypt Engine Mode)
+     * دانلود مستقیم از طریق آی‌پی‌های CLEAN_CF_ENDPOINTS همراه با لاگ دقیق علت خطا در بلوک catch
      */
     private fun downloadViaCleanIpTls(cleanUrl: String, onLog: (String) -> Unit): String {
         val parsed = URL(cleanUrl)
@@ -404,31 +422,17 @@ internal object PennyServerScanner {
             originalHost.equals(BPB2_HOST, ignoreCase = true) -> BPB2_MIXED_SNI
             else -> toMixedCaseSni(originalHost)
         }
+        val preferredPort = if (originalHost.equals(BPB_HOST, ignoreCase = true)) 8443 else 443
         val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
-        runCatching {
-            val conscryptClass = Class.forName("com.android.org.conscrypt.Conscrypt")
-            conscryptClass.getMethod("setUseEngineSocket", SSLSocketFactory::class.java, Boolean::class.javaPrimitiveType)
-                .invoke(null, sslFactory, true)
-        }
-        val probeTargets = listOf(
-            "104.17.148.22" to 8443,
-            "104.17.147.22" to 8443,
-            "104.17.148.22" to 443,
-            "104.18.2.115" to 443
-        )
+        val probeTargets = CLEAN_CF_ENDPOINTS.take(3).map { it to preferredPort }
 
         for ((endpoint, port) in probeTargets) {
             var rawSocket: Socket? = null
             var sslSocket: SSLSocket? = null
             try {
-                rawSocket = TlsHelloFragmentSocket(endpoint, port, 2500)
-                rawSocket.soTimeout = 4000
+                rawSocket = TlsHelloFragmentSocket(endpoint, port, 3000)
+                rawSocket.soTimeout = 4500
                 sslSocket = sslFactory.createSocket(rawSocket, sniHost, port, true) as SSLSocket
-                runCatching {
-                    val conscryptClass = Class.forName("com.android.org.conscrypt.Conscrypt")
-                    conscryptClass.getMethod("setUseEngineSocket", SSLSocket::class.java, Boolean::class.javaPrimitiveType)
-                        .invoke(null, sslSocket, true)
-                }
                 sslSocket.startHandshake()
 
                 val req = buildString {
@@ -464,8 +468,11 @@ internal object PennyServerScanner {
                 if (statusLine.contains(" 200 ") && body.isNotEmpty()) {
                     onLog("BPB-Fragment TLS download OK via $endpoint:$port (${body.length} chars)")
                     return body
+                } else {
+                    onLog("Clean IP TLS ($endpoint:$port) non-200 status: $statusLine")
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                onLog("Clean IP TLS ($endpoint:$port -> $originalHost) error: ${e.javaClass.simpleName}: ${e.message}")
             } finally {
                 try { sslSocket?.close() } catch (_: Exception) {}
                 try { rawSocket?.close() } catch (_: Exception) {}

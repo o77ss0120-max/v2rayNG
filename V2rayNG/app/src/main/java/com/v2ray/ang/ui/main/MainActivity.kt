@@ -2686,24 +2686,15 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 val cfg = MmkvManager.decodeServerConfig(g)
                 if (cfg != null) {
-                    val isCfEdge = cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true ||
-                        cfg.server?.endsWith(".workers.dev", ignoreCase = true) == true ||
-                        cfg.host?.endsWith(".pages.dev", ignoreCase = true) == true ||
-                        cfg.sni?.endsWith(".pages.dev", ignoreCase = true) == true ||
-                        cfg.host?.endsWith(".workers.dev", ignoreCase = true) == true ||
-                        cfg.sni?.endsWith(".workers.dev", ignoreCase = true) == true
                     if (cfg.server?.endsWith(".pages.dev", ignoreCase = true) == true ||
                         cfg.server?.endsWith(".workers.dev", ignoreCase = true) == true ||
                         cfg.server.equals("www.speedtest.net", ignoreCase = true)
                     ) {
                         cfg.server = cleanPool[idx % cleanPool.size]
                     }
-                    if (isCfEdge) {
-                        if (cfg.finalMask.isNullOrBlank() || cfg.finalMask?.contains("maxSplit") == true) {
-                            cfg.finalMask = PennyServerScanner.BPB_FINALMASK_SMART_JSON
-                        }
-                    } else if (cfg.finalMask?.contains("maxSplit") == true) {
-                        cfg.finalMask = null
+                    // حذف maxSplit در صورت وجود، اما حفظ هر ۳ حالت فرگمنت (خاموش null، 100-200 و 20-50) برای تست واقعی
+                    if (cfg.finalMask?.contains("maxSplit") == true) {
+                        cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
                     val originTag = detectServerOriginTag(g)
                     if (g in newlyImported || cfg.remarks.startsWith("Penny", ignoreCase = true) || cfg.remarks.contains("BPB", ignoreCase = true) || cfg.remarks.startsWith("OWN-", ignoreCase = true)) {
@@ -2726,10 +2717,10 @@ class MainActivity : HelperBaseComponentActivity() {
             return false
         }
 
-        // جداسازی سرورهای اختصاصی کلودفلر خودمان (CF-1, CF-2, BPB) از سرورهای عمومی تا سرورهای عمومی باعث حذف سرورهای اختصاصی نشوند
-        val ownCandidates = newGuids.filter { isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
+        // جداسازی سرورهای اختصاصی کلودفلر خودمان (CF-1, CF-2, BPB) از سرورهای عمومی
+        val ownCandidates = newGuids.filter { isDedicatedServerTag(detectServerOriginTag(it)) }
         val pubCandidates = newGuids.filter { !isDedicatedServerTag(detectServerOriginTag(it)) }.shuffled()
-        val prioritizedSample = (ownCandidates.take(140) + pubCandidates.take(160)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
+        val prioritizedSample = (ownCandidates.take(36) + pubCandidates.take(200)).take(PennyServerScanner.MAX_TCP_CANDIDATES)
 
         ui {
             scanProgress = 0.28f
@@ -2743,12 +2734,12 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("TCP probe hits: ${tcpOwn.size} Dedicated OWN (CF1=${tcpCf1.size}, CF2=${tcpCf2.size}), ${tcpPub.size} Public")
 
         val keep = if (tcpOk.isNotEmpty()) {
-            (tcpCf1.take(6).map { it.first } + tcpCf2.take(6).map { it.first } + tcpPub.take(16).map { it.first })
+            (tcpCf1.take(8).map { it.first } + tcpCf2.take(8).map { it.first } + tcpPub.take(16).map { it.first })
                 .distinct()
                 .take(REAL_TEST_COUNT)
         } else {
             plog("TCP probe returned 0 direct hits; testing ${minOf(newGuids.size, 24)} servers via Xray core")
-            (ownCandidates.take(10) + pubCandidates.take(14)).take(24)
+            (ownCandidates.take(12) + pubCandidates.take(12)).take(24)
         }
 
         val keepSet = keep.toHashSet()
@@ -2774,11 +2765,10 @@ class MainActivity : HelperBaseComponentActivity() {
             statusMessage = "Real ping test (0/${keep.size})..."
         }
 
-        // تست موازی و مستقیم با هسته Xray در همین پروسه (همراه با تست خودکار فرگمنت جایگزین برای سرورهای کلودفلر)
-        val pingSem = Semaphore(8)
+        // تست موازی و مستقیم با هسته Xray در همین پروسه (با تست ۴ حالت فرگمنت 5-12، 100-200، 20-50 و OFF برای نودهای کلودفلر)
+        val pingSem = Semaphore(12)
         val completedCount = java.util.concurrent.atomic.AtomicInteger(0)
         val testUrlPrimary = AppConfig.DELAY_TEST_URL
-        val testUrlFallback = "https://cp.cloudflare.com/generate_204"
 
         coroutineScope {
             keep.map { g ->
@@ -2786,35 +2776,25 @@ class MainActivity : HelperBaseComponentActivity() {
                     pingSem.withPermit {
                         var measured = -1L
                         try {
+                            val origin = detectServerOriginTag(g)
                             val cfgResult = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, g)
                             if (cfgResult.status) {
                                 measured = CoreNativeManager.measureOutboundDelay(cfgResult.content, testUrlPrimary)
-                                if (measured <= 0L) {
-                                    measured = CoreNativeManager.measureOutboundDelay(cfgResult.content, testUrlFallback)
-                                }
                             }
-                            if (measured <= 0L && isDedicatedServerTag(detectServerOriginTag(g))) {
+                            if (isDedicatedServerTag(origin)) {
                                 val item = MmkvManager.decodeServerConfig(g)
-                                if (item != null) {
-                                    for (altFm in listOf(PennyServerScanner.BPB_FINALMASK_NORMAL_JSON, null)) {
-                                        item.finalMask = altFm
-                                        MmkvManager.encodeServerConfig(g, item)
-                                        val altCfg = CoreConfigManager.getV2rayConfig4Speedtest(this@MainActivity, g)
-                                        if (altCfg.status) {
-                                            val d = CoreNativeManager.measureOutboundDelay(altCfg.content, testUrlPrimary)
-                                            if (d > 0L) {
-                                                measured = d
-                                                break
-                                            }
-                                        }
+                                if (measured > 0L && item != null) {
+                                    val fmMode = when {
+                                        item.finalMask.isNullOrBlank() -> "OFF"
+                                        item.finalMask?.contains("5-12") == true -> "5-12"
+                                        item.finalMask?.contains("100-200") == true -> "100-200"
+                                        else -> "20-50"
                                     }
-                                    if (measured <= 0L) {
-                                        item.finalMask = PennyServerScanner.BPB_FINALMASK_SMART_JSON
-                                        MmkvManager.encodeServerConfig(g, item)
-                                    }
+                                    plog("OWN RealPing OK ($origin @ ${item.server}:${item.serverPort}, frag=$fmMode): ${measured}ms")
                                 }
                             }
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            plog("RealPing error: ${e.javaClass.simpleName}: ${e.message}")
                         }
                         MmkvManager.encodeServerTestDelayMillis(g, if (measured > 0L) measured else -1L)
                         val d = completedCount.incrementAndGet()
@@ -2836,32 +2816,22 @@ class MainActivity : HelperBaseComponentActivity() {
         val realPub = realValid.filter { !isDedicatedServerTag(detectServerOriginTag(it.first)) }
         plog("Real ping hits: ${realOwn.size} Dedicated OWN, ${realPub.size} Public")
 
+        // حذف کامل فال‌بک کاذب «فقط TCP»: فقط سرورهایی که واقعاً RealPing هسته Xray را پاس کرده‌اند وارد لیست می‌شوند
         val valid = when {
             realOwn.isNotEmpty() -> {
                 (realOwn.take(8) + realPub.take(7)).take(BEST_LIST_SIZE)
-            }
-            realPub.isNotEmpty() -> {
-                val ownFallback = (tcpCf1.take(1) + tcpCf2.take(1)).distinctBy { it.first }
-                (realPub.take(BEST_LIST_SIZE - ownFallback.size) + ownFallback).take(BEST_LIST_SIZE)
             }
             realValid.isNotEmpty() -> {
                 realValid.take(BEST_LIST_SIZE)
             }
             else -> {
-                plog("Real ping returned no positive delays; falling back to verified TCP ping (${tcpOk.size} servers)")
-                val interleaved = mutableListOf<Pair<String, Long>>()
-                val maxIdx = maxOf(tcpPub.size, tcpCf1.size, tcpCf2.size)
-                for (i in 0 until maxIdx) {
-                    if (i < tcpPub.size) interleaved.add(tcpPub[i])
-                    if (i < tcpCf1.size) interleaved.add(tcpCf1[i])
-                    if (i < tcpCf2.size) interleaved.add(tcpCf2[i])
-                }
-                interleaved.distinctBy { it.first }.take(BEST_LIST_SIZE)
+                emptyList()
             }
         }
 
         if (valid.isEmpty()) {
-            ui { statusMessage = "No reachable servers found on current network." }
+            plog("No healthy servers passed Xray RealPing test (TCP-only fallback disabled)")
+            ui { statusMessage = "No healthy server found on current network." }
             return false
         }
 

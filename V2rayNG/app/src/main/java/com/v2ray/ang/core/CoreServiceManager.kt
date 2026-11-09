@@ -492,7 +492,7 @@ object CoreServiceManager {
                         try {
                             serviceControl.stopService()
                             delay(500L)
-                            LauncherManager.startService(serviceControl.getService())
+                            withContext(Dispatchers.Main) { LauncherManager.startService(serviceControl.getService()) }
                         } finally {
                             pendingResult.finish()
                         }

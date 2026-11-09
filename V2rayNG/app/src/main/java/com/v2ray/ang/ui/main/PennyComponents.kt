@@ -436,21 +436,21 @@ internal fun ModernServerCard(
                 val tierLabel = when (currentSrv.codeTag) {
                     "GHOST" -> "GHOST STEALTH"
                     "PUB" -> "PUBLIC"
-                    else -> "DEDICATED"
+                    else -> "VIP MODE"
                 }
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 11.dp, vertical = 8.dp),
+                        .padding(horizontal = 11.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // باکس استاندارد تک‌خطی کد کشور (NL / PL / DE / GH) بدون هیچ‌گونه بریدگی عمودی
                     Box(
                         modifier = Modifier
-                            .width(44.dp)
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .width(40.dp)
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(9.dp))
                             .background(
                                 Brush.linearGradient(
                                     if (isOwn) {
@@ -463,14 +463,14 @@ internal fun ModernServerCard(
                             .border(
                                 1.dp,
                                 if (isOwn) ChampagneGold.copy(alpha = 0.85f) else Color(0xFF4C505E),
-                                RoundedCornerShape(10.dp)
+                                RoundedCornerShape(9.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = shortBadgeTop,
                             color = if (isOwn) ChampagneLight else PlatinumBright,
-                            fontSize = 13.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
                             fontFamily = FontFamily.Monospace,
                             maxLines = 1,
@@ -478,7 +478,7 @@ internal fun ModernServerCard(
                         )
                     }
 
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(9.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Row(
@@ -488,7 +488,7 @@ internal fun ModernServerCard(
                             Text(
                                 text = currentSrv.label,
                                 color = PlatinumBright,
-                                fontSize = 12.sp,
+                                fontSize = 10.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -513,7 +513,7 @@ internal fun ModernServerCard(
                                 Text(
                                     text = tierLabel,
                                     color = if (isOwn) ChampagneLight else PlatinumSilver,
-                                    fontSize = 7.5.sp,
+                                    fontSize = 7.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontFamily = FontFamily.Monospace,
                                     maxLines = 1,
@@ -521,11 +521,11 @@ internal fun ModernServerCard(
                                 )
                             }
                         }
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(1.dp))
                         Text(
                             text = "${geo.countryName} (${geo.cityName}) • Tap to switch server",
                             color = if (isOwn) ChampagneGold.copy(alpha = 0.9f) else PlatinumMuted,
-                            fontSize = 9.5.sp,
+                            fontSize = 8.5.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1061,8 +1061,14 @@ internal fun PulsingStatusText(
     )
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // نوار کشور متصل‌شده (بدون نمایش مختصات جغرافیایی)
+        // نوار کشور (در حالت دیسکانکت: مبدأ ایران، در حالت متصل: کشور سرور مقصد)
         if (countryGeo != null) {
+            val pillLabel = when (mode) {
+                UiMode.IDLE -> "ORIGIN • IRAN (STATIONARY)"
+                UiMode.SCANNING -> "SCANNING GLOBAL NODES..."
+                UiMode.CONNECTING -> "ROUTING TO ${countryGeo.countryName}..."
+                UiMode.CONNECTED -> "${countryGeo.countryName} • ${countryGeo.cityName.uppercase()}"
+            }
             Surface(
                 color = ObsidianCard.copy(alpha = 0.92f),
                 shape = RoundedCornerShape(20.dp),
@@ -1087,9 +1093,9 @@ internal fun PulsingStatusText(
                             )
                     )
                     Text(
-                        text = "${countryGeo.countryName} • ${countryGeo.cityName.uppercase()}",
+                        text = pillLabel,
                         color = if (isConnected) ChampagneLight else PlatinumSilver,
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace,
                         maxLines = 1
@@ -1146,7 +1152,7 @@ internal fun PulsingStatusText(
             Text(
                 text = statusMessage,
                 color = PlatinumSilver,
-                fontSize = 11.5.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -1158,8 +1164,11 @@ internal fun PulsingStatusText(
 }
 
 /**
- * کره زمین سه‌بعدی بزرگ در مرکز صفحه (بدون نمایش مختصات عددی) با مرز دقیق کشورها مطابق نقشه واقعی جهان،
- * هایلایت کشور ایران (مبدأ) و کشور سرور مقصد (هلند، لهستان، آلمان و...)، کمان متحرک اتصال و رادار چشمک‌زن
+ * کره زمین سه‌بعدی با رفتار هوشمند بر اساس وضعیت:
+ * 1) در حالت دیسکانکت (IDLE): کاملاً ثابت، متمرکز روی ایران و فقط نقشه کشور مبدأ (ایران) روشن است.
+ * 2) در حالت اسکن/اتصال (SCANNING / CONNECTING): کره زمین به صورت سه‌بعدی به دور محور خود می‌چرخد.
+ * 3) در حالت متصل (CONNECTED): دوربین با انیمیشن نرم روی کشور مقصد می‌چرخد، نقشه کشور مقصد روشن می‌شود
+ *    و پالس دور کره زمین به حالت تپش قلب واقعی (Lub-Dub Heartbeat) می‌تپد.
  */
 @Composable
 internal fun PowerButton(
@@ -1171,6 +1180,7 @@ internal fun PowerButton(
     onClick: () -> Unit
 ) {
     val isConnected = mode == UiMode.CONNECTED
+    val isScanningOrConnecting = mode == UiMode.SCANNING || mode == UiMode.CONNECTING
     val target = when (mode) {
         UiMode.IDLE -> if (isVipMode) ChampagneGold else Color(0xFF9EA2B0)
         UiMode.SCANNING -> PlatinumSilver
@@ -1180,33 +1190,63 @@ internal fun PowerButton(
     val color by animateColorAsState(target, tween(700), label = "pbColor")
     val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
 
-    // تمرکز دوربین سه‌بعدی کره زمین روی میانه مسیر ایران (33.4N, 52.8E) و اروپا تا هم نقشه ایران و هم کشور مقصد در مرکز کره باشند
-    val originLatDeg = 33.40f
-    val originLonDeg = 52.80f
-    val targetCamLon = ((countryGeo.longitude + originLonDeg) * 0.48f).coerceIn(14f, 34f)
-    val targetCamLat = ((countryGeo.latitude + originLatDeg) * 0.48f).coerceIn(34f, 45f)
+    // مختصات کشور مبدأ (ایران)
+    val originLatDeg = 32.80f
+    val originLonDeg = 53.50f
+
+    // هدف دوربین بر اساس وضعیت:
+    // - در حالت IDLE: دقیقاً روی ایران (32.8N, 53.5E) و کاملاً ثابت
+    // - در حالت CONNECTED / CONNECTING: چرخش نرم دوربین به سمت کشور مقصد در اروپا
+    val targetCamLat = when (mode) {
+        UiMode.IDLE -> originLatDeg
+        UiMode.SCANNING -> 38.0f
+        UiMode.CONNECTING, UiMode.CONNECTED -> (countryGeo.latitude * 0.72f + originLatDeg * 0.28f).coerceIn(36f, 52f)
+    }
+    val targetCamLon = when (mode) {
+        UiMode.IDLE -> originLonDeg
+        UiMode.SCANNING -> originLonDeg
+        UiMode.CONNECTING, UiMode.CONNECTED -> (countryGeo.longitude * 0.68f + originLonDeg * 0.32f).coerceIn(8f, 32f)
+    }
 
     val baseLonDeg by animateFloatAsState(
         targetValue = targetCamLon,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = tween(1050, easing = FastOutSlowInEasing),
         label = "globeLon"
     )
     val centerLatDeg by animateFloatAsState(
         targetValue = targetCamLat,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = tween(1050, easing = FastOutSlowInEasing),
         label = "globeLat"
+    )
+
+    // انیمیشن روشن شدن تدریجی نقشه کشور مقصد و کمان اتصال
+    val destHighlightAlpha by animateFloatAsState(
+        targetValue = when (mode) {
+            UiMode.CONNECTED -> 1f
+            UiMode.CONNECTING -> 0.65f
+            else -> 0f
+        },
+        animationSpec = tween(850, easing = FastOutSlowInEasing),
+        label = "destHighlightAlpha"
     )
 
     val inf = rememberInfiniteTransition(label = "pbInf")
     val pulse by inf.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)),
         label = "pbPulse"
     )
-    val globeSway by inf.animateFloat(
-        initialValue = -2.4f, targetValue = 2.4f,
-        animationSpec = infiniteRepeatable(tween(4800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "globeSway"
+    // چرخش ۳۶۰ درجه کره زمین در حالت اسکنینگ
+    val globeSpinLon by inf.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(3400, easing = LinearEasing)),
+        label = "globeSpinLon"
+    )
+    // فاز تپش قلب (Lub-Dub Heartbeat) با دوره ۱۲۵۰ میلی‌ثانیه (~۴۸ ضربان در دقیقه)
+    val heartbeatPhase by inf.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1250, easing = LinearEasing)),
+        label = "heartbeatPhase"
     )
     val beaconBlink by inf.animateFloat(
         initialValue = 0.22f, targetValue = 1.0f,
@@ -1218,16 +1258,28 @@ internal fun PowerButton(
         animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
         label = "pbSpin"
     )
-    val breathe by inf.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isConnected) 1.018f else 1.008f,
-        animationSpec = infiniteRepeatable(
-            tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse
-        ),
-        label = "pbBreathe"
-    )
 
-    val centerLonDeg = baseLonDeg + globeSway
+    // محاسبه منحنی واقعی تپش قلب دوضربه‌ای (Lub-Dub): ضربه اول قوی در t=0.12 و ضربه دوم در t=0.28
+    val d1 = (heartbeatPhase - 0.12f) / 0.048f
+    val d2 = (heartbeatPhase - 0.28f) / 0.055f
+    val lubPeak = kotlin.math.exp((-d1 * d1).toDouble()).toFloat()
+    val dubPeak = 0.72f * kotlin.math.exp((-d2 * d2).toDouble()).toFloat()
+    val heartbeatAmp = if (isConnected) (lubPeak + dubPeak).coerceIn(0f, 1.15f) else 0f
+
+    // مقیاس کره زمین: در حالت دیسکانکت کاملاً ثابت (1f)، در حالت متصل با ریتم تپش قلب می‌تپد
+    val globeScale = when (mode) {
+        UiMode.IDLE -> 1f
+        UiMode.CONNECTED -> 1f + 0.026f * heartbeatAmp
+        else -> 1.006f
+    }
+
+    // طول جغرافیایی دوربین: در حالت IDLE کاملاً ثابت، در حالت SCANNING/CONNECTING در حال چرخش ۳۶۰ درجه
+    val centerLonDeg = when (mode) {
+        UiMode.IDLE -> baseLonDeg
+        UiMode.SCANNING -> (baseLonDeg + globeSpinLon) % 360f
+        UiMode.CONNECTING -> (baseLonDeg + globeSpinLon * 0.45f) % 360f
+        UiMode.CONNECTED -> baseLonDeg
+    }
 
     Box(
         modifier = Modifier
@@ -1235,18 +1287,16 @@ internal fun PowerButton(
             .height(242.dp),
         contentAlignment = Alignment.Center
     ) {
-        // ── کره زمین سه‌بعدی بدون جدول، با لبه‌های کاملاً منطبق بر دایره کره و فقط دو کشور مبدأ (ایران) و مقصد روشن ──
         Box(
             modifier = Modifier
-                .size(232.dp)
-                .scale(breathe)
-                .clip(CircleShape)
+                .size(234.dp)
+                .scale(globeScale)
                 .tvDpadClickable(shape = CircleShape, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val c = Offset(size.width / 2f, size.height / 2f)
-                val globeR = size.minDimension * 0.468f
+                val globeR = size.minDimension * 0.445f
                 val degToRad = PI.toFloat() / 180f
                 val cLat = centerLatDeg * degToRad
 
@@ -1265,20 +1315,63 @@ internal fun PowerButton(
                     return Offset(c.x + x, c.y + y) to (z >= 0f)
                 }
 
-                // ۱) هاله بیرونی ملایم کره زمین
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            ChampagneGold.copy(alpha = if (isConnected) 0.16f else 0.08f),
-                            PlatinumSilver.copy(alpha = 0.03f),
-                            Color.Transparent
+                // ۱) پالس تپش قلب دور کره زمین در حالت متصل (Lub-Dub Heartbeat Shockwave Rings)
+                if (isConnected) {
+                    // هاله تپنده ضربان قلب دور کره زمین
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                ChampagneGold.copy(alpha = 0.14f + 0.24f * heartbeatAmp),
+                                ChampagneLight.copy(alpha = 0.06f + 0.12f * heartbeatAmp),
+                                Color.Transparent
+                            ),
+                            center = c,
+                            radius = globeR * (1.14f + 0.08f * heartbeatAmp)
                         ),
-                        center = c,
-                        radius = globeR * 1.10f
-                    ),
-                    radius = globeR * 1.10f,
-                    center = c
-                )
+                        radius = globeR * (1.14f + 0.08f * heartbeatAmp),
+                        center = c
+                    )
+
+                    // موج اول تپش قلب (Systolic Lub Wave)
+                    val wave1Progress = ((heartbeatPhase - 0.08f).coerceAtLeast(0f) / 0.75f).coerceIn(0f, 1f)
+                    if (wave1Progress > 0f && wave1Progress < 1f) {
+                        val wave1R = globeR + wave1Progress * 15.dp.toPx()
+                        val wave1Alpha = (1f - wave1Progress) * (0.45f + 0.45f * heartbeatAmp)
+                        drawCircle(
+                            color = ChampagneGold.copy(alpha = wave1Alpha.coerceIn(0f, 1f)),
+                            radius = wave1R,
+                            center = c,
+                            style = Stroke(width = (2.6f * (1f - wave1Progress * 0.6f)).dp.toPx())
+                        )
+                    }
+
+                    // موج دوم تپش قلب (Diastolic Dub Wave)
+                    val wave2Progress = ((heartbeatPhase - 0.25f).coerceAtLeast(0f) / 0.68f).coerceIn(0f, 1f)
+                    if (wave2Progress > 0f && wave2Progress < 1f) {
+                        val wave2R = globeR + wave2Progress * 11.dp.toPx()
+                        val wave2Alpha = (1f - wave2Progress) * 0.62f
+                        drawCircle(
+                            color = ChampagneLight.copy(alpha = wave2Alpha.coerceIn(0f, 1f)),
+                            radius = wave2R,
+                            center = c,
+                            style = Stroke(width = (1.8f * (1f - wave2Progress * 0.5f)).dp.toPx())
+                        )
+                    }
+                } else {
+                    // هاله ملایم ثابت در حالت غیرمتصل
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                PlatinumSilver.copy(alpha = 0.08f),
+                                Color.Transparent
+                            ),
+                            center = c,
+                            radius = globeR * 1.08f
+                        ),
+                        radius = globeR * 1.08f,
+                        center = c
+                    )
+                }
 
                 // ۲) بدنه سه‌بعدی کره زمین (اقیانوس تاریک ابسیدین)
                 drawCircle(
@@ -1402,7 +1495,9 @@ internal fun PowerButton(
 
                     // مرحله الف: تمام کشورهای دیگر خاموش (تاریک و مات) باشند
                     for (poly in allPolys) {
-                        if (!poly.isWater && poly.iso != "IR" && poly.iso != countryGeo.isoCode) {
+                        val isOrigin = poly.iso == "IR"
+                        val isDest = destHighlightAlpha > 0.02f && poly.iso == countryGeo.isoCode
+                        if (!poly.isWater && !isOrigin && !isDest) {
                             drawRealCountryRing(
                                 latLonPairs = poly.latLonPairs,
                                 fillColor = dimCountryFill,
@@ -1424,31 +1519,34 @@ internal fun PowerButton(
                         }
                     }
 
-                    // مرحله ج: فقط کشور مبدأ (ایران IR) روشن با درخشش پلاتینیوم-شامپاینی
+                    // مرحله ج: کشور مبدأ (ایران IR) همیشه روشن است (در حالت دیسکانکت تنها کشور روشن روی کره زمین)
+                    val irAlpha = if (mode == UiMode.IDLE) 0.72f else 0.46f
                     for (poly in allPolys) {
                         if (poly.iso == "IR") {
                             drawRealCountryRing(
                                 latLonPairs = poly.latLonPairs,
-                                fillColor = PlatinumSilver.copy(alpha = 0.48f),
-                                strokeColor = ChampagneLight,
-                                strokeWidthPx = 1.35.dp.toPx(),
-                                glowColor = ChampagneGold.copy(alpha = 0.28f),
-                                glowWidthPx = 3.2.dp.toPx()
+                                fillColor = if (mode == UiMode.IDLE) ChampagneGold.copy(alpha = irAlpha) else PlatinumSilver.copy(alpha = irAlpha),
+                                strokeColor = if (mode == UiMode.IDLE) Color.White else ChampagneLight,
+                                strokeWidthPx = if (mode == UiMode.IDLE) 1.5.dp.toPx() else 1.25.dp.toPx(),
+                                glowColor = ChampagneGold.copy(alpha = if (mode == UiMode.IDLE) 0.42f else 0.25f),
+                                glowWidthPx = 3.5.dp.toPx()
                             )
                         }
                     }
 
-                    // مرحله د: فقط کشور مقصد (هلند NL / لهستان PL / آلمان DE / فرانسه FR) روشن با درخشش طلایی شامپاینی
-                    for (poly in allPolys) {
-                        if (poly.iso == countryGeo.isoCode) {
-                            drawRealCountryRing(
-                                latLonPairs = poly.latLonPairs,
-                                fillColor = ChampagneGold.copy(alpha = 0.88f),
-                                strokeColor = Color.White,
-                                strokeWidthPx = 1.5.dp.toPx(),
-                                glowColor = ChampagneGold.copy(alpha = 0.52f),
-                                glowWidthPx = 4.0.dp.toPx()
-                            )
+                    // مرحله د: کشور مقصد فقط در حالت اتصال/متصل روشن می‌شود (در حالت دیسکانکت کاملاً خاموش است)
+                    if (destHighlightAlpha > 0.02f) {
+                        for (poly in allPolys) {
+                            if (poly.iso == countryGeo.isoCode) {
+                                drawRealCountryRing(
+                                    latLonPairs = poly.latLonPairs,
+                                    fillColor = ChampagneGold.copy(alpha = (0.85f + 0.12f * heartbeatAmp) * destHighlightAlpha),
+                                    strokeColor = Color.White.copy(alpha = destHighlightAlpha),
+                                    strokeWidthPx = (1.55f + 0.35f * heartbeatAmp).dp.toPx(),
+                                    glowColor = ChampagneGold.copy(alpha = (0.50f + 0.25f * heartbeatAmp) * destHighlightAlpha),
+                                    glowWidthPx = (4.2f + 1.8f * heartbeatAmp).dp.toPx()
+                                )
+                            }
                         }
                     }
 
@@ -1469,64 +1567,13 @@ internal fun PowerButton(
                     )
                 }
 
-                // ۴) کمان سه‌بعدی دقیق مسیر اتصال از مرکز نقشه ایران به مرکز نقشه کشور مقصد (کاملاً منطبق با دستگاه مختصات کره)
+                // ۴) نقطه مبدأ روی ایران + کمان و رادار کشور مقصد (فقط در زمان اتصال/متصل)
                 val (originPt, originVis) = project3D(originLatDeg, originLonDeg, 1f)
                 val (targetPt, targetVis) = project3D(countryGeo.latitude, countryGeo.longitude, 1f)
 
-                fun sampleArc3DPoint(t: Float): Offset {
-                    val latDeg = originLatDeg + (countryGeo.latitude - originLatDeg) * t
-                    val lonDeg = originLonDeg + (countryGeo.longitude - originLonDeg) * t
-                    val lift = 1f + 0.13f * sin(PI.toFloat() * t)
-                    return project3D(latDeg, lonDeg, lift).first
-                }
-
-                if (originVis && targetVis) {
-                    val arcPath = Path()
-                    val arcSteps = 28
-                    for (step in 0..arcSteps) {
-                        val t = step.toFloat() / arcSteps.toFloat()
-                        val pt = sampleArc3DPoint(t)
-                        if (step == 0) arcPath.moveTo(pt.x, pt.y)
-                        else arcPath.lineTo(pt.x, pt.y)
-                    }
-
-                    // هاله زیرین کمان مسیر
-                    drawPath(
-                        path = arcPath,
-                        color = ChampagneGold.copy(alpha = if (isConnected) 0.30f else 0.16f),
-                        style = Stroke(width = 4.0.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-                    )
-                    // خط کمان متحرک نقطه‌چین
-                    drawPath(
-                        path = arcPath,
-                        color = if (isConnected) ChampagneLight else ChampagneGold.copy(alpha = 0.82f),
-                        style = Stroke(
-                            width = 2.1.dp.toPx(),
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 6f), phase = -pulse * 30f)
-                        )
-                    )
-
-                    // دو بسته داده نورانی متحرک دقیقاً روی کمان سه‌بعدی از ایران به کشور مقصد
-                    for (pktIdx in 0..1) {
-                        val tPkt = (pulse + pktIdx * 0.5f) % 1f
-                        val pktPt = sampleArc3DPoint(tPkt)
-                        drawCircle(
-                            color = ChampagneGold.copy(alpha = 0.48f),
-                            radius = 5.0.dp.toPx(),
-                            center = pktPt
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            radius = 2.3.dp.toPx(),
-                            center = pktPt
-                        )
-                    }
-
-                    // نقطه مبدأ دقیق داخل نقشه روشن ایران
+                if (originVis) {
                     drawCircle(
-                        color = PlatinumSilver.copy(alpha = 0.42f),
+                        color = ChampagneGold.copy(alpha = 0.42f),
                         radius = 6.0.dp.toPx(),
                         center = originPt
                     )
@@ -1537,36 +1584,82 @@ internal fun PowerButton(
                     )
                 }
 
-                // ۵) نقطه رادار چشمک‌زن دقیقاً روی نقشه روشن کشور مقصد (هلند / لهستان / آلمان)
-                if (targetVis) {
-                    for (ringIdx in 0..1) {
-                        val rPhase = (pulse + ringIdx * 0.5f) % 1f
-                        val pulseRingR = 4.5.dp.toPx() + rPhase * 22.dp.toPx()
+                fun sampleArc3DPoint(t: Float): Offset {
+                    val latDeg = originLatDeg + (countryGeo.latitude - originLatDeg) * t
+                    val lonDeg = originLonDeg + (countryGeo.longitude - originLonDeg) * t
+                    val lift = 1f + 0.13f * sin(PI.toFloat() * t)
+                    return project3D(latDeg, lonDeg, lift).first
+                }
+
+                if (destHighlightAlpha > 0.05f && originVis && targetVis) {
+                    val arcPath = Path()
+                    val arcSteps = 28
+                    for (step in 0..arcSteps) {
+                        val t = step.toFloat() / arcSteps.toFloat()
+                        val pt = sampleArc3DPoint(t)
+                        if (step == 0) arcPath.moveTo(pt.x, pt.y)
+                        else arcPath.lineTo(pt.x, pt.y)
+                    }
+
+                    drawPath(
+                        path = arcPath,
+                        color = ChampagneGold.copy(alpha = (0.28f + 0.16f * heartbeatAmp) * destHighlightAlpha),
+                        style = Stroke(width = 3.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                    drawPath(
+                        path = arcPath,
+                        color = ChampagneLight.copy(alpha = destHighlightAlpha),
+                        style = Stroke(
+                            width = 2.0.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 6f), phase = -pulse * 30f)
+                        )
+                    )
+
+                    for (pktIdx in 0..1) {
+                        val tPkt = (pulse + pktIdx * 0.5f) % 1f
+                        val pktPt = sampleArc3DPoint(tPkt)
                         drawCircle(
-                            color = ChampagneGold.copy(alpha = (1f - rPhase) * 0.90f),
-                            radius = pulseRingR,
-                            center = targetPt,
-                            style = Stroke(width = (2.0f - rPhase).dp.toPx())
+                            color = ChampagneGold.copy(alpha = 0.52f * destHighlightAlpha),
+                            radius = 4.8.dp.toPx(),
+                            center = pktPt
+                        )
+                        drawCircle(
+                            color = Color.White.copy(alpha = destHighlightAlpha),
+                            radius = 2.2.dp.toPx(),
+                            center = pktPt
                         )
                     }
+                }
+
+                // ۵) رادار تپنده روی نقشه کشور مقصد در حالت متصل
+                if (destHighlightAlpha > 0.05f && targetVis) {
+                    val beatRadiusBoost = heartbeatAmp * 7.dp.toPx()
                     drawCircle(
-                        color = ChampagneGold.copy(alpha = 0.50f * beaconBlink),
-                        radius = 10.dp.toPx(),
+                        color = ChampagneGold.copy(alpha = (0.45f + 0.35f * heartbeatAmp) * destHighlightAlpha),
+                        radius = 9.dp.toPx() + beatRadiusBoost,
+                        center = targetPt,
+                        style = Stroke(width = (1.6f + 0.8f * heartbeatAmp).dp.toPx())
+                    )
+                    drawCircle(
+                        color = ChampagneGold.copy(alpha = 0.45f * beaconBlink * destHighlightAlpha),
+                        radius = 9.dp.toPx(),
                         center = targetPt
                     )
                     drawCircle(
-                        color = Color.White,
-                        radius = 4.6.dp.toPx() * (0.85f + 0.30f * beaconBlink),
+                        color = Color.White.copy(alpha = destHighlightAlpha),
+                        radius = 4.2.dp.toPx() * (0.90f + 0.25f * heartbeatAmp),
                         center = targetPt
                     )
                     drawCircle(
-                        color = ChampagneGold,
-                        radius = 2.5.dp.toPx(),
+                        color = ChampagneGold.copy(alpha = destHighlightAlpha),
+                        radius = 2.3.dp.toPx(),
                         center = targetPt
                     )
                 }
 
-                // ۶) حلقه محیطی کروی و حلقه وضعیت اتصال/اسکن دور کره زمین
+                // ۶) حلقه محیطی کروی با ضربان قلب در حالت متصل و حلقه چرخان در حالت اسکنینگ
                 drawCircle(
                     brush = Brush.linearGradient(
                         if (isConnected) {
@@ -1577,53 +1670,29 @@ internal fun PowerButton(
                     ),
                     radius = globeR,
                     center = c,
-                    style = Stroke(width = if (isConnected) 2.2.dp.toPx() else 1.6.dp.toPx())
+                    style = Stroke(width = if (isConnected) (2.0f + 1.2f * heartbeatAmp).dp.toPx() else 1.6.dp.toPx())
                 )
 
-                when (mode) {
-                    UiMode.CONNECTED, UiMode.CONNECTING -> {
-                        val orbitR = globeR + 5.5.dp.toPx()
-                        val tl = Offset(c.x - orbitR, c.y - orbitR)
-                        val sz = Size(orbitR * 2f, orbitR * 2f)
-                        drawArc(
-                            color = ChampagneGold.copy(alpha = 0.75f),
-                            startAngle = spin,
-                            sweepAngle = 65f,
-                            useCenter = false,
-                            topLeft = tl,
-                            size = sz,
-                            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                        drawArc(
-                            color = PlatinumSilver.copy(alpha = 0.60f),
-                            startAngle = spin + 180f,
-                            sweepAngle = 65f,
-                            useCenter = false,
-                            topLeft = tl,
-                            size = sz,
-                            style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                    }
-                    UiMode.SCANNING -> {
-                        val rr = globeR + 5.dp.toPx()
-                        val tl = Offset(c.x - rr, c.y - rr)
-                        val sz = Size(rr * 2f, rr * 2f)
-                        drawArc(
-                            color = color.copy(alpha = 0.22f), startAngle = 0f, sweepAngle = 360f,
-                            useCenter = false, topLeft = tl, size = sz, style = Stroke(2.8.dp.toPx())
-                        )
+                if (isScanningOrConnecting) {
+                    val rr = globeR + 5.dp.toPx()
+                    val tl = Offset(c.x - rr, c.y - rr)
+                    val sz = Size(rr * 2f, rr * 2f)
+                    drawArc(
+                        color = color.copy(alpha = 0.22f), startAngle = 0f, sweepAngle = 360f,
+                        useCenter = false, topLeft = tl, size = sz, style = Stroke(2.4.dp.toPx())
+                    )
+                    if (mode == UiMode.SCANNING) {
                         drawArc(
                             color = ChampagneGold, startAngle = -90f, sweepAngle = 360f * animProgress,
                             useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(2.8.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                        drawArc(
-                            color = PlatinumBright, startAngle = spin, sweepAngle = 45f,
-                            useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(2.8.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(2.6.dp.toPx(), cap = StrokeCap.Round)
                         )
                     }
-                    else -> {}
+                    drawArc(
+                        color = PlatinumBright, startAngle = spin, sweepAngle = 55f,
+                        useCenter = false, topLeft = tl, size = sz,
+                        style = Stroke(2.6.dp.toPx(), cap = StrokeCap.Round)
+                    )
                 }
             }
         }
@@ -1652,16 +1721,17 @@ internal fun PowerButton(
                 Box(
                     modifier = Modifier
                         .size(7.dp)
+                        .scale(if (isConnected) 0.9f + 0.35f * heartbeatAmp else 1f)
                         .clip(CircleShape)
                         .background(
-                            if (isConnected) ChampagneGold.copy(alpha = beaconBlink)
+                            if (isConnected) ChampagneGold
                             else PlatinumSilver
                         )
                 )
                 Text(
                     text = when (mode) {
                         UiMode.IDLE -> "TAP GLOBE • CONNECT"
-                        UiMode.SCANNING -> "SCANNING NODES..."
+                        UiMode.SCANNING -> "ROTATING & SCANNING..."
                         UiMode.CONNECTING -> "CONNECTING TO ${countryGeo.isoCode}..."
                         UiMode.CONNECTED -> "CONNECTED • ${countryGeo.isoCode} (TAP TO STOP)"
                     },
@@ -1823,7 +1893,7 @@ internal fun ServiceTierSelectorBar(
                                     if (ghostMessagingOnly) "GHOST SHIELD ACTIVE • Messaging-Only (42 KB/s Cap)"
                                     else "Ghost Mode • Toggle switch to restrict to chat only"
                                 ServiceTierMode.DEDICATED ->
-                                    "Dedicated Pro • $dailyRemText"
+                                    "VIP Mode • $dailyRemText"
                                 ServiceTierMode.PUBLIC ->
                                     "Public Free • Toggle Ghost Lock for emergency chat"
                             },
@@ -1868,7 +1938,7 @@ internal fun ServiceTierSelectorBar(
         }
         }
 
-        // عکس گربه در زمان کانکت شدن بالای کادر Public / Dedicated / Ghost Mode قرار می‌گیرد
+        // عکس گربه در زمان کانکت شدن بالای کادر Public / VIP Mode / Ghost Mode قرار می‌گیرد
         if (catPresence > 0.01f) {
             Image(
                 painter = painterResource(id = R.drawable.penny_cat_peeking),
@@ -1898,16 +1968,11 @@ internal fun PennyBottomNavBar(
     onSelectTab: (BottomNavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // حذف کامل کادر دور ۴ دکمه پایین طبق درخواست کاربر
     Surface(
         color = Color(0xFF121319).copy(alpha = 0.98f),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .border(
-                width = 1.dp,
-                color = ObsidianBorder,
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-            )
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
@@ -1922,16 +1987,12 @@ internal fun PennyBottomNavBar(
                 val fg = if (active) ChampagneGold else PlatinumMuted
                 val shape = RoundedCornerShape(12.dp)
                 Surface(
-                    color = if (active) ObsidianElevated else Color.Transparent,
+                    color = if (active) ObsidianElevated.copy(alpha = 0.65f) else Color.Transparent,
                     shape = shape,
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 3.dp)
                         .clip(shape)
-                        .then(
-                            if (active) Modifier.border(1.dp, ChampagneGold.copy(alpha = 0.45f), shape)
-                            else Modifier
-                        )
                         .tvDpadClickable(shape = shape) { onSelectTab(tab) }
                 ) {
                     Row(
@@ -1993,21 +2054,23 @@ internal fun PennyBottomNavBar(
                                     )
                                 }
                                 BottomNavTab.PROFILE -> {
+                                    // آیکون چرخ‌دنده تنظیمات (Settings Gear)
                                     drawCircle(
                                         color = fg,
                                         radius = w * 0.22f,
-                                        center = Offset(w * 0.5f, h * 0.32f),
+                                        center = Offset(w * 0.5f, h * 0.5f),
                                         style = Stroke(width = st)
                                     )
-                                    drawArc(
-                                        color = fg,
-                                        startAngle = 200f,
-                                        sweepAngle = 140f,
-                                        useCenter = false,
-                                        topLeft = Offset(w * 0.18f, h * 0.54f),
-                                        size = Size(w * 0.64f, h * 0.44f),
-                                        style = Stroke(width = st, cap = StrokeCap.Round)
-                                    )
+                                    for (deg in 0 until 360 step 60) {
+                                        val rad = deg * (PI.toFloat() / 180f)
+                                        drawLine(
+                                            color = fg,
+                                            start = Offset(w * 0.5f + cos(rad) * w * 0.26f, h * 0.5f + sin(rad) * h * 0.26f),
+                                            end = Offset(w * 0.5f + cos(rad) * w * 0.44f, h * 0.5f + sin(rad) * h * 0.44f),
+                                            strokeWidth = st,
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2019,7 +2082,7 @@ internal fun PennyBottomNavBar(
                                 tab.title
                             },
                             color = if (active) PlatinumBright else PlatinumMuted,
-                            fontSize = 10.5.sp,
+                            fontSize = 10.sp,
                             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
                             maxLines = 1,
                             softWrap = false
@@ -2033,6 +2096,7 @@ internal fun PennyBottomNavBar(
 
 /**
  * تب سرورها: هدر و انتخاب‌گر حالت ثابت هستند و فقط لیست سرورها اسکرول می‌شود
+ * (با سایز فونت کوچکتر و متوازن برای نام سرورها + کلید یکتای امن برای جلوگیری از کرش در زمان تغییر سرور)
  */
 @Composable
 internal fun ServersTabPage(
@@ -2073,13 +2137,13 @@ internal fun ServersTabPage(
                 Text(
                     text = "Server Network",
                     color = PlatinumBright,
-                    fontSize = 18.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = "Verified stealth nodes • Zero config leak",
+                    text = "Load-balanced stealth nodes • Zero config leak",
                     color = PlatinumMuted,
-                    fontSize = 10.5.sp
+                    fontSize = 10.sp
                 )
             }
             val scanShape = RoundedCornerShape(11.dp)
@@ -2100,7 +2164,7 @@ internal fun ServersTabPage(
                     Text(
                         text = if (busy) "Scanning..." else "Scan Mode",
                         color = ChampagneLight,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         softWrap = false
@@ -2159,14 +2223,14 @@ internal fun ServersTabPage(
                         Text(
                             text = "No servers loaded for ${selectedMode.title}",
                             color = PlatinumBright,
-                            fontSize = 13.5.sp,
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(5.dp))
                         Text(
-                            text = "Tap 'Scan Mode' above to fetch and verify healthy nodes.",
+                            text = "Tap 'Scan Mode' above to fetch and load-balance healthy nodes.",
                             color = PlatinumMuted,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -2178,21 +2242,21 @@ internal fun ServersTabPage(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
                 contentPadding = PaddingValues(bottom = 8.dp)
             ) {
-                itemsIndexed(servers, key = { _, s -> s.guid }) { idx, srv ->
+                itemsIndexed(servers, key = { idx, s -> "${s.guid}_$idx" }) { idx, srv ->
                     val isSelected = isRunning && srv.guid == selectedGuid
                     val geo = getCountryGeoInfo(srv.codeTag)
                     val tierBadge = when (srv.codeTag) {
                         "DED-NL" -> "REALITY • NL"
                         "DED-PL" -> "STEALTH • PL"
                         "GHOST" -> "GHOST • CHAT"
-                        "VPS-1" -> "DEDICATED • DE"
+                        "VPS-1" -> "VIP • DE"
                         else -> "PUBLIC • FREE"
                     }
                     val isOwn = isDedicatedServerTag(srv.codeTag)
-                    val itemShape = RoundedCornerShape(14.dp)
+                    val itemShape = RoundedCornerShape(13.dp)
 
                     Surface(
                         color = if (isSelected) ObsidianElevated else ObsidianCard,
@@ -2201,7 +2265,7 @@ internal fun ServersTabPage(
                             .fillMaxWidth()
                             .clip(itemShape)
                             .border(
-                                width = if (isSelected) 1.4.dp else 1.dp,
+                                width = if (isSelected) 1.3.dp else 1.dp,
                                 color = if (isSelected) ChampagneGold else ObsidianBorder,
                                 shape = itemShape
                             )
@@ -2210,42 +2274,42 @@ internal fun ServersTabPage(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 11.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .width(42.dp)
-                                    .height(34.dp)
-                                    .clip(RoundedCornerShape(9.dp))
+                                    .width(38.dp)
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(
                                         if (isOwn) Color(0xFF2D2720) else Color(0xFF22242E)
                                     )
                                     .border(
                                         1.dp,
                                         if (isOwn) ChampagneGold.copy(alpha = 0.7f) else Color(0xFF454857),
-                                        RoundedCornerShape(9.dp)
+                                        RoundedCornerShape(8.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = if (srv.codeTag == "GHOST") "GH" else geo.isoCode,
                                     color = if (isOwn) ChampagneLight else PlatinumBright,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
 
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(9.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = srv.label.ifBlank { "${selectedMode.shortTitle} Node #${idx + 1}" },
                                         color = PlatinumBright,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false)
@@ -2253,14 +2317,14 @@ internal fun ServersTabPage(
                                     Spacer(Modifier.width(6.dp))
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(5.dp))
+                                            .clip(RoundedCornerShape(4.dp))
                                             .background(ChampagneGold.copy(alpha = if (isOwn) 0.18f else 0.08f))
-                                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
                                     ) {
                                         Text(
                                             text = tierBadge,
                                             color = if (isOwn) ChampagneGold else PlatinumSilver,
-                                            fontSize = 8.sp,
+                                            fontSize = 7.sp,
                                             fontWeight = FontWeight.Bold,
                                             fontFamily = FontFamily.Monospace,
                                             maxLines = 1,
@@ -2268,15 +2332,15 @@ internal fun ServersTabPage(
                                         )
                                     }
                                 }
-                                Spacer(Modifier.height(2.dp))
+                                Spacer(Modifier.height(1.dp))
                                 Text(
                                     text = if (isSelected) {
                                         "Active Tunnel • ${geo.countryName} • ${geo.cityName}"
                                     } else {
-                                        "${geo.countryName} • ${geo.cityName} • Tap to connect"
+                                        "${geo.countryName} • ${geo.cityName} • Balanced Node"
                                     },
                                     color = if (isSelected) ChampagneGold else PlatinumMuted,
-                                    fontSize = 9.5.sp,
+                                    fontSize = 8.5.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -2288,7 +2352,7 @@ internal fun ServersTabPage(
                                 Text(
                                     text = if (srv.ms > 0) "${srv.ms} ms" else "READY",
                                     color = if (isOwn) ChampagneGold else PlatinumSilver,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontFamily = FontFamily.Monospace,
                                     maxLines = 1,
@@ -2297,7 +2361,7 @@ internal fun ServersTabPage(
                                 Text(
                                     text = if (isSelected) "ACTIVE" else "CONNECT ›",
                                     color = if (isSelected) ChampagneLight else PlatinumMuted,
-                                    fontSize = 8.5.sp,
+                                    fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
                                     softWrap = false
@@ -2601,7 +2665,7 @@ private fun DoctorMetricCard(
 }
 
 /**
- * تب پروفایل: بدون اسکرول عمودی (Zero-Scroll) و با رفع کامل مشکل فشرده شدن دکمه ACTIVATE ›
+ * تب تنظیمات (Settings): بدون اسکرول عمودی (Zero-Scroll) و شامل آیتم‌های کامل تنظیمات VPN، تعادل بار و سهمیه VIP
  */
 @Composable
 internal fun ProfileTabPage(
@@ -2622,6 +2686,12 @@ internal fun ProfileTabPage(
     onAutoReconnectChange: (Boolean) -> Unit,
     splitTunnelLocal: Boolean,
     onSplitTunnelChange: (Boolean) -> Unit,
+    cleanDnsShield: Boolean = true,
+    onCleanDnsShieldChange: (Boolean) -> Unit = {},
+    loadBalanceEnabled: Boolean = true,
+    onLoadBalanceChange: (Boolean) -> Unit = {},
+    killSwitchEnabled: Boolean = true,
+    onKillSwitchChange: (Boolean) -> Unit = {},
     onCopyUuid: () -> Unit,
     onOpenVipDialog: () -> Unit,
     onOpenLogs: () -> Unit,
@@ -2640,9 +2710,9 @@ internal fun ProfileTabPage(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "User Profile & Quota",
+                text = "Settings & VIP Quota",
                 color = PlatinumBright,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.ExtraBold
             )
             Box(
@@ -2655,22 +2725,22 @@ internal fun ProfileTabPage(
                 Text(
                     text = "MODE: ${serviceTierMode.shortTitle.uppercase()}",
                     color = ChampagneGold,
-                    fontSize = 9.5.sp,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.ExtraBold,
                     fontFamily = FontFamily.Monospace
                 )
             }
         }
 
-        // 1) کارت شناسه اختصاصی کاربر (UUID + Hardware Fingerprint)
+        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode و دکمه ارتقا به VIP 50GB
         Surface(
             color = ObsidianCard,
-            shape = RoundedCornerShape(15.dp),
+            shape = RoundedCornerShape(14.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(14.dp))
         ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2678,21 +2748,22 @@ internal fun ProfileTabPage(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Dedicated User Identity",
+                            text = "VIP Mode Daily Quota & HW ID",
                             color = ChampagneGold,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
                             maxLines = 1
                         )
                         Text(
-                            text = "HW ID: $deviceId • Anti-Reset Bound",
+                            text = "UUID: ${userUuid.take(18)}... • Left: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
                             color = PlatinumMuted,
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontFamily = FontFamily.Monospace,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    val copyShape = RoundedCornerShape(9.dp)
+                    val copyShape = RoundedCornerShape(8.dp)
                     Surface(
                         color = ObsidianElevated,
                         shape = copyShape,
@@ -2702,89 +2773,23 @@ internal fun ProfileTabPage(
                             .tvDpadClickable(shape = copyShape) { onCopyUuid() }
                     ) {
                         Text(
-                            text = "Copy UUID",
+                            text = "Copy ID",
                             color = ChampagneLight,
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-                Surface(
-                    color = ObsidianDeep,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, Color(0xFF282A34), RoundedCornerShape(8.dp))
-                ) {
-                    Text(
-                        text = userUuid,
-                        color = PlatinumSilver,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
 
-        // 2) کارت سهمیه ۱ گیگابایت روزانه سرویس اختصاصی + دکمه اصلاح‌شده ACTIVATE VIP
-        Surface(
-            color = ObsidianCard,
-            shape = RoundedCornerShape(15.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Dedicated Pro Daily Quota",
-                        color = PlatinumBright,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Text(
-                        text = "Resets at 00:00",
-                        color = ChampagneGold,
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Used: ${fmtBytes(dailyUsedBytes)}",
-                        color = PlatinumMuted,
-                        fontSize = 10.sp
-                    )
-                    Text(
-                        text = "Left: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
-                        color = ChampagneLight,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
                 Spacer(Modifier.height(5.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(3.dp))
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
                         .background(Color(0xFF262832))
                 ) {
                     Box(
@@ -2799,8 +2804,8 @@ internal fun ProfileTabPage(
                     )
                 }
 
-                Spacer(Modifier.height(8.dp))
-                val vipShape = RoundedCornerShape(11.dp)
+                Spacer(Modifier.height(6.dp))
+                val vipShape = RoundedCornerShape(10.dp)
                 Surface(
                     color = ObsidianElevated,
                     shape = vipShape,
@@ -2813,24 +2818,23 @@ internal fun ProfileTabPage(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // استفاده از Modifier.weight(1f) تا متن سمت چپ هرگز دکمه ACTIVATE › را فشرده نکند
                         Row(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(end = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            GlassDiamondIcon(size = 14.dp)
-                            Spacer(Modifier.width(8.dp))
+                            GlassDiamondIcon(size = 13.dp)
+                            Spacer(Modifier.width(7.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (vipActive) "VIP 50 GB Plan Active" else "Upgrade to VIP (50 GB / Month)",
+                                    text = if (vipActive) "VIP 50 GB Plan Active" else "Upgrade to VIP Mode (50 GB / Month)",
                                     color = PlatinumBright,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 10.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -2840,12 +2844,12 @@ internal fun ProfileTabPage(
                                     val remB = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
                                     "$remD days • ${fmtBytes(remB)} remaining"
                                 } else {
-                                    "50 GB dedicated traffic & zero ads"
+                                    "50 GB high-speed VIP traffic & zero ads"
                                 }
                                 Text(
                                     text = vipSub,
                                     color = PlatinumMuted,
-                                    fontSize = 9.5.sp,
+                                    fontSize = 8.5.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -2854,15 +2858,15 @@ internal fun ProfileTabPage(
 
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(7.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(ChampagneGold.copy(alpha = 0.18f))
-                                .border(1.dp, ChampagneGold.copy(alpha = 0.65f), RoundedCornerShape(7.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .border(1.dp, ChampagneGold.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
                         ) {
                             Text(
                                 text = if (vipActive) "MANAGE" else "ACTIVATE ›",
                                 color = ChampagneLight,
-                                fontSize = 9.5.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontFamily = FontFamily.Monospace,
                                 maxLines = 1,
@@ -2874,42 +2878,63 @@ internal fun ProfileTabPage(
             }
         }
 
-        // 3) تنظیمات Ghost Mode و حفاظت شبکه (فشرده و بدون اسکرول)
+        // 2) آیتم‌های جامع تنظیمات شبکه، تعادل بار و امنیت (۶ سوییچ کلیدی بدون نیاز به اسکرول)
         Surface(
             color = ObsidianCard,
-            shape = RoundedCornerShape(15.dp),
+            shape = RoundedCornerShape(14.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(14.dp))
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "Ghost Protocol & Protection",
+                    text = "Core VPN & Load Balancer Settings",
                     color = PlatinumBright,
-                    fontSize = 12.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
 
                 CompactSettingToggleRow(
+                    title = "Smart Server Load Balancer",
+                    subtitle = "Distributes users evenly across healthy nodes",
+                    checked = loadBalanceEnabled,
+                    onCheckedChange = onLoadBalanceChange
+                )
+
+                CompactSettingToggleRow(
+                    title = "VPN Kill Switch & Leak Guard",
+                    subtitle = "Prevents unencrypted traffic leaks on drop",
+                    checked = killSwitchEnabled,
+                    onCheckedChange = onKillSwitchChange
+                )
+
+                CompactSettingToggleRow(
+                    title = "Clean DNS & Malware Shield (1.1.1.2)",
+                    subtitle = "Encrypted DoH • Blocks trackers & DNS spoofing",
+                    checked = cleanDnsShield,
+                    onCheckedChange = onCleanDnsShieldChange
+                )
+
+                CompactSettingToggleRow(
                     title = "Ghost Mode Messaging-Only Lock",
-                    subtitle = "Caps Ghost speed to 42 KB/s & blocks video/updates",
+                    subtitle = "Caps Ghost to 42 KB/s & blocks heavy media",
                     checked = ghostMessagingOnly,
                     onCheckedChange = onGhostMessagingOnlyChange
                 )
 
                 CompactSettingToggleRow(
                     title = "Auto-Switch Unresponsive Server",
-                    subtitle = "Switches node if tunnel download drops",
+                    subtitle = "Switches to next balanced node if tunnel drops",
                     checked = autoSwitch,
                     onCheckedChange = onAutoSwitchChange
                 )
 
                 CompactSettingToggleRow(
                     title = "Auto-Reconnect & Bypass Domestic (.ir)",
-                    subtitle = "Keeps VPN alive & routes banks directly",
+                    subtitle = "Keeps VPN alive & routes local banks directly",
                     checked = autoReconnect && splitTunnelLocal,
                     onCheckedChange = {
                         onAutoReconnectChange(it)
@@ -2917,13 +2942,13 @@ internal fun ProfileTabPage(
                     }
                 )
 
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(3.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val btnShape = RoundedCornerShape(10.dp)
+                    val btnShape = RoundedCornerShape(9.dp)
                     Surface(
                         color = ObsidianElevated,
                         shape = btnShape,
@@ -2936,10 +2961,10 @@ internal fun ProfileTabPage(
                         Text(
                             text = "Activity Logs",
                             color = PlatinumBright,
-                            fontSize = 10.5.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 7.dp)
+                            modifier = Modifier.padding(vertical = 6.dp)
                         )
                     }
                     Surface(
@@ -2954,10 +2979,10 @@ internal fun ProfileTabPage(
                         Text(
                             text = "Check Update",
                             color = ChampagneLight,
-                            fontSize = 10.5.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 7.dp)
+                            modifier = Modifier.padding(vertical = 6.dp)
                         )
                     }
                 }

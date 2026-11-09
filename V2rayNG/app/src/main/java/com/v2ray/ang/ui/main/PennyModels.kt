@@ -35,10 +35,10 @@ internal enum class ServiceTierMode(
         description = "Community public nodes • Free general browsing"
     ),
     DEDICATED(
-        title = "Dedicated Pro",
-        shortTitle = "Dedicated",
-        badge = "1 GB / DAY • PRO",
-        description = "Private high-speed nodes • 1 GB/day per hardware UUID"
+        title = "VIP Mode",
+        shortTitle = "VIP Mode",
+        badge = "1 GB / DAY • VIP",
+        description = "Private high-speed VIP nodes • 1 GB/day per hardware UUID"
     ),
     GHOST(
         title = "Ghost Mode",
@@ -49,13 +49,13 @@ internal enum class ServiceTierMode(
 }
 
 /**
- * ۴ تب اصلی ناوبری پایین صفحه (Home • Servers • Doctor • Profile)
+ * ۴ تب اصلی ناوبری پایین صفحه (Home • Servers • Doctor • Settings)
  */
 internal enum class BottomNavTab(val title: String) {
     HOME("Home"),
     SERVERS("Servers"),
     DOCTOR("Doctor"),
-    PROFILE("Profile")
+    PROFILE("Settings")
 }
 
 /**
@@ -128,9 +128,9 @@ internal data class PennyServer(
 
 internal object Strings {
     fun subtitle(l: AppLang, vip: Boolean) =
-        "Connects When Others Can't"
+        "Connect When Others Can't"
 
-    fun splashTagline(l: AppLang) = "Connects When Others Can't"
+    fun splashTagline(l: AppLang) = "Connect When Others Can't"
     fun ready(l: AppLang) = "Ready to Connect"
     fun connectedBadge(l: AppLang, vip: Boolean) =
         if (vip) "Connected • Encrypted Tunnel" else "Connected"
@@ -146,16 +146,16 @@ internal object Strings {
     fun totalData(l: AppLang) = "Total Data"
 
     fun noServerYet(l: AppLang, vip: Boolean) =
-        if (vip) "Tap Scan or Connect to initialize Dedicated nodes"
+        if (vip) "Tap Scan or Connect to initialize VIP Mode nodes"
         else "Tap Scan or Connect to initialize Public nodes"
 
     fun scanServersBtn(l: AppLang, vip: Boolean) =
-        if (vip) "Scan Dedicated" else "Scan Servers"
+        if (vip) "Scan VIP Mode" else "Scan Servers"
 
     fun nextServerBtn(l: AppLang) = "Next Server"
 
     fun scanInfo(l: AppLang, min: Long, count: Int, vip: Boolean): String {
-        val tag = if (vip) "Dedicated " else ""
+        val tag = if (vip) "VIP " else ""
         val ago = when {
             min < 1 -> "just now"
             min < 60 -> "${min}m ago"
@@ -165,10 +165,10 @@ internal object Strings {
     }
 
     fun noScanYet(l: AppLang, vip: Boolean) =
-        if (vip) "Dedicated Vault Ready • Tap Connect" else "Tap Scan or Connect to start"
+        if (vip) "VIP Vault Ready • Tap Connect" else "Tap Scan or Connect to start"
 
     fun menuBestConfigs(l: AppLang, vip: Boolean) =
-        if (vip) "Dedicated Pro Servers" else "Best Servers List"
+        if (vip) "VIP Mode Servers" else "Best Servers List"
 
     fun menuAppLog(l: AppLang) = "App Activity Logs"
     fun menuCoreLog(l: AppLang) = "Core Logs (Logcat)"
@@ -216,14 +216,23 @@ internal fun isDedicatedServerTag(codeTag: String): Boolean {
         codeTag.startsWith("DED")
 }
 
-internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
-    val tagged = list.map { s ->
+/**
+ * توزیع متوازن بار بین سرورها (Smart Load Balancing) + حذف کامل سرورهای تکراری (distinctBy guid)
+ * تا همه کاربران روی سرور شماره ۱ متمرکز نشوند و فشار به صورت مساوی بین سرورهای سالم تقسیم شود.
+ */
+internal fun assignLabels(
+    list: List<PennyServer>,
+    isVipList: Boolean = false,
+    loadBalanceSeed: Int = 0
+): List<PennyServer> {
+    val uniqueList = list.distinctBy { it.guid }
+    val tagged = uniqueList.map { s ->
         val origin = detectServerOriginTag(s.guid)
         val realVerified = (MmkvManager.decodeServerAffiliationInfo(s.guid)?.testDelayMillis ?: 0L) > 0L
         Triple(s, origin, realVerified)
     }
 
-    val sorted = tagged.sortedWith(
+    val baseSorted = tagged.sortedWith(
         compareBy<Triple<PennyServer, String, Boolean>> { (_, origin, _) ->
             when (origin) {
                 "DED-NL", "DED-PL" -> 0
@@ -238,7 +247,36 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         }
     )
 
-    return sorted.mapIndexed { index, (s, origin, _) ->
+    // تعادل بار هوشمند (Load Balancing): گروه‌بندی سرورهای هم‌رده در بازه‌های پینگ ۹۰ میلی‌ثانیه‌ای
+    // و چرخش ترتیب آن‌ها بر اساس هش سخت‌افزاری کاربر تا کاربران به صورت مساوی بین همه سرورها پخش شوند
+    val balanced = if (loadBalanceSeed != 0 && baseSorted.size > 1) {
+        val positiveSeed = kotlin.math.abs(loadBalanceSeed)
+        baseSorted
+            .groupBy { (s, origin, realVerified) ->
+                val tierGroup = when (origin) {
+                    "DED-NL", "DED-PL" -> 0
+                    "GHOST" -> 1
+                    "VPS-1" -> 2
+                    else -> 3
+                }
+                val verGroup = if (realVerified) 0 else 1
+                val latencyBucket = if (s.ms > 0L) (s.ms / 90L) else 99L
+                "$tierGroup:$verGroup:$latencyBucket"
+            }
+            .values
+            .flatMap { bucket ->
+                if (bucket.size <= 1) {
+                    bucket
+                } else {
+                    val shift = positiveSeed % bucket.size
+                    bucket.drop(shift) + bucket.take(shift)
+                }
+            }
+    } else {
+        baseSorted
+    }
+
+    return balanced.mapIndexed { index, (s, origin, _) ->
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
             if (cfg != null) {
@@ -262,10 +300,10 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         }
 
         val displayLabel = when (origin) {
-            "DED-NL" -> "Netherlands Pro • #${index + 1}"
-            "DED-PL" -> "Poland Pro • #${index + 1}"
-            "GHOST" -> "Ghost Messaging • #${index + 1}"
-            "VPS-1" -> "Germany Pro • #${index + 1}"
+            "DED-NL" -> "Netherlands VIP • #${index + 1}"
+            "DED-PL" -> "Poland VIP • #${index + 1}"
+            "GHOST" -> "Ghost Chat • #${index + 1}"
+            "VPS-1" -> "Germany VIP • #${index + 1}"
             "CF-1", "CF-2", "BPB" -> "Europe Edge • #${index + 1}"
             else -> "Public Node • #${index + 1}"
         }

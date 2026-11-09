@@ -177,6 +177,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private var autoReconnect by mutableStateOf(true)
     private var splitTunnelLocal by mutableStateOf(true)
     private var cleanDnsShield by mutableStateOf(true)
+    private var loadBalanceEnabled by mutableStateOf(true)
+    private var killSwitchEnabled by mutableStateOf(true)
     private var connectionProfile by mutableStateOf(ConnectionProfile.SMART)
     private var userWantsConnected by mutableStateOf(false)
 
@@ -664,6 +666,8 @@ class MainActivity : HelperBaseComponentActivity() {
         autoReconnect = prefs.getBoolean("auto_reconnect", true)
         splitTunnelLocal = prefs.getBoolean("split_tunnel_local", true)
         cleanDnsShield = prefs.getBoolean("clean_dns_shield", true)
+        loadBalanceEnabled = prefs.getBoolean("load_balance_enabled", true)
+        killSwitchEnabled = prefs.getBoolean("kill_switch_enabled", true)
         val savedProf = prefs.getString("conn_profile", ConnectionProfile.SMART.name) ?: ConnectionProfile.SMART.name
         connectionProfile = runCatching { ConnectionProfile.valueOf(savedProf) }.getOrDefault(ConnectionProfile.SMART)
         val savedTier = prefs.getString("service_tier_mode", ServiceTierMode.DEDICATED.name) ?: ServiceTierMode.DEDICATED.name
@@ -713,6 +717,8 @@ class MainActivity : HelperBaseComponentActivity() {
         licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
             ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
+        val lbSeed = if (loadBalanceEnabled) kotlin.math.abs(deviceId.hashCode()) else 0
+
         prefs.getString("list", null)?.let { json ->
             try {
                 val arr = JSONArray(json)
@@ -725,7 +731,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     }
                 }
                 bestList.clear()
-                bestList.addAll(assignLabels(out, isVipList = false))
+                bestList.addAll(assignLabels(out, isVipList = false, loadBalanceSeed = lbSeed))
             } catch (e: Exception) {
                 plog("Error loading Public cache: ${e.message}")
             }
@@ -743,9 +749,9 @@ class MainActivity : HelperBaseComponentActivity() {
                     }
                 }
                 vipBestList.clear()
-                vipBestList.addAll(assignLabels(out, isVipList = true))
+                vipBestList.addAll(assignLabels(out, isVipList = true, loadBalanceSeed = lbSeed))
             } catch (e: Exception) {
-                plog("Error loading Dedicated cache: ${e.message}")
+                plog("Error loading VIP Mode cache: ${e.message}")
             }
         }
 
@@ -761,7 +767,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     }
                 }
                 ghostBestList.clear()
-                ghostBestList.addAll(assignLabels(out, isVipList = true))
+                ghostBestList.addAll(assignLabels(out, isVipList = true, loadBalanceSeed = lbSeed))
             } catch (e: Exception) {
                 plog("Error loading Ghost cache: ${e.message}")
             }
@@ -1019,7 +1025,7 @@ class MainActivity : HelperBaseComponentActivity() {
             }
             plog("Ghost Messaging-Only restriction: $enabled")
             if (isRunning && serviceTierMode == ServiceTierMode.GHOST) {
-                LauncherManager.restartService(this@MainActivity)
+                safeRestartVpnOnMainThread()
             }
         }
 
@@ -1043,7 +1049,12 @@ class MainActivity : HelperBaseComponentActivity() {
                 statusMessage = "${newMode.title} selected (${newMode.badge})"
                 plog("Switched service mode to ${newMode.title}")
                 if (isRunning) {
-                    LauncherManager.restartService(this@MainActivity)
+                    val targetServer = activeList.firstOrNull()
+                    if (targetServer != null) {
+                        connectToEntry(targetServer)
+                    } else {
+                        safeRestartVpnOnMainThread()
+                    }
                 }
             }
         }
@@ -1264,7 +1275,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                         val tuned = PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
                                         statusMessage = "ISP Auto-Tuned: $tuned"
                                         if (isRunning) {
-                                            LauncherManager.restartService(this@MainActivity)
+                                            safeRestartVpnOnMainThread()
                                         }
                                     },
                                     onScanNodesClick = { startScanOnly() },
@@ -1300,6 +1311,37 @@ class MainActivity : HelperBaseComponentActivity() {
                                         splitTunnelLocal = it
                                         prefs.edit().putBoolean("split_tunnel_local", it).apply()
                                         MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
+                                    },
+                                    cleanDnsShield = cleanDnsShield,
+                                    onCleanDnsShieldChange = {
+                                        cleanDnsShield = it
+                                        prefs.edit().putBoolean("clean_dns_shield", it).apply()
+                                        val dnsServer = if (it) "1.1.1.2" else "1.1.1.1"
+                                        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsServer)
+                                        statusMessage = "Encrypted DNS set to $dnsServer"
+                                    },
+                                    loadBalanceEnabled = loadBalanceEnabled,
+                                    onLoadBalanceChange = {
+                                        loadBalanceEnabled = it
+                                        prefs.edit().putBoolean("load_balance_enabled", it).apply()
+                                        val seed = if (it) kotlin.math.abs(deviceId.hashCode()) else 0
+                                        val target = activeList.toList()
+                                        if (target.isNotEmpty()) {
+                                            val rebalanced = assignLabels(
+                                                target,
+                                                isVipList = serviceTierMode != ServiceTierMode.PUBLIC,
+                                                loadBalanceSeed = seed
+                                            )
+                                            activeList.clear()
+                                            activeList.addAll(rebalanced)
+                                        }
+                                        statusMessage = if (it) "Smart Server Load Balancing Enabled" else "Strict Latency Sorting Enabled"
+                                    },
+                                    killSwitchEnabled = killSwitchEnabled,
+                                    onKillSwitchChange = {
+                                        killSwitchEnabled = it
+                                        prefs.edit().putBoolean("kill_switch_enabled", it).apply()
+                                        statusMessage = if (it) "VPN Kill Switch & Leak Guard Active" else "VPN Kill Switch Disabled"
                                     },
                                     onCopyUuid = { copyUuidToClipboard() },
                                     onOpenVipDialog = { showVipDialog = true },
@@ -1926,7 +1968,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         modifier = Modifier.heightIn(max = 420.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        itemsIndexed(listToShow, key = { _, item -> item.guid }) { index, s ->
+                        itemsIndexed(listToShow, key = { idx, item -> "${item.guid}_$idx" }) { index, s ->
                             StaggeredServerItem(index = index) {
                                 val active = isRunning && s.guid == selectedGuid
                                 val isOwn = isDedicatedServerTag(s.codeTag)
@@ -1954,25 +1996,25 @@ class MainActivity : HelperBaseComponentActivity() {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 11.dp, vertical = 9.dp),
+                                            .padding(horizontal = 11.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(RoundedCornerShape(9.dp))
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .background(if (isOwn) Color(0xFF2F281F) else Color(0xFF17181D))
                                                 .border(
                                                     1.dp,
                                                     if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.8f) else Color(0xFF3E404A),
-                                                    RoundedCornerShape(9.dp)
+                                                    RoundedCornerShape(8.dp)
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = tagText,
                                                 color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB8BDCB),
-                                                fontSize = 9.5.sp,
+                                                fontSize = 9.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontFamily = FontFamily.Monospace
                                             )
@@ -1987,7 +2029,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                                     text = s.label,
                                                     color = Color(0xFFF2F4F8),
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 11.5.sp,
+                                                    fontSize = 10.5.sp,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -2001,18 +2043,18 @@ class MainActivity : HelperBaseComponentActivity() {
                                                         .padding(horizontal = 4.dp, vertical = 1.dp)
                                                 ) {
                                                     Text(
-                                                        text = if (isOwn) "DEDICATED" else "PUBLIC",
+                                                        text = if (isOwn) "VIP MODE" else "PUBLIC",
                                                         color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB4B9C7),
-                                                        fontSize = 8.sp,
+                                                        fontSize = 7.sp,
                                                         fontWeight = FontWeight.ExtraBold,
                                                         fontFamily = FontFamily.Monospace
                                                     )
                                                 }
                                             }
                                             Text(
-                                                text = if (isOwn) "Our Cloudflare Server ($tagText)" else "Public Community Server",
+                                                text = if (isOwn) "Balanced VIP Node ($tagText)" else "Public Community Server",
                                                 color = if (isOwn) Color(0xFFD8C7B0) else Color(0xFF8E929E),
-                                                fontSize = 9.5.sp,
+                                                fontSize = 8.5.sp,
                                                 maxLines = 1
                                             )
                                         }
@@ -2403,10 +2445,32 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
+    /**
+     * ری‌استارت امن سرویس VPN روی ترد اصلی (Dispatchers.Main) برای جلوگیری کامل از کرش
+     * NullPointerException: Can't toast on a thread that has not called Looper.prepare()
+     * که در LauncherManager.restartService در CoreServiceManager رخ می‌داد.
+     */
+    private fun safeRestartVpnOnMainThread() {
+        lifecycleScope.launch(Dispatchers.Main) {
+            runCatching {
+                if (mainViewModel.uiState.value.isRunning) {
+                    LauncherManager.stopService(this@MainActivity)
+                    delay(650L)
+                }
+                if (SettingsManager.isVpnMode() && VpnService.prepare(this@MainActivity) != null) {
+                    return@runCatching
+                }
+                LauncherManager.startService(this@MainActivity)
+            }.onFailure { e ->
+                plog("Safe restart warning: ${e.message}")
+            }
+        }
+    }
+
     private fun switchNext() {
-        if (phase != Phase.IDLE) return
+        workJob?.cancel()
         phase = Phase.CONNECTING
-        statusMessage = "Switching to next server..."
+        statusMessage = "Switching to next balanced server..."
         val current = mainViewModel.uiState.value.selectedGuid
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -2419,7 +2483,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 ui {
                     statusMessage = if (res != null) {
-                        "Switched to new server"
+                        "Switched to ${res.label}"
                     } else {
                         "No other healthy server found."
                     }
@@ -2435,15 +2499,20 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun connectToEntry(entry: PennyServer) {
-        if (phase != Phase.IDLE) return
-        if (!mainViewModel.uiState.value.isRunning && SettingsManager.isVpnMode() &&
-            VpnService.prepare(this) != null
-        ) {
-            statusMessage = "Tap the main Connect button once to grant VPN permission."
+        if (entry.guid.isBlank()) return
+        val hasVpnPerm = !SettingsManager.isVpnMode() || VpnService.prepare(this) == null
+        if (!hasVpnPerm) {
+            MmkvManager.setSelectServer(entry.guid)
+            mainViewModel.updateSelectedGuid(entry.guid)
+            val intent = VpnService.prepare(this)
+            if (intent != null) {
+                requestVpnPermission.launch(intent)
+            }
             return
         }
+        workJob?.cancel()
         phase = Phase.CONNECTING
-        statusMessage = "Connecting to ${entry.label}..."
+        statusMessage = "Switching to ${entry.label}..."
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val ping = connectAndVerify(entry.guid)
@@ -2451,7 +2520,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     markConnected(entry.guid, ping)
                     ui {
                         showInterstitialAdIfReady()
-                        statusMessage = "Connected"
+                        statusMessage = "Connected • ${entry.label}"
                     }
                 } else {
                     ui {
@@ -2462,7 +2531,7 @@ class MainActivity : HelperBaseComponentActivity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                plog("Error: ${e.message}")
+                plog("Switch error: ${e.message}")
             } finally {
                 withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
             }
@@ -2763,13 +2832,15 @@ class MainActivity : HelperBaseComponentActivity() {
 
         ui {
             scanProgress = 0.94f
-            statusMessage = "Building ${currentMode.shortTitle} list..."
+            statusMessage = "Balancing ${currentMode.shortTitle} nodes..."
         }
+        val lbSeed = if (loadBalanceEnabled) kotlin.math.abs(deviceId.hashCode()) else 0
         val entries = assignLabels(
             combinedCandidates.map { (g, d) ->
                 PennyServer(g, "", d, "", currentMode != ServiceTierMode.PUBLIC)
             },
-            isVipList = currentMode != ServiceTierMode.PUBLIC
+            isVipList = currentMode != ServiceTierMode.PUBLIC,
+            loadBalanceSeed = lbSeed
         )
 
         val now = System.currentTimeMillis()
@@ -2795,7 +2866,7 @@ class MainActivity : HelperBaseComponentActivity() {
             scanProgress = 1f
         }
         failedGuids.clear()
-        plog("Scan complete (${currentMode.name}): ${entries.size} servers ready")
+        plog("Scan complete (${currentMode.name}): ${entries.size} load-balanced servers ready")
         return true
     }
 
@@ -2845,16 +2916,10 @@ class MainActivity : HelperBaseComponentActivity() {
             if (verifiedPingMs > 0L) {
                 val targetList = activeList
                 val idx = targetList.indexOfFirst { it.guid == guid }
-                if (idx >= 0) {
-                    val updated = targetList.toMutableList()
-                    updated[idx] = updated[idx].copy(ms = verifiedPingMs)
-                    val relabeled = assignLabels(
-                        updated.sortedBy { it.ms },
-                        isVipList = currentMode != ServiceTierMode.PUBLIC
-                    )
-                    targetList.clear()
-                    targetList.addAll(relabeled)
-                    saveList(relabeled, activeScanTime, mode = currentMode)
+                if (idx in targetList.indices) {
+                    // آپدیت درجا (In-Place) بدون پاک کردن لیست در حین رندر شدن LazyColumn برای جلوگیری از کرش Compose
+                    targetList[idx] = targetList[idx].copy(ms = verifiedPingMs)
+                    saveList(targetList.toList(), activeScanTime, mode = currentMode)
                 }
             }
         }
@@ -2862,17 +2927,32 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun connectAndVerify(guid: String): Long {
+        if (MmkvManager.decodeServerConfig(guid) == null) {
+            plog("Skipped missing server config for $guid")
+            return -1L
+        }
         PennySpeedLimiter.isVipUnrestricted = vipActive
         PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, splitTunnelLocal)
         val wasRunning = mainViewModel.uiState.value.isRunning
-        withContext(Dispatchers.Main) {
-            MmkvManager.setSelectServer(guid)
-            mainViewModel.updateSelectedGuid(guid)
-            if (wasRunning) LauncherManager.restartService(this@MainActivity)
-            else LauncherManager.startService(this@MainActivity)
+
+        if (wasRunning) {
+            withContext(Dispatchers.Main) {
+                runCatching { LauncherManager.stopService(this@MainActivity) }
+            }
+            delay(650L)
         }
 
-        delay(if (wasRunning) 900L else 700L)
+        withContext(Dispatchers.Main) {
+            runCatching {
+                MmkvManager.setSelectServer(guid)
+                mainViewModel.updateSelectedGuid(guid)
+                LauncherManager.startService(this@MainActivity)
+            }.onFailure { e ->
+                plog("Start service error: ${e.message}")
+            }
+        }
+
+        delay(750L)
         var waited = 0
         while (!mainViewModel.uiState.value.isRunning && waited < 7500) {
             delay(250)

@@ -1060,7 +1060,7 @@ internal fun PulsingStatusText(
     )
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // نوار رادار کشور متصل‌شده (چشمک‌زن روی کشور سرور مثل هلند، لهستان یا آلمان)
+        // نوار کشور متصل‌شده (بدون نمایش مختصات جغرافیایی)
         if (countryGeo != null) {
             Surface(
                 color = ObsidianCard.copy(alpha = 0.92f),
@@ -1072,7 +1072,7 @@ internal fun PulsingStatusText(
                 )
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -1086,9 +1086,9 @@ internal fun PulsingStatusText(
                             )
                     )
                     Text(
-                        text = "${countryGeo.countryName} (${countryGeo.cityName.uppercase()}) • ${countryGeo.coordLabel}",
+                        text = "${countryGeo.countryName} • ${countryGeo.cityName.uppercase()}",
                         color = if (isConnected) ChampagneLight else PlatinumSilver,
-                        fontSize = 9.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace,
                         maxLines = 1
@@ -1157,7 +1157,8 @@ internal fun PulsingStatusText(
 }
 
 /**
- * دکمه اتصال مرکزی مجهز به کره زمین سه‌بعدی (3D Orthographic World Globe) و رادار چشمک‌زن موقعیت کشور سرور (مثلاً هلند NL یا لهستان PL)
+ * کره زمین سه‌بعدی بزرگ در مرکز صفحه (بدون نمایش مختصات عددی) با مرز دقیق کشورها مطابق نقشه واقعی جهان،
+ * هایلایت کشور ایران (مبدأ) و کشور سرور مقصد (هلند، لهستان، آلمان و...)، کمان متحرک اتصال و رادار چشمک‌زن
  */
 @Composable
 internal fun PowerButton(
@@ -1178,9 +1179,9 @@ internal fun PowerButton(
     val color by animateColorAsState(target, tween(700), label = "pbColor")
     val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
 
-    // تمرکز دوربین سه‌بعدی کره زمین روی میانه مسیر ایران (35.69N, 51.39E) و کشور مقصد (مثلاً هلند یا لهستان)
-    val targetCamLon = ((countryGeo.longitude + 51.39f) * 0.45f).coerceIn(-10f, 45f)
-    val targetCamLat = ((countryGeo.latitude + 35.69f) * 0.46f).coerceIn(18f, 46f)
+    // تمرکز دوربین سه‌بعدی کره زمین روی میانه مسیر ایران و اروپا تا هم نقشه ایران و هم کشورهای اروپایی کاملاً واضح باشند
+    val targetCamLon = ((countryGeo.longitude + 51.39f) * 0.46f).coerceIn(12f, 36f)
+    val targetCamLat = ((countryGeo.latitude + 35.69f) * 0.47f).coerceIn(32f, 46f)
 
     val baseLonDeg by animateFloatAsState(
         targetValue = targetCamLon,
@@ -1209,8 +1210,8 @@ internal fun PowerButton(
         label = "pbPulse"
     )
     val globeSway by inf.animateFloat(
-        initialValue = -4.5f, targetValue = 4.5f,
-        animationSpec = infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        initialValue = -3.2f, targetValue = 3.2f,
+        animationSpec = infiniteRepeatable(tween(4500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "globeSway"
     )
     val beaconBlink by inf.animateFloat(
@@ -1225,7 +1226,7 @@ internal fun PowerButton(
     )
     val breathe by inf.animateFloat(
         initialValue = 1f,
-        targetValue = if (isConnected) 1.025f else 1.012f,
+        targetValue = if (isConnected) 1.022f else 1.01f,
         animationSpec = infiniteRepeatable(
             tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse
         ),
@@ -1236,15 +1237,15 @@ internal fun PowerButton(
 
     Box(
         modifier = Modifier
-            .width(236.dp)
-            .height(216.dp),
+            .width(276.dp)
+            .height(258.dp),
         contentAlignment = Alignment.Center
     ) {
-        // ── کره زمین سه‌بعدی کامل در مرکز صفحه (بدون دایره مات وسط)؛ قابل لمس برای اتصال و قطع اتصال ──
+        // ── کره زمین سه‌بعدی بزرگ‌تر (232.dp) با نقشه دقیق واقعی کشورها ──
         Box(
             modifier = Modifier
-                .offset(y = 6.dp)
-                .size(188.dp)
+                .offset(y = 4.dp)
+                .size(232.dp)
                 .scale(breathe)
                 .clip(CircleShape)
                 .tvDpadClickable(shape = CircleShape, onClick = onClick),
@@ -1252,7 +1253,7 @@ internal fun PowerButton(
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val c = Offset(size.width / 2f, size.height / 2f)
-                val globeR = size.minDimension * 0.46f
+                val globeR = size.minDimension * 0.47f
 
                 fun project3D(latDeg: Float, lonDeg: Float): Pair<Offset, Boolean> {
                     val lat = latDeg * (PI.toFloat() / 180f)
@@ -1268,14 +1269,14 @@ internal fun PowerButton(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            ChampagneGold.copy(alpha = if (isConnected) 0.28f else 0.14f),
+                            ChampagneGold.copy(alpha = if (isConnected) 0.30f else 0.15f),
                             PlatinumSilver.copy(alpha = 0.06f),
                             Color.Transparent
                         ),
                         center = c,
-                        radius = globeR * 1.15f
+                        radius = globeR * 1.13f
                     ),
-                    radius = globeR * 1.15f,
+                    radius = globeR * 1.13f,
                     center = c
                 )
 
@@ -1284,15 +1285,15 @@ internal fun PowerButton(
                     brush = Brush.radialGradient(
                         colors = if (isConnected) {
                             listOf(
-                                Color(0xFF2B2F3E),
-                                Color(0xFF181B26),
-                                Color(0xFF0B0D13)
+                                Color(0xFF282D3C),
+                                Color(0xFF151822),
+                                Color(0xFF090B10)
                             )
                         } else {
                             listOf(
-                                Color(0xFF232633),
-                                Color(0xFF14161F),
-                                Color(0xFF090A0F)
+                                Color(0xFF212532),
+                                Color(0xFF12141D),
+                                Color(0xFF08090E)
                             )
                         },
                         center = Offset(c.x - globeR * 0.28f, c.y - globeR * 0.28f),
@@ -1306,7 +1307,7 @@ internal fun PowerButton(
                 for (latDeg in listOf(-45f, -30f, -15f, 0f, 15f, 30f, 45f, 60f, 75f)) {
                     val path = Path()
                     var started = false
-                    for (lonStep in -90..90 step 5) {
+                    for (lonStep in -90..90 step 4) {
                         val (pt, vis) = project3D(latDeg, centerLonDeg + lonStep)
                         if (vis) {
                             if (!started) {
@@ -1322,9 +1323,9 @@ internal fun PowerButton(
                     val isEquator = latDeg == 0f
                     drawPath(
                         path = path,
-                        color = if (isEquator) ChampagneGold.copy(alpha = 0.26f)
-                        else PlatinumSilver.copy(alpha = 0.15f),
-                        style = Stroke(width = if (isEquator) 1.1.dp.toPx() else 0.75.dp.toPx())
+                        color = if (isEquator) ChampagneGold.copy(alpha = 0.24f)
+                        else PlatinumSilver.copy(alpha = 0.12f),
+                        style = Stroke(width = if (isEquator) 1.0.dp.toPx() else 0.65.dp.toPx())
                     )
                 }
 
@@ -1332,7 +1333,7 @@ internal fun PowerButton(
                 for (lonOffset in -75..75 step 15) {
                     val path = Path()
                     var started = false
-                    for (latStep in -75..75 step 5) {
+                    for (latStep in -75..75 step 4) {
                         val (pt, vis) = project3D(latStep.toFloat(), centerLonDeg + lonOffset)
                         if (vis) {
                             if (!started) {
@@ -1347,13 +1348,18 @@ internal fun PowerButton(
                     }
                     drawPath(
                         path = path,
-                        color = PlatinumSilver.copy(alpha = 0.15f),
-                        style = Stroke(width = 0.75.dp.toPx())
+                        color = PlatinumSilver.copy(alpha = 0.12f),
+                        style = Stroke(width = 0.65.dp.toPx())
                     )
                 }
 
-                // ۵) ترسیم قاره‌های کره زمین (اروپا، ایران و خاورمیانه، اسکاندیناوی و شمال آفریقا)
-                fun drawContinentPolygon(coords: List<Pair<Float, Float>>, fillAlpha: Float, strokeAlpha: Float) {
+                // ۵) تابع ترسیم دقیق مرز کشورها و قاره‌ها روی کره سه‌بعدی
+                fun drawGeoPolygon(
+                    coords: List<Pair<Float, Float>>,
+                    fillColor: Color,
+                    strokeColor: Color,
+                    strokeWidthDp: Float = 0.9f
+                ) {
                     val poly = Path()
                     var count = 0
                     for ((lat, lon) in coords) {
@@ -1366,80 +1372,185 @@ internal fun PowerButton(
                     }
                     if (count >= 3) {
                         poly.close()
+                        drawPath(path = poly, color = fillColor)
                         drawPath(
                             path = poly,
-                            color = ChampagneGold.copy(alpha = fillAlpha)
-                        )
-                        drawPath(
-                            path = poly,
-                            color = ChampagneLight.copy(alpha = strokeAlpha),
-                            style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
+                            color = strokeColor,
+                            style = Stroke(width = strokeWidthDp.dp.toPx(), cap = StrokeCap.Round)
                         )
                     }
                 }
 
-                // قاره اروپا (پرتغال/اسپانیا، فرانسه، هلند، آلمان، لهستان، بالتیک، ایتالیا، بالکان)
-                val europeOutline = listOf(
-                    36.5f to -9.0f, 43.3f to -8.4f, 48.4f to -4.5f, 51.0f to 1.8f,
-                    52.4f to 4.9f, 54.5f to 8.5f, 54.8f to 14.0f, 54.7f to 20.5f,
-                    59.4f to 24.7f, 55.7f to 37.6f, 47.2f to 39.7f, 46.4f to 30.7f,
-                    41.0f to 28.9f, 38.0f to 23.7f, 40.8f to 14.2f, 44.4f to 8.9f,
-                    43.3f to 5.4f, 41.4f to 2.1f
+                val baseLandFill = ChampagneGold.copy(alpha = if (isConnected) 0.19f else 0.13f)
+                val baseLandStroke = ChampagneLight.copy(alpha = if (isConnected) 0.46f else 0.32f)
+
+                // ── الف) اسپانیا و پرتغال (شبه جزیره ایبری واقعی) ──
+                val iberiaGeo = listOf(
+                    36.0f to -5.6f, 37.0f to -8.9f, 38.7f to -9.5f, 41.9f to -8.9f,
+                    43.0f to -9.3f, 43.7f to -7.6f, 43.4f to -1.8f, 42.4f to 3.2f,
+                    41.4f to 2.2f, 39.5f to -0.3f, 38.7f to 0.2f, 36.7f to -4.4f
                 )
-                // شبه‌جزیره اسکاندیناوی و بریتانیا
-                val scandinaviaOutline = listOf(
-                    55.6f to 12.6f, 58.0f to 7.0f, 62.0f to 5.5f, 68.0f to 15.0f,
-                    70.0f to 25.0f, 65.8f to 24.1f, 60.1f to 24.9f, 59.3f to 18.0f
+                // ── ب) فرانسه و بلژیک ──
+                val franceGeo = listOf(
+                    43.4f to -1.8f, 46.2f to -1.2f, 48.4f to -4.7f, 49.7f to -1.9f,
+                    51.0f to 1.8f, 51.3f to 3.4f, 50.8f to 5.9f, 49.0f to 8.2f,
+                    47.6f to 7.6f, 46.2f to 6.1f, 43.7f to 7.4f, 43.1f to 5.9f,
+                    43.3f to 3.2f, 42.4f to 3.2f
                 )
-                val ukOutline = listOf(
-                    50.1f to -5.2f, 54.6f to -5.9f, 58.6f to -3.1f, 52.6f to 1.7f, 51.1f to 1.3f
+                // ── ج) بریتانیا و ایرلند ──
+                val ukGeo = listOf(
+                    50.1f to -5.2f, 51.5f to -5.1f, 53.3f to -4.6f, 54.9f to -5.0f,
+                    56.6f to -6.2f, 58.6f to -5.0f, 58.6f to -3.1f, 57.6f to -1.8f,
+                    55.8f to -2.1f, 53.6f to 0.1f, 52.7f to 1.7f, 51.1f to 1.4f,
+                    50.7f to -1.2f
                 )
-                // ایران، ترکیه و خاورمیانه
-                val iranMiddleEastOutline = listOf(
-                    41.0f to 29.0f, 41.6f to 41.6f, 38.4f to 48.8f, 37.0f to 54.0f,
-                    36.2f to 59.6f, 31.3f to 61.5f, 25.3f to 60.6f, 26.6f to 56.2f,
-                    29.9f to 48.5f, 24.5f to 54.4f, 21.5f to 39.2f, 30.0f to 32.5f,
-                    36.8f to 36.2f
+                val irelandGeo = listOf(
+                    51.5f to -9.8f, 53.4f to -10.1f, 55.3f to -7.4f, 54.5f to -5.5f,
+                    53.3f to -6.1f, 52.2f to -6.4f
                 )
-                // شمال آفریقا
-                val northAfricaOutline = listOf(
-                    35.8f to -5.8f, 36.8f to 10.2f, 32.9f to 13.2f, 31.2f to 29.9f,
-                    24.0f to 32.9f, 22.0f to 15.0f, 28.0f to -10.0f
+                // ── د) ایتالیا (چکمه ایتالیا و سیسیل) ──
+                val italyGeo = listOf(
+                    43.8f to 7.5f, 45.8f to 6.8f, 46.5f to 10.4f, 46.6f to 13.7f,
+                    45.4f to 12.3f, 44.0f to 12.6f, 41.9f to 16.2f, 40.1f to 18.5f,
+                    39.8f to 16.5f, 38.0f to 15.6f, 39.0f to 16.0f, 40.7f to 14.3f,
+                    41.8f to 12.2f, 43.7f to 10.3f, 44.4f to 8.9f
+                )
+                // ── هـ) سوئیس، اتریش، چک، مجارستان، بالکان و یونان ──
+                val centralBalkansGeo = listOf(
+                    47.6f to 7.6f, 49.0f to 13.5f, 50.9f to 14.8f, 49.5f to 18.9f,
+                    49.0f to 22.7f, 48.0f to 28.2f, 45.2f to 29.7f, 42.0f to 28.0f,
+                    41.0f to 29.0f, 40.6f to 26.0f, 40.5f to 22.9f, 38.0f to 24.0f,
+                    36.4f to 22.5f, 38.2f to 20.4f, 40.4f to 19.3f, 42.5f to 18.4f,
+                    45.5f to 13.6f, 46.6f to 13.7f, 46.5f to 10.4f
+                )
+                // ── و) اسکاندیناوی (نروژ، سوئد، فنلاند، دانمارک) ──
+                val scandinaviaGeo = listOf(
+                    58.0f to 7.0f, 60.4f to 5.3f, 62.5f to 6.2f, 65.5f to 12.2f,
+                    68.5f to 15.5f, 71.1f to 25.8f, 69.8f to 30.0f, 66.0f to 29.5f,
+                    61.0f to 28.8f, 60.2f to 24.9f, 60.5f to 21.5f, 63.8f to 22.6f,
+                    65.8f to 24.1f, 63.5f to 19.8f, 59.3f to 18.1f, 56.2f to 16.0f,
+                    55.4f to 13.0f, 57.7f to 11.9f, 59.0f to 10.5f
+                )
+                val denmarkGeo = listOf(
+                    54.8f to 8.4f, 57.7f to 10.6f, 56.1f to 10.3f, 54.5f to 10.2f
+                )
+                // ── ز) شرق اروپا، بالتیک، اوکراین و غرب روسیه ──
+                val easternEuropeGeo = listOf(
+                    54.3f to 22.8f, 55.9f to 21.1f, 57.8f to 22.0f, 59.4f to 24.7f,
+                    59.9f to 30.3f, 64.5f to 40.5f, 62.0f to 55.0f, 52.0f to 56.0f,
+                    47.0f to 52.0f, 42.5f to 48.0f, 41.6f to 41.6f, 44.6f to 37.8f,
+                    45.3f to 33.5f, 46.5f to 30.7f, 48.0f to 28.2f, 49.0f to 22.7f,
+                    52.1f to 23.6f
+                )
+                // ── ح) ترکیه (آناتولی واقعی) ──
+                val turkeyGeo = listOf(
+                    41.0f to 28.9f, 42.0f to 35.1f, 41.0f to 41.5f, 39.4f to 44.4f,
+                    37.1f to 42.4f, 36.8f to 36.2f, 36.2f to 33.0f, 36.9f to 30.7f,
+                    36.7f to 27.4f, 38.4f to 26.3f, 40.0f to 26.2f
+                )
+                // ── ط) عراق، سوریه، شام و شبه‌جزیره عربستان ──
+                val arabiaLevantGeo = listOf(
+                    36.8f to 36.2f, 37.1f to 42.4f, 34.5f to 45.6f, 30.3f to 48.3f,
+                    29.0f to 48.2f, 26.2f to 50.2f, 25.3f to 51.5f, 24.2f to 54.5f,
+                    26.2f to 56.3f, 22.5f to 59.8f, 17.0f to 54.1f, 12.8f to 45.0f,
+                    16.9f to 42.6f, 21.5f to 39.2f, 28.0f to 34.5f, 31.3f to 34.2f,
+                    33.9f to 35.5f
+                )
+                // ── ی) آسیای میانه، افغانستان و پاکستان ──
+                val centralAsiaGeo = listOf(
+                    47.0f to 53.0f, 45.0f to 62.0f, 42.0f to 72.0f, 35.0f to 74.0f,
+                    24.8f to 67.0f, 25.2f to 60.6f, 31.0f to 61.8f, 36.5f to 61.2f,
+                    37.9f to 58.4f, 37.0f to 54.0f, 40.0f to 52.8f, 44.5f to 50.3f
+                )
+                // ── ک) شمال آفریقا و مصر (مدیترانه و دریای سرخ) ──
+                val northAfricaGeo = listOf(
+                    35.8f to -5.8f, 36.8f to 3.1f, 37.3f to 9.9f, 35.8f to 10.9f,
+                    32.9f to 13.2f, 30.5f to 19.0f, 32.8f to 22.0f, 31.2f to 29.9f,
+                    31.3f to 32.3f, 27.8f to 33.8f, 22.0f to 36.9f, 15.6f to 39.5f,
+                    12.0f to 43.4f, 10.0f to 25.0f, 16.0f to -16.0f, 27.0f to -13.2f,
+                    33.6f to -7.6f
                 )
 
-                val landFill = if (isConnected) 0.24f else 0.16f
-                val landStroke = if (isConnected) 0.55f else 0.36f
-                drawContinentPolygon(europeOutline, landFill, landStroke)
-                drawContinentPolygon(scandinaviaOutline, landFill, landStroke)
-                drawContinentPolygon(ukOutline, landFill, landStroke)
-                drawContinentPolygon(iranMiddleEastOutline, landFill, landStroke)
-                drawContinentPolygon(northAfricaOutline, landFill * 0.8f, landStroke * 0.8f)
-
-                // شبکه نقاط شهرها و مراکز داده روی قاره‌ها
-                val worldDataPoints = listOf(
-                    52.37f to 4.90f, 52.23f to 21.01f, 50.11f to 8.68f, 48.85f to 2.35f,
-                    51.50f to -0.12f, 41.90f to 12.49f, 40.41f to -3.70f, 59.32f to 18.06f,
-                    55.67f to 12.56f, 47.37f to 8.54f, 48.20f to 16.37f, 50.07f to 14.43f,
-                    60.17f to 24.94f, 35.69f to 51.39f, 32.65f to 51.66f, 29.59f to 52.58f,
-                    38.08f to 46.29f, 36.29f to 59.60f, 41.00f to 28.97f, 25.20f to 55.27f
+                // ── مرز دقیق کشورهای هدف در اروپا (هلند NL، لهستان PL، آلمان DE) ──
+                val netherlandsGeo = listOf(
+                    51.4f to 3.4f, 52.0f to 4.1f, 52.9f to 4.7f, 53.4f to 6.2f,
+                    53.2f to 7.2f, 51.9f to 6.8f, 50.8f to 5.9f, 51.4f to 4.4f
                 )
-                for ((lat, lon) in worldDataPoints) {
-                    val (pt, vis) = project3D(lat, lon)
-                    if (vis) {
-                        drawCircle(
-                            color = PlatinumBright.copy(alpha = 0.42f),
-                            radius = 1.6.dp.toPx(),
-                            center = pt
-                        )
-                    }
-                }
+                val germanyGeo = listOf(
+                    54.8f to 8.4f, 54.4f to 10.2f, 54.1f to 13.8f, 51.1f to 14.9f,
+                    49.0f to 13.5f, 47.6f to 12.9f, 47.5f to 10.2f, 47.6f to 7.6f,
+                    49.2f to 6.4f, 50.8f to 6.0f, 51.9f to 6.8f, 53.2f to 7.2f
+                )
+                val polandGeo = listOf(
+                    53.9f to 14.2f, 54.8f to 18.6f, 54.4f to 19.7f, 54.3f to 22.8f,
+                    52.1f to 23.6f, 50.5f to 24.1f, 49.0f to 22.7f, 49.5f to 18.9f,
+                    50.9f to 14.8f
+                )
 
-                // ۶) کمان متحرک مسیر اتصال از ایران (تهران 35.69N, 51.39E) به کشور سرور مقصد (مثلاً هلند یا لهستان)
+                // ── مرز دقیق و واقعی کشور ایران (مبدأ اتصال: دریای خزر، خلیج فارس، تنگه هرمز، خراسان و زاگرس) ──
+                val iranGeo = listOf(
+                    39.4f to 44.4f, 38.9f to 46.5f, 38.4f to 48.9f, 37.5f to 49.5f,
+                    36.7f to 51.4f, 36.8f to 54.0f, 37.9f to 58.4f, 36.5f to 61.2f,
+                    34.0f to 60.5f, 31.0f to 61.8f, 28.6f to 61.1f, 25.2f to 60.6f,
+                    25.6f to 57.8f, 27.2f to 56.3f, 26.5f to 54.9f, 27.5f to 52.6f,
+                    28.9f to 50.8f, 30.3f to 48.3f, 32.0f to 47.8f, 33.1f to 46.2f,
+                    34.5f to 45.6f, 36.2f to 45.5f, 37.7f to 44.6f
+                )
+
+                // رسم تمام مناطق جهان
+                drawGeoPolygon(iberiaGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(
+                    franceGeo,
+                    if (countryGeo.isoCode == "FR") ChampagneGold.copy(alpha = 0.42f) else baseLandFill,
+                    if (countryGeo.isoCode == "FR") Color.White else baseLandStroke,
+                    if (countryGeo.isoCode == "FR") 1.4f else 0.9f
+                )
+                drawGeoPolygon(ukGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(irelandGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(italyGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(centralBalkansGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(scandinaviaGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(denmarkGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(easternEuropeGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(turkeyGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(arabiaLevantGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(centralAsiaGeo, baseLandFill, baseLandStroke)
+                drawGeoPolygon(northAfricaGeo, baseLandFill * 0.85f, baseLandStroke * 0.85f)
+
+                // رسم آلمان، لهستان و هلند با هایلایت ویژه کشور سرور انتخاب‌شده
+                drawGeoPolygon(
+                    germanyGeo,
+                    if (countryGeo.isoCode == "DE") ChampagneGold.copy(alpha = 0.46f) else baseLandFill,
+                    if (countryGeo.isoCode == "DE") Color.White else baseLandStroke,
+                    if (countryGeo.isoCode == "DE") 1.5f else 0.95f
+                )
+                drawGeoPolygon(
+                    polandGeo,
+                    if (countryGeo.isoCode == "PL") ChampagneGold.copy(alpha = 0.46f) else baseLandFill,
+                    if (countryGeo.isoCode == "PL") Color.White else baseLandStroke,
+                    if (countryGeo.isoCode == "PL") 1.5f else 0.95f
+                )
+                drawGeoPolygon(
+                    netherlandsGeo,
+                    if (countryGeo.isoCode == "NL") ChampagneGold.copy(alpha = 0.52f) else baseLandFill,
+                    if (countryGeo.isoCode == "NL") Color.White else baseLandStroke,
+                    if (countryGeo.isoCode == "NL") 1.6f else 1.0f
+                )
+
+                // رسم نقشه ایران با مرز برجسته نقره‌ای-طلایی به عنوان کشور مبدأ
+                drawGeoPolygon(
+                    iranGeo,
+                    PlatinumSilver.copy(alpha = 0.30f),
+                    ChampagneLight.copy(alpha = 0.82f),
+                    1.3f
+                )
+
+                // ۶) کمان متحرک مسیر اتصال از ایران (تهران) به کشور سرور مقصد (هلند / لهستان / آلمان)
                 val (originPt, originVis) = project3D(35.69f, 51.39f)
                 val (targetPt, targetVis) = project3D(countryGeo.latitude, countryGeo.longitude)
                 if (originVis && targetVis) {
                     val midX = (originPt.x + targetPt.x) / 2f
-                    val midY = minOf(originPt.y, targetPt.y) - 24.dp.toPx()
+                    val midY = minOf(originPt.y, targetPt.y) - 28.dp.toPx()
                     val arcPath = Path().apply {
                         moveTo(originPt.x, originPt.y)
                         quadraticBezierTo(midX, midY, targetPt.x, targetPt.y)
@@ -1447,17 +1558,17 @@ internal fun PowerButton(
                     // هاله زیرین کمان مسیر
                     drawPath(
                         path = arcPath,
-                        color = ChampagneGold.copy(alpha = if (isConnected) 0.32f else 0.18f),
-                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                        color = ChampagneGold.copy(alpha = if (isConnected) 0.34f else 0.18f),
+                        style = Stroke(width = 4.5.dp.toPx(), cap = StrokeCap.Round)
                     )
                     // خط کمان متحرک نقطه‌چین
                     drawPath(
                         path = arcPath,
-                        color = if (isConnected) ChampagneLight else ChampagneGold.copy(alpha = 0.78f),
+                        color = if (isConnected) ChampagneLight else ChampagneGold.copy(alpha = 0.80f),
                         style = Stroke(
-                            width = 2.dp.toPx(),
+                            width = 2.2.dp.toPx(),
                             cap = StrokeCap.Round,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 6f), phase = -pulse * 30f)
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f), phase = -pulse * 32f)
                         )
                     )
 
@@ -1472,26 +1583,26 @@ internal fun PowerButton(
                             2f * oneMinusT * tPkt * midY +
                             tPkt * tPkt * targetPt.y
                         drawCircle(
-                            color = ChampagneGold.copy(alpha = 0.45f),
-                            radius = 5.dp.toPx(),
+                            color = ChampagneGold.copy(alpha = 0.50f),
+                            radius = 5.5.dp.toPx(),
                             center = Offset(pktX, pktY)
                         )
                         drawCircle(
                             color = Color.White,
-                            radius = 2.2.dp.toPx(),
+                            radius = 2.4.dp.toPx(),
                             center = Offset(pktX, pktY)
                         )
                     }
 
                     // نقطه مبدأ (ایران)
                     drawCircle(
-                        color = PlatinumSilver.copy(alpha = 0.35f),
-                        radius = 6.dp.toPx(),
+                        color = PlatinumSilver.copy(alpha = 0.40f),
+                        radius = 6.5.dp.toPx(),
                         center = originPt
                     )
                     drawCircle(
                         color = PlatinumBright,
-                        radius = 3.2.dp.toPx(),
+                        radius = 3.4.dp.toPx(),
                         center = originPt
                     )
                 }
@@ -1500,29 +1611,29 @@ internal fun PowerButton(
                 if (targetVis) {
                     for (ringIdx in 0..1) {
                         val rPhase = (pulse + ringIdx * 0.5f) % 1f
-                        val pulseRingR = 5.dp.toPx() + rPhase * 22.dp.toPx()
+                        val pulseRingR = 5.dp.toPx() + rPhase * 24.dp.toPx()
                         drawCircle(
-                            color = ChampagneGold.copy(alpha = (1f - rPhase) * 0.90f),
+                            color = ChampagneGold.copy(alpha = (1f - rPhase) * 0.92f),
                             radius = pulseRingR,
                             center = targetPt,
-                            style = Stroke(width = (2.0f - rPhase).dp.toPx())
+                            style = Stroke(width = (2.1f - rPhase).dp.toPx())
                         )
                     }
                     // هاله چشمک‌زن مرکزی رادار
                     drawCircle(
-                        color = ChampagneGold.copy(alpha = 0.48f * beaconBlink),
-                        radius = 10.dp.toPx(),
+                        color = ChampagneGold.copy(alpha = 0.52f * beaconBlink),
+                        radius = 11.dp.toPx(),
                         center = targetPt
                     )
                     // هسته درخشان چشمک‌زن کشور سرور
                     drawCircle(
                         color = Color.White,
-                        radius = 4.8.dp.toPx() * (0.85f + 0.30f * beaconBlink),
+                        radius = 5.0.dp.toPx() * (0.85f + 0.30f * beaconBlink),
                         center = targetPt
                     )
                     drawCircle(
                         color = ChampagneGold,
-                        radius = 2.6.dp.toPx(),
+                        radius = 2.8.dp.toPx(),
                         center = targetPt
                     )
                 }
@@ -1538,7 +1649,7 @@ internal fun PowerButton(
                     ),
                     radius = globeR,
                     center = c,
-                    style = Stroke(width = if (isConnected) 2.4.dp.toPx() else 1.6.dp.toPx())
+                    style = Stroke(width = if (isConnected) 2.5.dp.toPx() else 1.7.dp.toPx())
                 )
 
                 when (mode) {
@@ -1547,13 +1658,13 @@ internal fun PowerButton(
                         val tl = Offset(c.x - orbitR, c.y - orbitR)
                         val sz = Size(orbitR * 2f, orbitR * 2f)
                         drawArc(
-                            color = ChampagneGold.copy(alpha = 0.75f),
+                            color = ChampagneGold.copy(alpha = 0.78f),
                             startAngle = spin,
                             sweepAngle = 65f,
                             useCenter = false,
                             topLeft = tl,
                             size = sz,
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
                         )
                         drawArc(
                             color = PlatinumSilver.copy(alpha = 0.65f),
@@ -1562,7 +1673,7 @@ internal fun PowerButton(
                             useCenter = false,
                             topLeft = tl,
                             size = sz,
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
                         )
                     }
                     UiMode.SCANNING -> {
@@ -1589,7 +1700,7 @@ internal fun PowerButton(
             }
         }
 
-        // کپسول شیشه‌ای باریک در لبه پایینی کره زمین (بدون پوشاندن نقشه، مدارها، کمان اتصال و رادار چشمک‌زن)
+        // کپسول شیشه‌ای باریک در لبه پایینی کره زمین (بدون پوشاندن نقشه کشورها)
         Surface(
             color = if (isConnected) Color(0xFF1E1B16).copy(alpha = 0.92f)
             else Color(0xFF15171F).copy(alpha = 0.90f),
@@ -1606,7 +1717,7 @@ internal fun PowerButton(
                 .clickable(onClick = onClick)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 5.5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -1627,7 +1738,7 @@ internal fun PowerButton(
                         UiMode.CONNECTED -> "CONNECTED • ${countryGeo.isoCode} (TAP TO STOP)"
                     },
                     color = if (isConnected) ChampagneLight else PlatinumBright,
-                    fontSize = 10.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     fontFamily = FontFamily.Monospace,
                     letterSpacing = 0.6.sp,
@@ -1644,8 +1755,8 @@ internal fun PowerButton(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .width(68.dp)
-                    .height(78.dp)
+                    .width(72.dp)
+                    .height(82.dp)
                     .offset(y = (-8).dp)
                     .graphicsLayer {
                         alpha = catPresence.coerceIn(0f, 1f)
@@ -1859,7 +1970,7 @@ internal fun PennyBottomNavBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 14.dp, vertical = 7.dp),
+                .padding(horizontal = 10.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1872,7 +1983,7 @@ internal fun PennyBottomNavBar(
                     shape = shape,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 4.dp)
+                        .padding(horizontal = 3.dp)
                         .clip(shape)
                         .then(
                             if (active) Modifier.border(1.dp, ChampagneGold.copy(alpha = 0.45f), shape)
@@ -1881,14 +1992,14 @@ internal fun PennyBottomNavBar(
                         .tvDpadClickable(shape = shape) { onSelectTab(tab) }
                 ) {
                     Row(
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp),
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Canvas(modifier = Modifier.size(15.dp)) {
+                        Canvas(modifier = Modifier.size(14.dp)) {
                             val w = size.width
                             val h = size.height
-                            val st = 1.65.dp.toPx()
+                            val st = 1.6.dp.toPx()
                             when (tab) {
                                 BottomNavTab.HOME -> {
                                     drawCircle(
@@ -1919,6 +2030,25 @@ internal fun PennyBottomNavBar(
                                         style = Stroke(width = st)
                                     )
                                 }
+                                BottomNavTab.DOCTOR -> {
+                                    val pulsePath = Path().apply {
+                                        moveTo(w * 0.08f, h * 0.52f)
+                                        lineTo(w * 0.28f, h * 0.52f)
+                                        lineTo(w * 0.40f, h * 0.18f)
+                                        lineTo(w * 0.60f, h * 0.84f)
+                                        lineTo(w * 0.72f, h * 0.52f)
+                                        lineTo(w * 0.92f, h * 0.52f)
+                                    }
+                                    drawPath(
+                                        path = pulsePath,
+                                        color = fg,
+                                        style = Stroke(
+                                            width = st,
+                                            cap = StrokeCap.Round,
+                                            join = StrokeJoin.Round
+                                        )
+                                    )
+                                }
                                 BottomNavTab.PROFILE -> {
                                     drawCircle(
                                         color = fg,
@@ -1938,7 +2068,7 @@ internal fun PennyBottomNavBar(
                                 }
                             }
                         }
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(5.dp))
                         Text(
                             text = if (tab == BottomNavTab.SERVERS && serverCount > 0) {
                                 "${tab.title} ($serverCount)"
@@ -1946,9 +2076,10 @@ internal fun PennyBottomNavBar(
                                 tab.title
                             },
                             color = if (active) PlatinumBright else PlatinumMuted,
-                            fontSize = 11.5.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -2197,7 +2328,7 @@ internal fun ServersTabPage(
                                 Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = if (isSelected) {
-                                        "Active Tunnel • ${geo.countryName} (${geo.coordLabel})"
+                                        "Active Tunnel • ${geo.countryName} • ${geo.cityName}"
                                     } else {
                                         "${geo.countryName} • ${geo.cityName} • Tap to connect"
                                     },
@@ -2233,6 +2364,295 @@ internal fun ServersTabPage(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * تب Network Doctor: شامل کارت Service Quality منتقل‌شده از صفحه اصلی + عیب‌یاب زنده Anti-DPI، Fragment و DNS (بدون اسکرول)
+ */
+@Composable
+internal fun NetworkDoctorTabPage(
+    lang: AppLang,
+    isConnected: Boolean,
+    busy: Boolean,
+    serviceTierMode: ServiceTierMode,
+    currentServer: PennyServer?,
+    serverCount: Int,
+    bestPingMs: Long,
+    cleanDnsShield: Boolean,
+    onCleanDnsShieldChange: (Boolean) -> Unit,
+    splitTunnelLocal: Boolean,
+    onSplitTunnelLocalChange: (Boolean) -> Unit,
+    ghostMessagingOnly: Boolean,
+    adUnitId: String,
+    showAds: Boolean,
+    onAutoTuneClick: () -> Unit,
+    onScanNodesClick: () -> Unit,
+    onOpenLogsClick: () -> Unit
+) {
+    val geo = getCountryGeoInfo(currentServer?.codeTag)
+    val fragLabel = when (serviceTierMode) {
+        ServiceTierMode.GHOST -> "5-12 B / 1-2 ms (Extreme Anti-DPI)"
+        ServiceTierMode.DEDICATED -> "100-200 B / 1 ms (Reality Tuned)"
+        ServiceTierMode.PUBLIC -> "100-200 B / 1 ms (Standard TLS)"
+    }
+    val dnsLabel = if (cleanDnsShield) "1.1.1.2 (Malware & Tracker Shield)" else "8.8.8.8 / 1.1.1.1 (Encrypted DoH)"
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // 1) هدر تب Network Doctor
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Network Doctor & Quality",
+                    color = PlatinumBright,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = "Real-time tunnel diagnostics, Anti-DPI & Service Quality",
+                    color = PlatinumMuted,
+                    fontSize = 10.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(ObsidianElevated)
+                    .border(
+                        1.dp,
+                        if (isConnected) ChampagneGold.copy(alpha = 0.65f) else ObsidianBorder,
+                        RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = when {
+                        busy -> "DIAGNOSING..."
+                        isConnected -> "TUNNEL HEALTHY"
+                        else -> "STANDBY"
+                    },
+                    color = if (isConnected) ChampagneGold else PlatinumSilver,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+
+        // 2) کارت Service Quality منتقل‌شده از صفحه اصلی به تب Network Doctor
+        ServiceQualityUptimeCard(
+            lang = lang,
+            isConnected = isConnected,
+            isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
+            serverCount = serverCount,
+            bestPingMs = bestPingMs,
+            cleanDnsShield = cleanDnsShield,
+            splitTunnelLocal = splitTunnelLocal,
+            adUnitId = adUnitId,
+            showAds = showAds
+        )
+
+        // 3) ماتریس عیب‌یابی زنده شبکه (۲×۲ کارت فشرده)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                DoctorMetricCard(
+                    title = "TLS FRAGMENT ENGINE",
+                    value = if (serviceTierMode == ServiceTierMode.GHOST) "5-12 Bytes" else "100-200 Bytes",
+                    subtitle = fragLabel,
+                    highlight = true,
+                    modifier = Modifier.weight(1f)
+                )
+                DoctorMetricCard(
+                    title = "ACTIVE ROUTE NODE",
+                    value = if (currentServer != null) "${geo.countryName} (${geo.isoCode})" else "Auto-Select",
+                    subtitle = if (currentServer != null) "${geo.cityName} • ${if (bestPingMs > 0) "${bestPingMs} ms" else "Verified"}" else "$serverCount verified nodes ready",
+                    highlight = isConnected,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                DoctorMetricCard(
+                    title = "ENCRYPTED DNS (DoH)",
+                    value = if (cleanDnsShield) "Shield 1.1.1.2" else "DoH 8.8.8.8",
+                    subtitle = dnsLabel,
+                    highlight = cleanDnsShield,
+                    modifier = Modifier.weight(1f)
+                )
+                DoctorMetricCard(
+                    title = "TRAFFICSHAPER & LAN",
+                    value = if (serviceTierMode == ServiceTierMode.GHOST && ghostMessagingOnly) "42 KB/s Cap" else "Full Speed",
+                    subtitle = if (splitTunnelLocal) "Iran (.ir) & LAN Direct Bypass" else "All Traffic Routed in Tunnel",
+                    highlight = splitTunnelLocal,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // 4) کنترل‌های تعمیر سریع شبکه و سپر DNS
+        Surface(
+            color = ObsidianCard,
+            shape = RoundedCornerShape(15.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    text = "Auto-Repair & Shield Controls",
+                    color = PlatinumBright,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+
+                CompactSettingToggleRow(
+                    title = "Clean DNS & Malware Shield (1.1.1.2)",
+                    subtitle = "Blocks DNS poisoning, ads & trackers inside tunnel",
+                    checked = cleanDnsShield,
+                    onCheckedChange = onCleanDnsShieldChange
+                )
+
+                CompactSettingToggleRow(
+                    title = "Smart Domestic (.ir) & LAN Direct Route",
+                    subtitle = "Bypasses local banking apps & prevents IP blocks",
+                    checked = splitTunnelLocal,
+                    onCheckedChange = onSplitTunnelLocalChange
+                )
+
+                Spacer(Modifier.height(2.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    val btnShape = RoundedCornerShape(10.dp)
+                    Surface(
+                        color = ObsidianElevated,
+                        shape = btnShape,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(btnShape)
+                            .border(1.dp, ChampagneGold.copy(alpha = 0.55f), btnShape)
+                            .tvDpadClickable(enabled = !busy, shape = btnShape) { onAutoTuneClick() }
+                    ) {
+                        Text(
+                            text = "Auto-Tune ISP",
+                            color = ChampagneLight,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp)
+                        )
+                    }
+                    Surface(
+                        color = ObsidianElevated,
+                        shape = btnShape,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(btnShape)
+                            .border(1.dp, ObsidianBorder, btnShape)
+                            .tvDpadClickable(enabled = !busy, shape = btnShape) { onScanNodesClick() }
+                    ) {
+                        Text(
+                            text = if (busy) "Testing..." else "Re-Test Nodes",
+                            color = PlatinumBright,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp)
+                        )
+                    }
+                    Surface(
+                        color = ObsidianElevated,
+                        shape = btnShape,
+                        modifier = Modifier
+                            .weight(0.85f)
+                            .clip(btnShape)
+                            .border(1.dp, ObsidianBorder, btnShape)
+                            .tvDpadClickable(shape = btnShape) { onOpenLogsClick() }
+                    ) {
+                        Text(
+                            text = "Core Logs",
+                            color = PlatinumSilver,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DoctorMetricCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    highlight: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = ObsidianCard,
+        shape = RoundedCornerShape(13.dp),
+        modifier = modifier.border(
+            width = 1.dp,
+            color = if (highlight) ChampagneGold.copy(alpha = 0.45f) else ObsidianBorder,
+            shape = RoundedCornerShape(13.dp)
+        )
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(
+                text = title,
+                color = PlatinumMuted,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = value,
+                color = if (highlight) ChampagneLight else PlatinumBright,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(1.dp))
+            Text(
+                text = subtitle,
+                color = PlatinumMuted,
+                fontSize = 8.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

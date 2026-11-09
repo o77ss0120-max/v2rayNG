@@ -15,7 +15,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -105,46 +104,24 @@ jobs:
             unzip -l "$f" | grep "libhev-socks5-tunnel.so" || { echo "Missing libhev-socks5-tunnel.so in $f"; exit 1; }
           done
 
-      - name: Package Mobile & Android TV Release APKs
-        run: |
-          mkdir -p dist_apks
-          UNIV_APK=$(ls V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk | head -n 1)
-          ARM64_APK=$(ls V2rayNG/app/build/outputs/apk/playstore/release/*arm64-v8a*.apk | head -n 1 || true)
-          ARM32_APK=$(ls V2rayNG/app/build/outputs/apk/playstore/release/*armeabi-v7a*.apk | head -n 1 || true)
-          cp "$UNIV_APK" dist_apks/PennyVPN-Mobile-v2.8.0-universal.apk
-          cp "$UNIV_APK" dist_apks/PennyVPN-AndroidTV-v2.8.0-universal.apk
-          if [ -n "$ARM64_APK" ] && [ -f "$ARM64_APK" ]; then
-            cp "$ARM64_APK" dist_apks/PennyVPN-AndroidTV-v2.8.0-arm64.apk
-          fi
-          if [ -n "$ARM32_APK" ] && [ -f "$ARM32_APK" ]; then
-            cp "$ARM32_APK" dist_apks/PennyVPN-AndroidTV-v2.8.0-arm32-tvbox.apk
-          fi
-          ls -lh dist_apks/
-
-      - name: Upload Penny VPN Mobile APK Artifact
+      - name: Upload Penny VPN Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Penny-VPN-Mobile-APK
-          path: dist_apks/PennyVPN-Mobile-*.apk
+          name: Penny-VPN-Release-APK
+          path: V2rayNG/app/build/outputs/apk/playstore/release/*.apk
 
-      - name: Upload Penny VPN Android TV APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Penny-VPN-AndroidTV-APK
-          path: dist_apks/PennyVPN-AndroidTV-*.apk
-
-      - name: Publish Signed Mobile & Android TV APKs to GitHub Releases
+      - name: Publish Signed Mobile APKs to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v2.8.0
-          name: "Penny VPN v2.8.0 (Mobile + Android TV Edition • 3D Country Globe & Ghost Chat Lock)"
+          tag_name: v2.9.0
+          name: "Penny VPN v2.9.0 (3D Real-World Country Globe • Network Doctor Tab • Zero-Scroll)"
           body: |
-            ### Penny VPN v2.8.0 — Mobile & Android TV Edition
-            - **Android TV & Google TV Native Support**: Includes Leanback TV Launcher support, D-Pad remote control navigation, and a 2-column widescreen TV layout (`PennyVPN-AndroidTV-v2.8.0-*.apk`).
-            - **Interactive 3D World Globe & Blinking Country Radar**: Rotates to the active server country (Netherlands `NL`, Poland `PL`, Germany `DE`) with a pulsing radar beacon and live coordinates.
-            - **Ghost Mode Messaging-Only Traffic Lock**: Dedicated status indicator and toggle switch that blocks heavy video/update domains at the SOCKS5 layer, excludes video apps from the VPN tunnel, and caps Ghost bandwidth to `42 KB/s` for emergency messaging without draining private server quota.
-            - **Zero-Scroll UI & Unified Obsidian/Champagne-Gold Theme**: Fixed server & VIP card layouts with zero vertical scrolling on Home and Profile.
-          files: dist_apks/*.apk
+            ### Penny VPN v2.9.0 — Mobile Edition
+            - **Large 3D Earth Globe with Real-World Country Maps**: Full 3D globe Connect button displaying accurate geographical country borders (Iran, Netherlands, Poland, Germany, France, UK, Italy, Turkey, etc.), animated trajectory arc from Iran to destination country, and pulsing radar beacon.
+            - **Dedicated Network Doctor Tab (`Doctor`)**: Moved the `Service Quality` card from the Home screen to the new `Doctor` tab alongside a 2x2 real-time diagnostic matrix (`TLS Fragment Engine`, `Active Route Node`, `Encrypted DNS (DoH)`, `TrafficShaper & LAN`) and instant repair controls.
+            - **Zero Coordinates Leak**: Removed server geographic coordinates from all UI badges and lists.
+            - **Zero-Scroll UI & Unified Obsidian/Champagne-Gold Theme**: Clean, non-scrolling layout on `Home`, `Doctor`, and `Profile` tabs.
+          files: V2rayNG/app/build/outputs/apk/playstore/release/*.apk
           draft: false
           prerelease: false

@@ -1048,9 +1048,6 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
 
-        val config = LocalConfiguration.current
-        val isTvOrLandscape = config.screenWidthDp >= 600
-
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(
                 modifier = Modifier
@@ -1092,374 +1089,231 @@ class MainActivity : HelperBaseComponentActivity() {
                         .alpha(if (isConnectedMode) 0.06f else 0.03f)
                 )
 
-                if (isTvOrLandscape) {
-                    // ═══════════════════════ رابط کاربری اختصاصی Android TV / Widescreen (بدون اسکرول، ۲ ستونه، سازگار با ریموت کنترل) ═══════════════════════
-                    Row(
+                // ═══════════════════════ رابط کاربری موبایل (بدون اسکرول در Home، Doctor و Profile، اسکرول فقط در لیست سرورها) ═══════════════════════
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 24.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(0.42f)
-                                .fillMaxHeight(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            NeonBrandHeader(
-                                mode = mode,
-                                lang = appLang,
-                                isVipMode = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
-                                onLogoClick = { showSplash = true }
-                            )
-                            PowerButton(
-                                mode = mode,
-                                progress = scanProgress,
-                                lang = appLang,
-                                isVipMode = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
-                                countryGeo = currentCountryGeo,
-                                onClick = { onPowerClick() }
-                            )
-                            PulsingStatusText(
-                                mode = mode,
-                                statusMessage = statusMessage,
-                                lang = appLang,
-                                isVip = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
-                                dailyRemainingText = dailyRemText,
-                                countryGeo = currentCountryGeo,
-                                downSpeed = downSpeed,
-                                upSpeed = upSpeed
-                            )
-                        }
+                        when (currentNavTab) {
+                            BottomNavTab.HOME -> {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    NeonBrandHeader(
+                                        mode = mode,
+                                        lang = appLang,
+                                        isVipMode = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
+                                        onLogoClick = { showSplash = true }
+                                    )
 
-                        Column(
-                            modifier = Modifier
-                                .weight(0.58f)
-                                .fillMaxHeight(),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            PennyBottomNavBar(
-                                selectedTab = currentNavTab,
-                                serverCount = currentList.size,
-                                onSelectTab = { currentNavTab = it }
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                                when (currentNavTab) {
-                                    BottomNavTab.HOME -> {
-                                        Column(
-                                            modifier = Modifier.fillMaxSize(),
-                                            verticalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            ServiceTierSelectorBar(
-                                                selectedMode = serviceTierMode,
-                                                dailyRemText = "${fmtBytes(dailyRemBytes)} left",
-                                                isVip = vipActive,
-                                                ghostMessagingOnly = ghostMessagingOnly,
-                                                onGhostMessagingOnlyChange = onGhostToggleChanged,
-                                                onSelectMode = onModeSelected
-                                            )
-                                            ModernServerCard(
-                                                server = current,
-                                                isConnected = mode == UiMode.CONNECTED,
-                                                isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
-                                                lang = appLang,
-                                                enabled = !busy,
-                                                onClick = { currentNavTab = BottomNavTab.SERVERS }
-                                            )
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                OutlinedButton(
-                                                    onClick = { startScanOnly() },
-                                                    enabled = !busy,
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    modifier = Modifier.weight(1f).height(40.dp)
-                                                ) {
-                                                    Text("Scan ${serviceTierMode.shortTitle}", fontSize = 12.sp, color = Color(0xFFE8ECF4))
-                                                }
-                                                Button(
-                                                    onClick = { switchNext() },
-                                                    enabled = !busy && isRunning && currentList.size > 1,
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    modifier = Modifier.weight(1f).height(40.dp),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE6CFAF))
-                                                ) {
-                                                    Text(Strings.nextServerBtn(appLang), fontSize = 12.sp, color = Color(0xFF15161B), fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                            ServiceQualityUptimeCard(
-                                                lang = appLang,
-                                                isConnected = mode == UiMode.CONNECTED,
-                                                isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
-                                                serverCount = currentList.size,
-                                                bestPingMs = current?.ms ?: 0L,
-                                                cleanDnsShield = cleanDnsShield,
-                                                splitTunnelLocal = splitTunnelLocal,
-                                                adUnitId = ADMOB_BANNER_UNIT_ID,
-                                                showAds = false
-                                            )
-                                        }
-                                    }
-                                    BottomNavTab.SERVERS -> {
-                                        ServersTabPage(
-                                            selectedMode = serviceTierMode,
-                                            onSelectMode = onModeSelected,
-                                            servers = currentList,
-                                            selectedGuid = uiState.selectedGuid,
-                                            isRunning = isRunning,
-                                            busy = busy,
-                                            scanProgress = scanProgress,
-                                            dailyUsedBytes = dailyUsedBytes,
-                                            dailyMaxBytes = dailyMaxBytes,
-                                            vipActive = vipActive,
-                                            ghostMessagingOnly = ghostMessagingOnly,
-                                            onGhostMessagingOnlyChange = onGhostToggleChanged,
-                                            onScanClick = { startScanOnly() },
-                                            onServerClick = { entry -> connectToEntry(entry) }
-                                        )
-                                    }
-                                    BottomNavTab.PROFILE -> {
-                                        ProfileTabPage(
-                                            userUuid = userUuid,
-                                            deviceId = deviceId,
-                                            serviceTierMode = serviceTierMode,
-                                            dailyUsedBytes = dailyUsedBytes,
-                                            dailyMaxBytes = dailyMaxBytes,
-                                            vipActive = vipActive,
-                                            vipExpireMs = vipExpireMs,
-                                            vipUsedBytes = vipUsedBytes,
-                                            vipMaxBytes = vipMaxBytes,
-                                            ghostMessagingOnly = ghostMessagingOnly,
-                                            onGhostMessagingOnlyChange = onGhostToggleChanged,
-                                            autoSwitch = autoSwitch,
-                                            onAutoSwitchChange = {
-                                                autoSwitch = it
-                                                prefs.edit().putBoolean("auto_switch", it).apply()
-                                            },
-                                            autoReconnect = autoReconnect,
-                                            onAutoReconnectChange = {
-                                                autoReconnect = it
-                                                prefs.edit().putBoolean("auto_reconnect", it).apply()
-                                            },
-                                            splitTunnelLocal = splitTunnelLocal,
-                                            onSplitTunnelChange = {
-                                                splitTunnelLocal = it
-                                                prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                                MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
-                                            },
-                                            onCopyUuid = { copyUuidToClipboard() },
-                                            onOpenVipDialog = { showVipDialog = true },
-                                            onOpenLogs = { showLog = true },
-                                            onOpenUpdate = { showUpdateDialog = true }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // ═══════════════════════ رابط کاربری موبایل (بدون اسکرول در Home و Profile، اسکرول فقط در لیست سرورها) ═══════════════════════
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            when (currentNavTab) {
-                                BottomNavTab.HOME -> {
+                                    ServiceTierSelectorBar(
+                                        selectedMode = serviceTierMode,
+                                        dailyRemText = "${fmtBytes(dailyRemBytes)} left",
+                                        isVip = vipActive,
+                                        ghostMessagingOnly = ghostMessagingOnly,
+                                        onGhostMessagingOnlyChange = onGhostToggleChanged,
+                                        onSelectMode = onModeSelected
+                                    )
+
+                                    PowerButton(
+                                        mode = mode,
+                                        progress = scanProgress,
+                                        lang = appLang,
+                                        isVipMode = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
+                                        countryGeo = currentCountryGeo,
+                                        onClick = { onPowerClick() }
+                                    )
+
+                                    PulsingStatusText(
+                                        mode = mode,
+                                        statusMessage = statusMessage,
+                                        lang = appLang,
+                                        isVip = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
+                                        dailyRemainingText = dailyRemText,
+                                        countryGeo = currentCountryGeo,
+                                        downSpeed = downSpeed,
+                                        upSpeed = upSpeed
+                                    )
+
                                     Column(
-                                        modifier = Modifier.fillMaxSize(),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        NeonBrandHeader(
-                                            mode = mode,
+                                        ModernServerCard(
+                                            server = current,
+                                            isConnected = mode == UiMode.CONNECTED,
+                                            isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
                                             lang = appLang,
-                                            isVipMode = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
-                                            onLogoClick = { showSplash = true }
+                                            enabled = !busy,
+                                            onClick = { currentNavTab = BottomNavTab.SERVERS }
                                         )
 
-                                        ServiceTierSelectorBar(
-                                            selectedMode = serviceTierMode,
-                                            dailyRemText = "${fmtBytes(dailyRemBytes)} left",
-                                            isVip = vipActive,
-                                            ghostMessagingOnly = ghostMessagingOnly,
-                                            onGhostMessagingOnlyChange = onGhostToggleChanged,
-                                            onSelectMode = onModeSelected
-                                        )
-
-                                        PowerButton(
-                                            mode = mode,
-                                            progress = scanProgress,
-                                            lang = appLang,
-                                            isVipMode = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
-                                            countryGeo = currentCountryGeo,
-                                            onClick = { onPowerClick() }
-                                        )
-
-                                        PulsingStatusText(
-                                            mode = mode,
-                                            statusMessage = statusMessage,
-                                            lang = appLang,
-                                            isVip = serviceTierMode == ServiceTierMode.DEDICATED || vipActive,
-                                            dailyRemainingText = dailyRemText,
-                                            countryGeo = currentCountryGeo,
-                                            downSpeed = downSpeed,
-                                            upSpeed = upSpeed
-                                        )
-
-                                        Column(
+                                        Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            ModernServerCard(
-                                                server = current,
-                                                isConnected = mode == UiMode.CONNECTED,
-                                                isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
-                                                lang = appLang,
+                                            OutlinedButton(
+                                                onClick = { startScanOnly() },
                                                 enabled = !busy,
-                                                onClick = { currentNavTab = BottomNavTab.SERVERS }
-                                            )
-
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                shape = RoundedCornerShape(12.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(40.dp)
                                             ) {
-                                                OutlinedButton(
-                                                    onClick = { startScanOnly() },
-                                                    enabled = !busy,
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .height(38.dp)
-                                                ) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        if (serviceTierMode != ServiceTierMode.PUBLIC) {
-                                                            GlassDiamondIcon(size = 11.dp)
-                                                            Spacer(Modifier.width(5.dp))
-                                                        }
-                                                        Text(
-                                                            text = "Scan ${serviceTierMode.shortTitle}",
-                                                            fontSize = 11.5.sp,
-                                                            color = Color(0xFFE8ECF4),
-                                                            maxLines = 1
-                                                        )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (serviceTierMode != ServiceTierMode.PUBLIC) {
+                                                        GlassDiamondIcon(size = 11.dp)
+                                                        Spacer(Modifier.width(5.dp))
                                                     }
-                                                }
-
-                                                Button(
-                                                    onClick = { switchNext() },
-                                                    enabled = !busy && isRunning && currentList.size > 1,
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .height(38.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFFE6CFAF) else Color(0xFF36353E)
-                                                    )
-                                                ) {
                                                     Text(
-                                                        text = Strings.nextServerBtn(appLang),
+                                                        text = "Scan ${serviceTierMode.shortTitle}",
                                                         fontSize = 11.5.sp,
-                                                        color = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFF15161B) else Color(0xFFF5EFE6),
-                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFE8ECF4),
                                                         maxLines = 1
                                                     )
                                                 }
                                             }
 
-                                            ServiceQualityUptimeCard(
-                                                lang = appLang,
-                                                isConnected = mode == UiMode.CONNECTED,
-                                                isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
-                                                serverCount = currentList.size,
-                                                bestPingMs = current?.ms ?: 0L,
-                                                cleanDnsShield = cleanDnsShield,
-                                                splitTunnelLocal = splitTunnelLocal,
-                                                adUnitId = ADMOB_BANNER_UNIT_ID,
-                                                showAds = !vipActive
-                                            )
+                                            Button(
+                                                onClick = { switchNext() },
+                                                enabled = !busy && isRunning && currentList.size > 1,
+                                                shape = RoundedCornerShape(12.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(40.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFFE6CFAF) else Color(0xFF36353E)
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = Strings.nextServerBtn(appLang),
+                                                    fontSize = 11.5.sp,
+                                                    color = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFF15161B) else Color(0xFFF5EFE6),
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1
+                                                )
+                                            }
                                         }
                                     }
                                 }
+                            }
 
-                                BottomNavTab.SERVERS -> {
-                                    ServersTabPage(
-                                        selectedMode = serviceTierMode,
-                                        onSelectMode = onModeSelected,
-                                        servers = currentList,
-                                        selectedGuid = uiState.selectedGuid,
-                                        isRunning = isRunning,
-                                        busy = busy,
-                                        scanProgress = scanProgress,
-                                        dailyUsedBytes = dailyUsedBytes,
-                                        dailyMaxBytes = dailyMaxBytes,
-                                        vipActive = vipActive,
-                                        ghostMessagingOnly = ghostMessagingOnly,
-                                        onGhostMessagingOnlyChange = onGhostToggleChanged,
-                                        onScanClick = { startScanOnly() },
-                                        onServerClick = { entry -> connectToEntry(entry) }
-                                    )
-                                }
+                            BottomNavTab.SERVERS -> {
+                                ServersTabPage(
+                                    selectedMode = serviceTierMode,
+                                    onSelectMode = onModeSelected,
+                                    servers = currentList,
+                                    selectedGuid = uiState.selectedGuid,
+                                    isRunning = isRunning,
+                                    busy = busy,
+                                    scanProgress = scanProgress,
+                                    dailyUsedBytes = dailyUsedBytes,
+                                    dailyMaxBytes = dailyMaxBytes,
+                                    vipActive = vipActive,
+                                    ghostMessagingOnly = ghostMessagingOnly,
+                                    onGhostMessagingOnlyChange = onGhostToggleChanged,
+                                    onScanClick = { startScanOnly() },
+                                    onServerClick = { entry -> connectToEntry(entry) }
+                                )
+                            }
 
-                                BottomNavTab.PROFILE -> {
-                                    ProfileTabPage(
-                                        userUuid = userUuid,
-                                        deviceId = deviceId,
-                                        serviceTierMode = serviceTierMode,
-                                        dailyUsedBytes = dailyUsedBytes,
-                                        dailyMaxBytes = dailyMaxBytes,
-                                        vipActive = vipActive,
-                                        vipExpireMs = vipExpireMs,
-                                        vipUsedBytes = vipUsedBytes,
-                                        vipMaxBytes = vipMaxBytes,
-                                        ghostMessagingOnly = ghostMessagingOnly,
-                                        onGhostMessagingOnlyChange = onGhostToggleChanged,
-                                        autoSwitch = autoSwitch,
-                                        onAutoSwitchChange = {
-                                            autoSwitch = it
-                                            prefs.edit().putBoolean("auto_switch", it).apply()
-                                        },
-                                        autoReconnect = autoReconnect,
-                                        onAutoReconnectChange = {
-                                            autoReconnect = it
-                                            prefs.edit().putBoolean("auto_reconnect", it).apply()
-                                        },
-                                        splitTunnelLocal = splitTunnelLocal,
-                                        onSplitTunnelChange = {
-                                            splitTunnelLocal = it
-                                            prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                            MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
-                                        },
-                                        onCopyUuid = { copyUuidToClipboard() },
-                                        onOpenVipDialog = { showVipDialog = true },
-                                        onOpenLogs = { showLog = true },
-                                        onOpenUpdate = { showUpdateDialog = true }
-                                    )
-                                }
+                            BottomNavTab.DOCTOR -> {
+                                NetworkDoctorTabPage(
+                                    lang = appLang,
+                                    isConnected = mode == UiMode.CONNECTED,
+                                    busy = busy,
+                                    serviceTierMode = serviceTierMode,
+                                    currentServer = current,
+                                    serverCount = currentList.size,
+                                    bestPingMs = current?.ms ?: 0L,
+                                    cleanDnsShield = cleanDnsShield,
+                                    onCleanDnsShieldChange = {
+                                        cleanDnsShield = it
+                                        prefs.edit().putBoolean("clean_dns_shield", it).apply()
+                                        val dnsServer = if (it) "1.1.1.2" else "1.1.1.1"
+                                        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsServer)
+                                        statusMessage = "Encrypted DNS set to $dnsServer"
+                                        plog("Network Doctor: Clean DNS Shield set to $dnsServer")
+                                    },
+                                    splitTunnelLocal = splitTunnelLocal,
+                                    onSplitTunnelLocalChange = {
+                                        splitTunnelLocal = it
+                                        prefs.edit().putBoolean("split_tunnel_local", it).apply()
+                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
+                                        PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, it)
+                                        statusMessage = if (it) "Domestic (.ir) & LAN Direct Bypass Enabled" else "All Traffic Routed in Tunnel"
+                                        plog("Network Doctor: Smart Split Tunneling set to $it")
+                                    },
+                                    ghostMessagingOnly = ghostMessagingOnly,
+                                    adUnitId = ADMOB_BANNER_UNIT_ID,
+                                    showAds = !vipActive,
+                                    onAutoTuneClick = {
+                                        val tuned = PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
+                                        statusMessage = "ISP Auto-Tuned: $tuned"
+                                        if (isRunning) {
+                                            LauncherManager.restartService(this@MainActivity)
+                                        }
+                                    },
+                                    onScanNodesClick = { startScanOnly() },
+                                    onOpenLogsClick = { showLog = true }
+                                )
+                            }
+
+                            BottomNavTab.PROFILE -> {
+                                ProfileTabPage(
+                                    userUuid = userUuid,
+                                    deviceId = deviceId,
+                                    serviceTierMode = serviceTierMode,
+                                    dailyUsedBytes = dailyUsedBytes,
+                                    dailyMaxBytes = dailyMaxBytes,
+                                    vipActive = vipActive,
+                                    vipExpireMs = vipExpireMs,
+                                    vipUsedBytes = vipUsedBytes,
+                                    vipMaxBytes = vipMaxBytes,
+                                    ghostMessagingOnly = ghostMessagingOnly,
+                                    onGhostMessagingOnlyChange = onGhostToggleChanged,
+                                    autoSwitch = autoSwitch,
+                                    onAutoSwitchChange = {
+                                        autoSwitch = it
+                                        prefs.edit().putBoolean("auto_switch", it).apply()
+                                    },
+                                    autoReconnect = autoReconnect,
+                                    onAutoReconnectChange = {
+                                        autoReconnect = it
+                                        prefs.edit().putBoolean("auto_reconnect", it).apply()
+                                    },
+                                    splitTunnelLocal = splitTunnelLocal,
+                                    onSplitTunnelChange = {
+                                        splitTunnelLocal = it
+                                        prefs.edit().putBoolean("split_tunnel_local", it).apply()
+                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
+                                    },
+                                    onCopyUuid = { copyUuidToClipboard() },
+                                    onOpenVipDialog = { showVipDialog = true },
+                                    onOpenLogs = { showLog = true },
+                                    onOpenUpdate = { showUpdateDialog = true }
+                                )
                             }
                         }
-
-                        PennyBottomNavBar(
-                            selectedTab = currentNavTab,
-                            serverCount = currentList.size,
-                            onSelectTab = { currentNavTab = it }
-                        )
                     }
+
+                    PennyBottomNavBar(
+                        selectedTab = currentNavTab,
+                        serverCount = currentList.size,
+                        onSelectTab = { currentNavTab = it }
+                    )
                 }
 
                 AnimatedVisibility(

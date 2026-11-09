@@ -49,24 +49,24 @@ internal enum class ServiceTierMode(
 }
 
 /**
- * ۳ تب اصلی ناوبری پایین صفحه
+ * ۴ تب اصلی ناوبری پایین صفحه (Home • Servers • Doctor • Profile)
  */
 internal enum class BottomNavTab(val title: String) {
     HOME("Home"),
     SERVERS("Servers"),
+    DOCTOR("Doctor"),
     PROFILE("Profile")
 }
 
 /**
- * اطلاعات جغرافیایی کشور سرور برای نمایش روی کره زمین سه‌بعدی و رادار چشمک‌زن
+ * اطلاعات کشور سرور برای نمایش روی کره زمین سه‌بعدی و رادار چشمک‌زن (بدون نمایش مختصات عددی در رابط کاربری)
  */
 internal data class CountryGeoInfo(
     val isoCode: String,
     val countryName: String,
     val cityName: String,
     val latitude: Float,
-    val longitude: Float,
-    val coordLabel: String
+    val longitude: Float
 )
 
 internal fun getCountryGeoInfo(codeTag: String): CountryGeoInfo {
@@ -76,48 +76,42 @@ internal fun getCountryGeoInfo(codeTag: String): CountryGeoInfo {
             countryName = "NETHERLANDS",
             cityName = "Amsterdam",
             latitude = 52.37f,
-            longitude = 4.90f,
-            coordLabel = "52.37°N, 4.90°E"
+            longitude = 4.90f
         )
         "DED-PL" -> CountryGeoInfo(
             isoCode = "PL",
             countryName = "POLAND",
             cityName = "Warsaw",
             latitude = 52.23f,
-            longitude = 21.01f,
-            coordLabel = "52.23°N, 21.01°E"
+            longitude = 21.01f
         )
         "VPS-1" -> CountryGeoInfo(
             isoCode = "DE",
             countryName = "GERMANY",
             cityName = "Frankfurt",
             latitude = 50.11f,
-            longitude = 8.68f,
-            coordLabel = "50.11°N, 8.68°E"
+            longitude = 8.68f
         )
         "GHOST" -> CountryGeoInfo(
             isoCode = "NL",
             countryName = "NETHERLANDS • GHOST",
             cityName = "Stealth Relay",
             latitude = 52.37f,
-            longitude = 4.90f,
-            coordLabel = "52.37°N, 4.90°E"
+            longitude = 4.90f
         )
         "CF-1", "CF-2", "BPB" -> CountryGeoInfo(
-            isoCode = "EU",
-            countryName = "EUROPE EDGE",
+            isoCode = "DE",
+            countryName = "GERMANY",
             cityName = "Frankfurt",
             latitude = 50.11f,
-            longitude = 8.68f,
-            coordLabel = "50.11°N, 8.68°E"
+            longitude = 8.68f
         )
         else -> CountryGeoInfo(
-            isoCode = "GL",
-            countryName = "GLOBAL NODE",
-            cityName = "Public Relay",
+            isoCode = "FR",
+            countryName = "FRANCE",
+            cityName = "Paris",
             latitude = 48.85f,
-            longitude = 2.35f,
-            coordLabel = "48.85°N, 2.35°E"
+            longitude = 2.35f
         )
     }
 }

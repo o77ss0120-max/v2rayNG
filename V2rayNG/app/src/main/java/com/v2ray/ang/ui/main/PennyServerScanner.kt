@@ -32,25 +32,214 @@ import javax.net.ssl.SSLSocketFactory
 import kotlin.random.Random
 
 /**
- * بدون محدودیت سرعت برای همه کاربران (Full Unlimited Speed):
- * ترافیک کاربران عادی به‌صورت روزانه به ازای هر دیوایس (۱ گیگابایت پایه در روز + امکان افزایش گیگ با تماشای تبلیغ) محاسبه می‌شود.
+ * محدودکننده هوشمند ترافیک و پروتکل مخصوص Ghost Mode (Emergency Messaging Only):
+ * - در حالت‌های Public و Dedicated سرعت کاملاً نامحدود (Native Full Speed) است.
+ * - در حالت Ghost Mode (وقتی سوییچ Messaging-Only فعال است):
+ *   1) دامنه‌های پرمصرف ویدیو، استریم، آپدیت و دانلود در لایه SOCKS5 بلافاصله مسدود می‌شوند تا هیچ ترافیکی از سرور شخصی کم نشود.
+ *   2) پهنای باند تونل روی 42 KB/s دانلود و 28 KB/s آپلود قفل می‌شود که برای پیام‌رسان‌ها (تلگرام، واتس‌اپ، سیگنال، متن و ویس) آنی است اما جلوی مصرف بالای حجم را صددرصد می‌گیرد.
  */
 object PennySpeedLimiter {
     const val FREE_MAX_DOWN_BYTES_PER_SEC = Long.MAX_VALUE
     const val FREE_MAX_UP_BYTES_PER_SEC = Long.MAX_VALUE
+    const val GHOST_MAX_DOWN_BYTES_PER_SEC = 42L * 1024L // 42 KB/s (مخصوص پیام‌رسان اضطراری)
+    const val GHOST_MAX_UP_BYTES_PER_SEC = 28L * 1024L   // 28 KB/s
 
     @Volatile
     var isVipUnrestricted: Boolean = true
 
+    @Volatile
+    var isGhostMessagingRestricted: Boolean = false
+
+    @Volatile
+    private var serverSocket: java.net.ServerSocket? = null
+
+    @Volatile
+    private var activeListenPort: Int = 0
+
+    private val BLOCKED_HEAVY_MEDIA_DOMAINS = listOf(
+        "googlevideo.com",
+        "youtube.com",
+        "ytimg.com",
+        "youtu.be",
+        "tiktokcdn.com",
+        "tiktokv.com",
+        "tiktok.com",
+        "musical.ly",
+        "Byteoversea.com",
+        "cdninstagram.com",
+        "fbcdn.net",
+        "instagram.com",
+        "nflxvideo.net",
+        "netflix.com",
+        "gvt1.com",
+        "gvt2.com",
+        "windowsupdate.com",
+        "steamcontent.com",
+        "twitch.tv",
+        "ttvnw.net",
+        "scdn.co",
+        "spotify.com",
+        "speedtest.net",
+        "fast.com",
+        "aparat.com",
+        "telewebion.com",
+        "namava.ir",
+        "filimo.com"
+    )
+
+    private fun isHeavyMediaDomain(host: String): Boolean {
+        val h = host.trim().lowercase()
+        if (h.isEmpty()) return false
+        return BLOCKED_HEAVY_MEDIA_DOMAINS.any { blocked ->
+            h == blocked || h.endsWith(".$blocked")
+        }
+    }
+
     @Synchronized
-    fun startIfNeeded(listenPort: Int, targetPort: Int, vipActive: Boolean): Int {
-        isVipUnrestricted = true
-        return targetPort
+    fun startIfNeeded(
+        listenPort: Int,
+        targetPort: Int,
+        vipActive: Boolean,
+        ghostRestricted: Boolean = isGhostMessagingRestricted
+    ): Int {
+        isVipUnrestricted = vipActive
+        isGhostMessagingRestricted = ghostRestricted
+        if (!ghostRestricted) {
+            stop()
+            return targetPort
+        }
+        if (serverSocket != null && serverSocket?.isClosed == false && activeListenPort == listenPort) {
+            return listenPort
+        }
+        stop()
+        return try {
+            val ss = java.net.ServerSocket()
+            ss.reuseAddress = true
+            ss.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), listenPort), 128)
+            serverSocket = ss
+            activeListenPort = listenPort
+            Thread({
+                while (!ss.isClosed) {
+                    try {
+                        val client = ss.accept()
+                        client.tcpNoDelay = true
+                        Thread({ handleGhostClient(client, targetPort) }, "PennyGhostRelayWorker").apply {
+                            isDaemon = true
+                            start()
+                        }
+                    } catch (_: Exception) {
+                        if (ss.isClosed) break
+                    }
+                }
+            }, "PennyGhostLimiterAccept").apply {
+                isDaemon = true
+                start()
+            }
+            listenPort
+        } catch (_: Exception) {
+            targetPort
+        }
+    }
+
+    private fun handleGhostClient(client: Socket, targetPort: Int) {
+        var upstream: Socket? = null
+        try {
+            client.soTimeout = 15_000
+            val cIn = client.getInputStream()
+            val cOut = client.getOutputStream()
+
+            upstream = Socket()
+            upstream.tcpNoDelay = true
+            upstream.connect(InetSocketAddress(InetAddress.getByName("127.0.0.1"), targetPort), 4000)
+            upstream.soTimeout = 15_000
+            val uIn = upstream.getInputStream()
+            val uOut = upstream.getOutputStream()
+
+            // بررسی هدر اولیه SOCKS5 برای مسدودسازی دامنه‌های ویدیویی و دانلود سنگین در حالت Ghost
+            val firstBuf = ByteArray(512)
+            val n0 = cIn.read(firstBuf)
+            if (n0 <= 0) return
+            uOut.write(firstBuf, 0, n0)
+            uOut.flush()
+
+            if (firstBuf[0] == 0x05.toByte()) {
+                val repBuf = ByteArray(64)
+                val r0 = uIn.read(repBuf)
+                if (r0 <= 0) return
+                cOut.write(repBuf, 0, r0)
+                cOut.flush()
+
+                val reqBuf = ByteArray(1024)
+                val n1 = cIn.read(reqBuf)
+                if (n1 <= 0) return
+                if (n1 >= 7 && reqBuf[0] == 0x05.toByte() && reqBuf[1] == 0x01.toByte() && reqBuf[3] == 0x03.toByte()) {
+                    val domainLen = reqBuf[4].toInt() and 0xFF
+                    if (5 + domainLen <= n1) {
+                        val domain = String(reqBuf, 5, domainLen, StandardCharsets.UTF_8)
+                        if (isGhostMessagingRestricted && isHeavyMediaDomain(domain)) {
+                            // پاسخ استاندارد SOCKS5: Connection not allowed by ruleset (0x02)
+                            cOut.write(byteArrayOf(0x05, 0x02, 0x00, 0x01, 0, 0, 0, 0, 0, 0))
+                            cOut.flush()
+                            return
+                        }
+                    }
+                }
+                uOut.write(reqBuf, 0, n1)
+                uOut.flush()
+            }
+
+            val upThread = Thread({
+                pipeThrottled(cIn, uOut, GHOST_MAX_UP_BYTES_PER_SEC)
+            }, "GhostUpPipe").apply {
+                isDaemon = true
+                start()
+            }
+            pipeThrottled(uIn, cOut, GHOST_MAX_DOWN_BYTES_PER_SEC)
+            upThread.join(500)
+        } catch (_: Exception) {
+        } finally {
+            try { client.close() } catch (_: Exception) {}
+            try { upstream?.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun pipeThrottled(input: java.io.InputStream, output: OutputStream, maxBytesPerSec: Long) {
+        val buf = ByteArray(1024)
+        var windowStartMs = System.currentTimeMillis()
+        var bytesInWindow = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            output.write(buf, 0, n)
+            output.flush()
+            if (isGhostMessagingRestricted && maxBytesPerSec in 1 until Long.MAX_VALUE) {
+                bytesInWindow += n
+                val elapsedMs = (System.currentTimeMillis() - windowStartMs).coerceAtLeast(1L)
+                val expectedMs = (bytesInWindow * 1000L) / maxBytesPerSec
+                if (expectedMs > elapsedMs) {
+                    val sleepMs = (expectedMs - elapsedMs).coerceIn(5L, 250L)
+                    try {
+                        Thread.sleep(sleepMs)
+                    } catch (_: InterruptedException) {
+                        break
+                    }
+                }
+                if (System.currentTimeMillis() - windowStartMs >= 1000L) {
+                    windowStartMs = System.currentTimeMillis()
+                    bytesInWindow = 0L
+                }
+            }
+        }
     }
 
     @Synchronized
     fun stop() {
-        // No local throttling proxy needed — full native speed on targetPort
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {
+        }
+        serverSocket = null
+        activeListenPort = 0
     }
 }
 
@@ -305,6 +494,48 @@ internal object PennyServerScanner {
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
             MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
             MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, "1")
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * اعمال قوانین سخت‌گیرانه Ghost Mode روی کرنل VpnService و لایه پروکسی محلی:
+     * در حالت Ghost Mode + Messaging-Only، اپلیکیشن‌های پرمصرف ویدیویی و استورها از تونل VPN حذف شده
+     * و سرعت تونل روی 42 KB/s (مخصوص پیام‌رسان‌های اضطراری) قفل می‌شود تا حجم سرورهای شخصی مصرف نشود.
+     */
+    fun syncGhostModeKernelRules(
+        mode: ServiceTierMode,
+        ghostMessagingOnly: Boolean,
+        splitTunnelLocal: Boolean
+    ) {
+        try {
+            val restrictActive = (mode == ServiceTierMode.GHOST && ghostMessagingOnly)
+            PennySpeedLimiter.isGhostMessagingRestricted = restrictActive
+            MmkvManager.encodeSettings("penny_service_tier_mode", mode.name)
+            MmkvManager.encodeSettings("penny_ghost_messaging_only", ghostMessagingOnly)
+
+            if (restrictActive) {
+                val blockedHeavyApps = mutableSetOf(
+                    "com.google.android.youtube",
+                    "com.google.android.youtube.tv",
+                    "com.instagram.android",
+                    "com.zhiliaoapp.musically",
+                    "com.ss.android.ugc.trill",
+                    "com.android.vending",
+                    "com.netflix.mediaclient",
+                    "tv.twitch.android.app",
+                    "com.spotify.music",
+                    "com.aparat",
+                    "ir.filimo.android",
+                    "ir.namava.mobile"
+                )
+                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, true)
+                MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, true)
+                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, blockedHeavyApps)
+            } else {
+                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, splitTunnelLocal)
+                MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, true)
+            }
         } catch (_: Exception) {
         }
     }
@@ -1178,7 +1409,7 @@ internal object PennyServerScanner {
         val releaseNotes: String
     )
 
-    const val APP_VERSION_NAME = "2.6.2"
+    const val APP_VERSION_NAME = "2.8.0"
     const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
 

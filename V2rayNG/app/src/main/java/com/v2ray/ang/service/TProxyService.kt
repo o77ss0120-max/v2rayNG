@@ -60,10 +60,18 @@ class TProxyService(
         } catch (_: Exception) {
             false
         }
+        val isGhostRestricted = try {
+            val tier = MmkvManager.decodeSettingsString("penny_service_tier_mode", "DEDICATED") ?: "DEDICATED"
+            val restrict = MmkvManager.decodeSettingsBool("penny_ghost_messaging_only", true)
+            tier == "GHOST" && restrict
+        } catch (_: Exception) {
+            false
+        }
         val effectiveSocksPort = PennySpeedLimiter.startIfNeeded(
             listenPort = socksPort + 10,
             targetPort = socksPort,
-            vipActive = isVipActive
+            vipActive = isVipActive,
+            ghostRestricted = isGhostRestricted
         )
         val socksUsername = SettingsManager.getSocksUsername()
         val socksPassword = SettingsManager.getSocksPassword()

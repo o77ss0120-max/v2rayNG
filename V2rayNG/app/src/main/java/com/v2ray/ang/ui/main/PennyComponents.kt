@@ -18,10 +18,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -29,11 +33,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -57,6 +63,44 @@ import com.google.android.gms.ads.LoadAdError
 import com.v2ray.ang.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+// ═══════════════════════ پالت رنگی یکپارچه Penny VPN (Obsidian + Platinum Silver + Champagne Gold) ═══════════════════════
+private val ObsidianDeep = Color(0xFF0C0D11)
+private val ObsidianCard = Color(0xFF16171E)
+private val ObsidianElevated = Color(0xFF20222C)
+private val ObsidianBorder = Color(0xFF323442)
+private val PlatinumBright = Color(0xFFF4F6FA)
+private val PlatinumSilver = Color(0xFFD8DCE6)
+private val PlatinumMuted = Color(0xFF9EA2B0)
+private val ChampagneGold = Color(0xFFE6CFAF)
+private val ChampagneLight = Color(0xFFF5E6D3)
+private val ChampagneBronze = Color(0xFF9E8A6E)
+
+/**
+ * پشتیبانی کامل از فوکوس ریموت کنترل Android TV (D-Pad Navigation)
+ */
+@Composable
+internal fun Modifier.tvDpadClickable(
+    enabled: Boolean = true,
+    shape: RoundedCornerShape = RoundedCornerShape(14.dp),
+    onClick: () -> Unit
+): Modifier {
+    var isFocused by remember { mutableStateOf(false) }
+    return this
+        .onFocusChanged { isFocused = it.isFocused }
+        .then(
+            if (isFocused) {
+                Modifier.border(2.dp, ChampagneGold, shape)
+            } else {
+                Modifier
+            }
+        )
+        .focusable(enabled = enabled)
+        .clickable(enabled = enabled, onClick = onClick)
+}
 
 @Composable
 internal fun GlassDiamondIcon(
@@ -81,8 +125,8 @@ internal fun GlassDiamondIcon(
             brush = Brush.linearGradient(
                 colors = listOf(
                     Color(0xFFFFFFFF).copy(alpha = 0.96f),
-                    Color(0xFFE4E9F2).copy(alpha = 0.78f),
-                    Color(0xFFB4C3D8).copy(alpha = 0.55f)
+                    ChampagneLight.copy(alpha = 0.85f),
+                    ChampagneGold.copy(alpha = 0.65f)
                 ),
                 start = Offset(0f, 0f),
                 end = Offset(w, h)
@@ -98,48 +142,15 @@ internal fun GlassDiamondIcon(
         }
         drawPath(path = topFacet, color = Color(0xFFFFFFFF).copy(alpha = 0.56f))
 
-        val leftLowerFacet = Path().apply {
-            moveTo(w * 0.04f, h * 0.38f)
-            lineTo(w * 0.32f, h * 0.38f)
-            lineTo(w * 0.50f, h * 0.92f)
-            close()
-        }
-        drawPath(path = leftLowerFacet, color = Color(0xFFD0D8E8).copy(alpha = 0.42f))
-
         drawLine(
             color = Color(0xFFFFFFFF).copy(alpha = 0.85f),
             start = Offset(w * 0.04f, h * 0.38f),
             end = Offset(w * 0.96f, h * 0.38f),
             strokeWidth = 1.dp.toPx()
         )
-        drawLine(
-            color = Color(0xFFFFFFFF).copy(alpha = 0.75f),
-            start = Offset(w * 0.24f, h * 0.14f),
-            end = Offset(w * 0.32f, h * 0.38f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFFFFFFF).copy(alpha = 0.75f),
-            start = Offset(w * 0.76f, h * 0.14f),
-            end = Offset(w * 0.68f, h * 0.38f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFEFF3FA).copy(alpha = 0.70f),
-            start = Offset(w * 0.32f, h * 0.38f),
-            end = Offset(w * 0.50f, h * 0.92f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-        drawLine(
-            color = Color(0xFFEFF3FA).copy(alpha = 0.70f),
-            start = Offset(w * 0.68f, h * 0.38f),
-            end = Offset(w * 0.50f, h * 0.92f),
-            strokeWidth = 0.9.dp.toPx()
-        )
-
         drawPath(
             path = outerPath,
-            color = Color(0xFFFFFFFF).copy(alpha = 0.92f),
+            color = ChampagneLight.copy(alpha = 0.92f),
             style = Stroke(width = 1.15.dp.toPx())
         )
     }
@@ -148,7 +159,7 @@ internal fun GlassDiamondIcon(
 @Composable
 internal fun MenuLinesIcon(
     size: Dp = 15.dp,
-    color: Color = Color(0xFFE8ECF4),
+    color: Color = PlatinumSilver,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier.size(size)) {
@@ -182,7 +193,7 @@ internal fun MenuLinesIcon(
 @Composable
 internal fun UpdateArrowIcon(
     size: Dp = 15.dp,
-    color: Color = Color(0xFFE2E5EE),
+    color: Color = ChampagneGold,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier.size(size)) {
@@ -217,9 +228,9 @@ internal fun UpdateArrowIcon(
 
 @Composable
 internal fun metallicSwitchColors() = SwitchDefaults.colors(
-    checkedThumbColor = Color(0xFFE4E7F0),
-    checkedTrackColor = Color(0xFF3B3E48),
-    checkedBorderColor = Color(0xFF5A5E6B),
+    checkedThumbColor = ChampagneLight,
+    checkedTrackColor = Color(0xFF3E3830),
+    checkedBorderColor = ChampagneGold.copy(alpha = 0.78f),
     uncheckedThumbColor = Color(0xFF7E828E),
     uncheckedTrackColor = Color(0xFF121317),
     uncheckedBorderColor = Color(0xFF2C2E36)
@@ -228,9 +239,20 @@ internal fun metallicSwitchColors() = SwitchDefaults.colors(
 @Composable
 internal fun StatCell(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Color(0xFFF2F4F8), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(2.dp))
-        Text(label, color = Color(0xFF9EA1AB), fontSize = 10.sp)
+        Text(
+            text = value,
+            color = PlatinumBright,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1
+        )
+        Text(
+            text = label,
+            color = PlatinumMuted,
+            fontSize = 9.sp,
+            maxLines = 1
+        )
     }
 }
 
@@ -241,10 +263,10 @@ internal fun StaggeredServerItem(
 ) {
     val anim = remember { Animatable(0f) }
     LaunchedEffect(index) {
-        delay((index * 55L).coerceAtMost(550L))
+        delay((index * 45L).coerceAtMost(400L))
         anim.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
         )
     }
     Box(
@@ -252,10 +274,7 @@ internal fun StaggeredServerItem(
             .fillMaxWidth()
             .graphicsLayer {
                 alpha = anim.value
-                translationY = (1f - anim.value) * 34f
-                val sc = 0.95f + 0.05f * anim.value
-                scaleX = sc
-                scaleY = sc
+                translationY = (1f - anim.value) * 24f
             }
     ) {
         content()
@@ -280,7 +299,7 @@ internal fun ShinyGreenPingBadge(
     )
     val dotScale by inf.animateFloat(
         initialValue = 0.85f,
-        targetValue = 1.25f,
+        targetValue = 1.22f,
         animationSpec = infiniteRepeatable(
             tween(1100, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
@@ -288,7 +307,6 @@ internal fun ShinyGreenPingBadge(
         label = "pingDotScale"
     )
 
-    // رنگ‌بندی هماهنگ با بخش Service Quality (نقره‌ای پلاتینی و شامپاینی درخشان، بدون رنگ سبز)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(9.dp))
@@ -302,12 +320,12 @@ internal fun ShinyGreenPingBadge(
                 )
             )
             .border(
-                width = 1.1.dp,
+                width = 1.dp,
                 brush = Brush.horizontalGradient(
                     listOf(
                         Color(0xFF8E93A2).copy(alpha = 0.65f + 0.30f * glowAlpha),
-                        Color(0xFFD8DCE6).copy(alpha = 0.95f),
-                        Color(0xFFE6CFAF).copy(alpha = 0.65f + 0.30f * glowAlpha)
+                        PlatinumSilver.copy(alpha = 0.95f),
+                        ChampagneGold.copy(alpha = 0.65f + 0.30f * glowAlpha)
                     )
                 ),
                 shape = RoundedCornerShape(9.dp)
@@ -316,36 +334,36 @@ internal fun ShinyGreenPingBadge(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             if (showDiamond) {
-                GlassDiamondIcon(size = 11.dp)
+                GlassDiamondIcon(size = 10.dp)
             }
             Box(
                 modifier = Modifier
-                    .size(6.dp)
+                    .size(5.5.dp)
                     .scale(dotScale)
                     .clip(CircleShape)
-                    .background(Color(0xFFE6CFAF).copy(alpha = glowAlpha))
+                    .background(ChampagneGold.copy(alpha = glowAlpha))
             )
             Text(
-                text = "$ms ms",
-                color = Color(0xFFECEEF4),
-                fontSize = 10.sp,
+                text = if (ms > 0) "$ms ms" else "READY",
+                color = PlatinumBright,
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = FontFamily.Monospace,
-                style = TextStyle(
-                    shadow = Shadow(
-                        color = Color(0xFFD8DCE6).copy(alpha = 0.75f * glowAlpha),
-                        offset = Offset(0f, 0f),
-                        blurRadius = 9f
-                    )
-                )
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
 }
 
+/**
+ * کارت سرور اصلاح‌شده در صفحه Home:
+ * - بدون بیرون‌زدگی متن (DED-NL به کد کشور تمیز ۲ حرفی مثل NL / PL / DE تبدیل شده)
+ * - بدون شکستن تگ DEDICATED به دو خط (DEDICA / TED)
+ */
 @Composable
 internal fun ModernServerCard(
     server: PennyServer?,
@@ -356,129 +374,175 @@ internal fun ModernServerCard(
     onClick: () -> Unit
 ) {
     val borderColor = when {
-        isConnected -> Color(0xFFD8DCE6).copy(alpha = 0.85f)
-        isVipMode -> Color(0xFFD8C7B0).copy(alpha = 0.65f)
-        else -> Color(0xFF3A3B44).copy(alpha = 0.85f)
+        isConnected -> ChampagneGold.copy(alpha = 0.85f)
+        isVipMode -> ChampagneGold.copy(alpha = 0.55f)
+        else -> ObsidianBorder
     }
+    val shape = RoundedCornerShape(16.dp)
 
     Surface(
-        color = Color(0xFF1A1B20).copy(alpha = 0.94f),
-        shape = RoundedCornerShape(18.dp),
+        color = ObsidianCard.copy(alpha = 0.95f),
+        shape = shape,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-            .clickable(enabled = enabled) { onClick() }
+            .clip(shape)
+            .border(1.dp, borderColor, shape)
+            .tvDpadClickable(enabled = enabled, shape = shape, onClick = onClick)
     ) {
         Crossfade(
             targetState = server,
-            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
             label = "serverCardFade"
         ) { currentSrv ->
             if (currentSrv == null) {
-                Text(
-                    text = Strings.noServerYet(lang, isVipMode),
-                    color = Color(0xFF9EA1AB),
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                )
-            } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = Strings.noServerYet(lang, isVipMode),
+                        color = PlatinumMuted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "SELECT ›",
+                        color = ChampagneGold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            } else {
+                val isOwn = isDedicatedServerTag(currentSrv.codeTag)
+                val geo = getCountryGeoInfo(currentSrv.codeTag)
+                val shortBadgeTop = when (currentSrv.codeTag) {
+                    "GHOST" -> "GH"
+                    "PUB" -> "PUB"
+                    else -> geo.isoCode
+                }
+                val shortBadgeSub = when (currentSrv.codeTag) {
+                    "GHOST" -> "CHAT"
+                    "PUB" -> "FREE"
+                    else -> "PRO"
+                }
+                val tierLabel = when (currentSrv.codeTag) {
+                    "GHOST" -> "GHOST STEALTH"
+                    "PUB" -> "PUBLIC"
+                    else -> "DEDICATED"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 11.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val isOwn = isDedicatedServerTag(currentSrv.codeTag)
-                    val tagText = currentSrv.codeTag.ifEmpty { "CF-1" }
+                    // باکس استاندارد و بدون سرریز (NL / PRO ، PL / PRO ، GH / CHAT)
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(11.dp))
+                            .width(46.dp)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(
                                 Brush.linearGradient(
                                     if (isOwn) {
-                                        listOf(Color(0xFF383024), Color(0xFF221E18))
+                                        listOf(Color(0xFF352E24), Color(0xFF1F1B16))
                                     } else {
-                                        listOf(Color(0xFF282A34), Color(0xFF1B1C23))
+                                        listOf(Color(0xFF262832), Color(0xFF191A22))
                                     }
                                 )
                             )
                             .border(
-                                1.2.dp,
-                                if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.88f)
-                                else Color(0xFF565A68),
-                                RoundedCornerShape(11.dp)
+                                1.dp,
+                                if (isOwn) ChampagneGold.copy(alpha = 0.82f) else Color(0xFF4C505E),
+                                RoundedCornerShape(10.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = tagText,
-                            color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB8BDCB),
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = shortBadgeTop,
+                                color = if (isOwn) ChampagneLight else PlatinumBright,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = shortBadgeSub,
+                                color = if (isOwn) ChampagneGold else PlatinumMuted,
+                                fontSize = 7.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
 
                     Spacer(Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = currentSrv.label,
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold,
+                                color = PlatinumBright,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
+                            Spacer(Modifier.width(6.dp))
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(5.dp))
                                     .background(
-                                        if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.22f)
-                                        else Color(0xFF323542)
+                                        if (isOwn) ChampagneGold.copy(alpha = 0.18f)
+                                        else Color(0xFF2B2D38)
                                     )
                                     .border(
                                         0.8.dp,
-                                        if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.75f)
-                                        else Color(0xFF5A5E6E),
+                                        if (isOwn) ChampagneGold.copy(alpha = 0.72f)
+                                        else Color(0xFF525666),
                                         RoundedCornerShape(5.dp)
                                     )
                                     .padding(horizontal = 5.dp, vertical = 1.dp)
                             ) {
                                 Text(
-                                    text = if (isOwn) "DEDICATED" else "PUBLIC",
-                                    color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB4B9C7),
-                                    fontSize = 8.5.sp,
+                                    text = tierLabel,
+                                    color = if (isOwn) ChampagneLight else PlatinumSilver,
+                                    fontSize = 7.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = when {
-                                isOwn && isConnected -> "Dedicated Cloudflare ($tagText) • High-Speed Stream"
-                                isOwn -> "Our Dedicated Cloudflare Edge ($tagText) • Tap to switch"
-                                isConnected -> "Public Shared Community Node • Tap to switch to OWN"
-                                else -> "Public Community Server • Shared Bandwidth"
-                            },
-                            color = if (isOwn) Color(0xFFD8C7B0) else Color(0xFF9EA1AB),
-                            fontSize = 10.sp,
+                            text = "${geo.countryName} (${geo.cityName}) • Tap to switch server",
+                            color = if (isOwn) ChampagneGold.copy(alpha = 0.9f) else PlatinumMuted,
+                            fontSize = 9.5.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(8.dp))
 
                     ShinyGreenPingBadge(
                         ms = currentSrv.ms,
@@ -497,11 +561,11 @@ internal fun ConnectionProfileBar(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color(0xFF17181E).copy(alpha = 0.95f),
+        color = ObsidianCard.copy(alpha = 0.95f),
         shape = RoundedCornerShape(14.dp),
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF32343E), RoundedCornerShape(14.dp))
+            .border(1.dp, ObsidianBorder, RoundedCornerShape(14.dp))
     ) {
         Row(
             modifier = Modifier
@@ -512,7 +576,7 @@ internal fun ConnectionProfileBar(
             ConnectionProfile.values().forEach { prof ->
                 val active = prof == selected
                 Surface(
-                    color = if (active) Color(0xFF2B2E38) else Color.Transparent,
+                    color = if (active) ObsidianElevated else Color.Transparent,
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1f)
@@ -520,27 +584,27 @@ internal fun ConnectionProfileBar(
                         .then(
                             if (active) Modifier.border(
                                 1.dp,
-                                Color(0xFFD8DCE6).copy(alpha = 0.55f),
+                                ChampagneGold.copy(alpha = 0.65f),
                                 RoundedCornerShape(10.dp)
                             ) else Modifier
                         )
                         .clickable { onSelect(prof) }
                 ) {
                     Column(
-                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
+                        modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = prof.label,
-                            color = if (active) Color(0xFFF2F4F8) else Color(0xFF9EA1AB),
-                            fontSize = 11.sp,
+                            color = if (active) PlatinumBright else PlatinumMuted,
+                            fontSize = 10.5.sp,
                             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
                             maxLines = 1
                         )
                         Text(
                             text = prof.tag,
-                            color = if (active) Color(0xFFD8C7B0) else Color(0xFF6E717C),
-                            fontSize = 8.5.sp,
+                            color = if (active) ChampagneGold else Color(0xFF6E717C),
+                            fontSize = 8.sp,
                             maxLines = 1
                         )
                     }
@@ -584,20 +648,20 @@ internal fun ServiceQualityUptimeCard(
     var adLoaded by remember { mutableStateOf(false) }
 
     Surface(
-        color = Color(0xFF18191F).copy(alpha = 0.95f),
-        shape = RoundedCornerShape(16.dp),
+        color = ObsidianCard.copy(alpha = 0.95f),
+        shape = RoundedCornerShape(14.dp),
         modifier = modifier
             .fillMaxWidth()
             .border(
                 1.dp,
-                if (isConnected) Color(0xFF4A4E5C) else Color(0xFF32343E),
-                RoundedCornerShape(16.dp)
+                if (isConnected) ChampagneGold.copy(alpha = 0.45f) else ObsidianBorder,
+                RoundedCornerShape(14.dp)
             )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 13.dp, vertical = 10.dp)
+                .padding(horizontal = 11.dp, vertical = 7.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -610,41 +674,44 @@ internal fun ServiceQualityUptimeCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (isConnected) Color(0xFFD8DCE6) else Color(0xFFC8B8A2))
+                            .background(if (isConnected) ChampagneGold else PlatinumSilver)
                     )
                     Text(
                         text = "Service Quality: $qualityLabel",
-                        color = Color(0xFFECEEF4),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        color = PlatinumBright,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
                     )
                 }
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(Color(0xFF252730))
-                        .border(1.dp, Color(0xFF484B57), RoundedCornerShape(7.dp))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(ObsidianElevated)
+                        .border(1.dp, Color(0xFF484B57), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 1.5.dp)
                 ) {
                     Text(
                         text = liveBadgeText,
-                        color = Color(0xFFE2E5EE),
-                        fontSize = 10.sp,
+                        color = ChampagneLight,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
 
-            Spacer(Modifier.height(7.dp))
+            Spacer(Modifier.height(5.dp))
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .height(3.5.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(Color(0xFF262830))
             ) {
@@ -654,13 +721,13 @@ internal fun ServiceQualityUptimeCard(
                         .fillMaxHeight()
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Color(0xFF8E93A2), Color(0xFFD8DCE6), Color(0xFFE6CFAF))
+                                listOf(Color(0xFF8E93A2), PlatinumSilver, ChampagneGold)
                             )
                         )
                 )
             }
 
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(4.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -668,18 +735,20 @@ internal fun ServiceQualityUptimeCard(
             ) {
                 Text(
                     text = "Fragment: Active • Iran Direct",
-                    color = Color(0xFF9497A1),
-                    fontSize = 9.5.sp
+                    color = PlatinumMuted,
+                    fontSize = 9.sp,
+                    maxLines = 1
                 )
                 Text(
                     text = buildString {
-                        append(if (cleanDnsShield) "DoH 1.1.1.1" else "Standard DNS")
+                        append(if (cleanDnsShield) "DoH 8.8.8.8" else "Standard DNS")
                         if (splitTunnelLocal) append(" • Bypass LAN")
                         append(" • ${serverCount.coerceAtLeast(0)} Nodes")
                     },
-                    color = Color(0xFFC8CCD6),
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.SemiBold
+                    color = PlatinumSilver,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
                 )
             }
 
@@ -687,7 +756,7 @@ internal fun ServiceQualityUptimeCard(
                 AndroidView(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (adLoaded) 50.dp else 0.dp),
+                        .height(if (adLoaded) 42.dp else 0.dp),
                     factory = { ctx ->
                         AdView(ctx).apply {
                             setAdSize(AdSize.BANNER)
@@ -727,27 +796,27 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
             )
         }
         launch {
-            delay(180)
+            delay(150)
             titleAnim.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
             )
         }
         launch {
-            delay(360)
+            delay(300)
             subAnim.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
             )
         }
         launch {
-            delay(540)
+            delay(450)
             footerAnim.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
             )
         }
-        delay(2450)
+        delay(2100)
         onFinished()
     }
 
@@ -776,7 +845,7 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                     colors = listOf(
                         Color(0xFF22232A),
                         Color(0xFF141519),
-                        Color(0xFF0B0B0E)
+                        ObsidianDeep
                     )
                 )
             )
@@ -786,14 +855,14 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 modifier = Modifier
-                    .size(252.dp)
+                    .size(230.dp)
                     .graphicsLayer {
                         val p = logoAnim.value
                         alpha = p.coerceIn(0f, 1f)
                         val sc = 0.42f + 0.58f * p
                         scaleX = sc
                         scaleY = sc
-                        translationY = (1f - p) * -42f
+                        translationY = (1f - p) * -36f
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -803,22 +872,22 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                     val tl = Offset(center.x - arcR, center.y - arcR)
                     val sz = Size(arcR * 2f, arcR * 2f)
                     drawArc(
-                        color = Color(0xFFD8DCE6).copy(alpha = 0.78f),
+                        color = PlatinumSilver.copy(alpha = 0.78f),
                         startAngle = orbitAngle,
                         sweepAngle = 95f,
                         useCenter = false,
                         topLeft = tl,
                         size = sz,
-                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
                     )
                     drawArc(
-                        color = Color(0xFFE6CFAF).copy(alpha = 0.62f),
+                        color = ChampagneGold.copy(alpha = 0.68f),
                         startAngle = orbitAngle + 180f,
                         sweepAngle = 95f,
                         useCenter = false,
                         topLeft = tl,
                         size = sz,
-                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
 
@@ -826,21 +895,21 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                     painter = painterResource(id = R.drawable.penny_cat_logo),
                     contentDescription = "Penny VPN Logo",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(198.dp)
+                    modifier = Modifier.size(182.dp)
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
 
             Text(
                 text = "PENNY VPN",
-                color = Color(0xFFF2F4F8),
-                fontSize = 34.sp,
+                color = PlatinumBright,
+                fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 4.sp,
                 style = TextStyle(
                     shadow = Shadow(
-                        color = Color(0xFFD0D4DF),
+                        color = PlatinumSilver,
                         offset = Offset(0f, 0f),
                         blurRadius = glowPulse
                     )
@@ -848,79 +917,39 @@ internal fun PennySplashIntro(lang: AppLang, onFinished: () -> Unit) {
                 modifier = Modifier.graphicsLayer {
                     val p = titleAnim.value
                     alpha = p
-                    translationY = (1f - p) * 32f
-                    val sc = 0.86f + 0.14f * p
-                    scaleX = sc
-                    scaleY = sc
+                    translationY = (1f - p) * 28f
                 }
             )
-            Spacer(Modifier.height(10.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.graphicsLayer {
-                    val p = subAnim.value
-                    alpha = p
-                    translationY = (1f - p) * 26f
-                }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(22.dp)
-                        .height(1.5.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color.Transparent, Color(0xFFE6CFAF), Color(0xFFFFFFFF))
-                            )
-                        )
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = Strings.splashTagline(lang),
-                    fontSize = 16.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontStyle = FontStyle.Italic,
-                    fontFamily = FontFamily.SansSerif,
-                    letterSpacing = 1.4.sp,
-                    style = TextStyle(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFFFFFFFF),
-                                Color(0xFFF7E8D2),
-                                Color(0xFFE6CFAF),
-                                Color(0xFFFFFFFF)
-                            )
-                        ),
-                        shadow = Shadow(
-                            color = Color(0xFFE6CFAF).copy(alpha = 0.95f),
-                            offset = Offset(0f, 0f),
-                            blurRadius = glowPulse * 0.9f
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = Strings.splashTagline(lang),
+                fontSize = 15.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontStyle = FontStyle.Italic,
+                letterSpacing = 1.3.sp,
+                style = TextStyle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFFFFFFF),
+                            ChampagneLight,
+                            ChampagneGold,
+                            Color(0xFFFFFFFF)
                         )
                     )
-                )
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .width(22.dp)
-                        .height(1.5.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFFFFFFFF), Color(0xFFE6CFAF), Color.Transparent)
-                            )
-                        )
-                )
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(
-                text = "powered by Omidss",
-                color = Color(0xFFD8C7B0),
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
+                ),
                 modifier = Modifier.graphicsLayer {
-                    val p = footerAnim.value
-                    alpha = p
-                    translationY = (1f - p) * 20f
+                    alpha = subAnim.value
+                }
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "powered by Omidss • Mobile & Android TV",
+                color = ChampagneGold,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+                modifier = Modifier.graphicsLayer {
+                    alpha = footerAnim.value
                 }
             )
         }
@@ -936,31 +965,22 @@ internal fun NeonBrandHeader(
     modifier: Modifier = Modifier
 ) {
     val glowTarget = when {
-        isVipMode && mode == UiMode.IDLE -> Color(0xFFE6CFAF)
+        isVipMode && mode == UiMode.IDLE -> ChampagneGold
         mode == UiMode.IDLE -> Color(0xFFB8BDC8)
-        mode == UiMode.SCANNING -> Color(0xFFD0D4DF)
-        mode == UiMode.CONNECTING -> Color(0xFFD8DCE6)
-        else -> Color(0xFFEEF1F7)
+        mode == UiMode.SCANNING -> PlatinumSilver
+        mode == UiMode.CONNECTING -> ChampagneLight
+        else -> ChampagneGold
     }
     val neonColor by animateColorAsState(glowTarget, tween(700), label = "neonColor")
     val inf = rememberInfiniteTransition(label = "headerNeon")
     val blurRadius by inf.animateFloat(
-        initialValue = 10f,
-        targetValue = 22f,
+        initialValue = 8f,
+        targetValue = 18f,
         animationSpec = infiniteRepeatable(
             tween(1600, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
         ),
         label = "neonBlur"
-    )
-    val sloganGlowAlpha by inf.animateFloat(
-        initialValue = 0.65f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            tween(1350, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "sloganGlowAlpha"
     )
 
     Column(
@@ -976,18 +996,18 @@ internal fun NeonBrandHeader(
                 contentDescription = "Penny VPN Cat Logo",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
-                    .border(1.2.dp, neonColor.copy(alpha = 0.75f), CircleShape)
+                    .border(1.2.dp, neonColor.copy(alpha = 0.78f), CircleShape)
                     .clickable { onLogoClick() }
             )
-            Spacer(Modifier.width(9.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = if (isVipMode) "PENNY VIP" else "PENNY VPN",
-                color = Color(0xFFF2F4F8),
-                fontSize = 23.sp,
+                color = PlatinumBright,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 2.5.sp,
+                letterSpacing = 2.2.sp,
                 style = TextStyle(
                     shadow = Shadow(
                         color = neonColor,
@@ -997,185 +1017,193 @@ internal fun NeonBrandHeader(
                 )
             )
         }
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(2.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .width(18.dp)
-                    .height(1.3.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                Color.Transparent,
-                                Color(0xFFE6CFAF).copy(alpha = sloganGlowAlpha),
-                                Color(0xFFFFFFFF).copy(alpha = sloganGlowAlpha)
-                            )
-                        )
-                    )
-            )
-            Spacer(Modifier.width(7.dp))
             if (isVipMode) {
-                GlassDiamondIcon(size = 12.dp)
+                GlassDiamondIcon(size = 11.dp)
                 Spacer(Modifier.width(5.dp))
             }
             Text(
                 text = Strings.subtitle(lang, isVipMode),
-                fontSize = 13.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontStyle = FontStyle.Italic,
-                fontFamily = FontFamily.SansSerif,
-                letterSpacing = 1.25.sp,
+                letterSpacing = 1.0.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = TextStyle(
                     brush = Brush.linearGradient(
                         colors = listOf(
                             Color(0xFFFFFFFF),
-                            Color(0xFFF7E8D2),
-                            Color(0xFFE6CFAF),
+                            ChampagneLight,
+                            ChampagneGold,
                             Color(0xFFFFFFFF)
                         )
-                    ),
-                    shadow = Shadow(
-                        color = Color(0xFFE6CFAF).copy(alpha = 0.92f * sloganGlowAlpha),
-                        offset = Offset(0f, 0f),
-                        blurRadius = blurRadius * 0.95f
                     )
                 )
-            )
-            Spacer(Modifier.width(7.dp))
-            Box(
-                modifier = Modifier
-                    .width(18.dp)
-                    .height(1.3.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                Color(0xFFFFFFFF).copy(alpha = sloganGlowAlpha),
-                                Color(0xFFE6CFAF).copy(alpha = sloganGlowAlpha),
-                                Color.Transparent
-                            )
-                        )
-                    )
             )
         }
     }
 }
 
+/**
+ * نمایشگر وضعیت فشرده همراه با مختصات کشور متصل‌شده و تله‌متری لحظه‌ای در یک خط (بدون ایجاد اسکرول در صفحه Home)
+ */
 @Composable
 internal fun PulsingStatusText(
     mode: UiMode,
     statusMessage: String,
     lang: AppLang,
     isVip: Boolean,
-    dailyRemainingText: String? = null
+    dailyRemainingText: String? = null,
+    countryGeo: CountryGeoInfo? = null,
+    downSpeed: Long = 0L,
+    upSpeed: Long = 0L
 ) {
     val isConnected = mode == UiMode.CONNECTED
     val inf = rememberInfiniteTransition(label = "statusPulse")
-    val pulseScale by inf.animateFloat(
-        initialValue = 1.0f,
-        targetValue = if (isConnected) 1.06f else 1.0f,
+    val beaconAlpha by inf.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            tween(1100, easing = FastOutSlowInEasing),
+            tween(650, easing = FastOutSlowInEasing),
             RepeatMode.Reverse
         ),
-        label = "statusScale"
-    )
-    val pulseGlow by inf.animateFloat(
-        initialValue = 8f,
-        targetValue = if (isConnected) 20f else 8f,
-        animationSpec = infiniteRepeatable(
-            tween(1100, easing = FastOutSlowInEasing),
-            RepeatMode.Reverse
-        ),
-        label = "statusGlow"
+        label = "beaconAlpha"
     )
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Crossfade(
-            targetState = if (isConnected) Strings.connectedBadge(lang, isVip) else statusMessage,
-            label = "status"
-        ) { msg ->
-            Text(
-                text = msg,
-                color = if (isConnected) Color(0xFFF2F4F8) else Color(0xFFD0D4DF),
-                fontSize = 14.sp,
-                fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                style = if (isConnected) {
-                    TextStyle(
-                        shadow = Shadow(
-                            color = Color(0xFFD8DCE6).copy(alpha = 0.85f),
-                            offset = Offset(0f, 0f),
-                            blurRadius = pulseGlow
-                        )
-                    )
-                } else {
-                    TextStyle.Default
-                },
-                modifier = Modifier
-                    .scale(if (isConnected) pulseScale else 1f)
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            )
-        }
-
-        if (isConnected && !isVip && !dailyRemainingText.isNullOrBlank()) {
-            Spacer(Modifier.height(4.dp))
+        // نوار رادار کشور متصل‌شده (چشمک‌زن روی کشور سرور مثل هلند، لهستان یا آلمان)
+        if (countryGeo != null) {
             Surface(
-                color = Color(0xFF252730),
-                shape = RoundedCornerShape(8.dp),
+                color = ObsidianCard.copy(alpha = 0.92f),
+                shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.border(
                     1.dp,
-                    Color(0xFF484B57),
-                    RoundedCornerShape(8.dp)
+                    if (isConnected) ChampagneGold.copy(alpha = 0.72f) else ObsidianBorder,
+                    RoundedCornerShape(20.dp)
                 )
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(7.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFD8DCE6))
+                            .background(
+                                if (isConnected) ChampagneGold.copy(alpha = beaconAlpha)
+                                else PlatinumSilver.copy(alpha = 0.7f)
+                            )
                     )
                     Text(
-                        text = dailyRemainingText,
-                        color = Color(0xFFE2E5EE),
-                        fontSize = 10.sp,
+                        text = "${countryGeo.countryName} (${countryGeo.cityName.uppercase()}) • ${countryGeo.coordLabel}",
+                        color = if (isConnected) ChampagneLight else PlatinumSilver,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
                     )
                 }
             }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        if (isConnected) {
+            // نوار فشرده سرعت دانلود/آپلود و سهمیه باقی‌مانده در یک خط (جلوگیری کامل از اسکرول صفحه Home)
+            Surface(
+                color = ObsidianElevated.copy(alpha = 0.94f),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.border(1.dp, Color(0xFF424554), RoundedCornerShape(10.dp))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "↓ ${fmtSpeed(downSpeed)}",
+                        color = ChampagneLight,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
+                    )
+                    Text("•", color = PlatinumMuted, fontSize = 10.sp)
+                    Text(
+                        text = "↑ ${fmtSpeed(upSpeed)}",
+                        color = PlatinumSilver,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
+                    )
+                    if (!dailyRemainingText.isNullOrBlank()) {
+                        Text("•", color = PlatinumMuted, fontSize = 10.sp)
+                        Text(
+                            text = dailyRemainingText,
+                            color = ChampagneGold,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = statusMessage,
+                color = PlatinumSilver,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
         }
     }
 }
 
+/**
+ * دکمه اتصال مرکزی مجهز به کره زمین سه‌بعدی (3D Orthographic World Globe) و رادار چشمک‌زن موقعیت کشور سرور (مثلاً هلند NL یا لهستان PL)
+ */
 @Composable
 internal fun PowerButton(
     mode: UiMode,
     progress: Float,
     lang: AppLang,
     isVipMode: Boolean,
+    countryGeo: CountryGeoInfo = getCountryGeoInfo("DED-NL"),
     onClick: () -> Unit
 ) {
     val isConnected = mode == UiMode.CONNECTED
     val target = when (mode) {
-        UiMode.IDLE -> if (isVipMode) Color(0xFFB8B2A6) else Color(0xFF8A8E99)
-        UiMode.SCANNING -> Color(0xFFC4C8D4)
-        UiMode.CONNECTING -> Color(0xFFD8DCE6)
-        UiMode.CONNECTED -> Color(0xFFECEEF6)
+        UiMode.IDLE -> if (isVipMode) ChampagneGold else Color(0xFF9EA2B0)
+        UiMode.SCANNING -> PlatinumSilver
+        UiMode.CONNECTING -> ChampagneLight
+        UiMode.CONNECTED -> ChampagneGold
     }
     val color by animateColorAsState(target, tween(700), label = "pbColor")
     val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
-    val glow by animateFloatAsState(
-        if (isConnected) 1f else 0f, tween(800), label = "pbGlow"
+
+    // چرخش نرم کره زمین به سمت طول و عرض جغرافیایی کشور سرور (مثلاً هلند 52.37N, 4.90E)
+    val centerLonDeg by animateFloatAsState(
+        targetValue = countryGeo.longitude,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "globeLon"
+    )
+    val centerLatDeg by animateFloatAsState(
+        targetValue = (countryGeo.latitude * 0.55f).coerceIn(-35f, 42f),
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "globeLat"
     )
 
     val catPresence by animateFloatAsState(
@@ -1190,8 +1218,13 @@ internal fun PowerButton(
     val inf = rememberInfiniteTransition(label = "pbInf")
     val pulse by inf.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2100, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)),
         label = "pbPulse"
+    )
+    val beaconBlink by inf.animateFloat(
+        initialValue = 0.25f, targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(tween(580, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "beaconBlink"
     )
     val spin by inf.animateFloat(
         initialValue = 0f, targetValue = 360f,
@@ -1200,154 +1233,284 @@ internal fun PowerButton(
     )
     val breathe by inf.animateFloat(
         initialValue = 1f,
-        targetValue = if (isConnected) 1.055f else 1.035f,
+        targetValue = if (isConnected) 1.04f else 1.02f,
         animationSpec = infiniteRepeatable(
             tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse
         ),
         label = "pbBreathe"
     )
 
-    val boxHeight = if (isConnected) 268.dp else 236.dp
-
     Box(
         modifier = Modifier
-            .width(268.dp)
-            .height(boxHeight),
-        contentAlignment = Alignment.BottomCenter
+            .width(236.dp)
+            .height(216.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier.size(252.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val c = Offset(size.width / 2f, size.height / 2f)
-                val r = 81.dp.toPx()
-                when (mode) {
-                    UiMode.CONNECTED, UiMode.CONNECTING -> {
-                        // هاله نورانی وسیع در پس‌زمینه دکمه هنگام اتصال
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFFE6CFAF).copy(alpha = 0.24f),
-                                    Color(0xFFD8DCE6).copy(alpha = 0.12f),
-                                    Color.Transparent
-                                ),
-                                center = c,
-                                radius = r * 1.65f
-                            ),
-                            radius = r * 1.65f,
-                            center = c
-                        )
-                        // ۳ موج پالس وسیع و پویا که تا لبه بیرونی پخش می‌شوند
-                        for (k in 0..2) {
-                            val t = (pulse + k / 3f) % 1f
-                            val waveRadius = r + 4.dp.toPx() + t * (size.minDimension * 0.22f)
-                            val waveAlpha = (1f - t) * (if (isConnected) 0.52f else 0.36f)
-                            drawCircle(
-                                color = if (k % 2 == 0) {
-                                    color.copy(alpha = waveAlpha)
-                                } else {
-                                    Color(0xFFE6CFAF).copy(alpha = waveAlpha * 0.85f)
-                                },
-                                radius = waveRadius,
-                                center = c,
-                                style = Stroke(width = (3.2f - t * 1.8f).dp.toPx())
-                            )
-                        }
-                    }
-                    UiMode.SCANNING -> {
-                        val rr = r + 12.dp.toPx()
-                        val tl = Offset(c.x - rr, c.y - rr)
-                        val sz = Size(rr * 2f, rr * 2f)
-                        drawArc(
-                            color = color.copy(alpha = 0.20f), startAngle = 0f, sweepAngle = 360f,
-                            useCenter = false, topLeft = tl, size = sz, style = Stroke(4.dp.toPx())
-                        )
-                        drawArc(
-                            color = color, startAngle = -90f, sweepAngle = 360f * animProgress,
-                            useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                        drawArc(
-                            color = Color(0xFFF2F4F8).copy(alpha = 0.9f), startAngle = spin, sweepAngle = 40f,
-                            useCenter = false, topLeft = tl, size = sz,
-                            style = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
-                        )
-                    }
-                    else -> {}
-                }
-                drawCircle(
-                    color = color.copy(alpha = 0.35f + 0.35f * glow),
-                    radius = r + 5.dp.toPx(),
+        // لایه کره زمین سه‌بعدی، قاره‌ها، مسیر تانل از ایران به کشور مقصد و نقطه چشمک‌زن کشور سرور
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val c = Offset(size.width / 2f, size.height / 2f + 6.dp.toPx())
+            val globeR = 96.dp.toPx()
+            val innerOrbR = 66.dp.toPx()
+
+            fun project3D(latDeg: Float, lonDeg: Float): Pair<Offset, Boolean> {
+                val lat = latDeg * (PI.toFloat() / 180f)
+                val lon = (lonDeg - centerLonDeg) * (PI.toFloat() / 180f)
+                val cLat = centerLatDeg * (PI.toFloat() / 180f)
+                val x = globeR * cos(lat) * sin(lon)
+                val y = -globeR * (sin(lat) * cos(cLat) - cos(lat) * sin(cLat) * cos(lon))
+                val z = sin(lat) * sin(cLat) + cos(lat) * cos(cLat) * cos(lon)
+                return Offset(c.x + x, c.y + y) to (z >= -0.05f)
+            }
+
+            // هاله اطراف کره زمین
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        ChampagneGold.copy(alpha = if (isConnected) 0.22f else 0.09f),
+                        PlatinumSilver.copy(alpha = 0.05f),
+                        Color.Transparent
+                    ),
                     center = c,
-                    style = Stroke(width = 2.dp.toPx())
+                    radius = globeR * 1.18f
+                ),
+                radius = globeR * 1.18f,
+                center = c
+            )
+
+            // دایره محیطی کره زمین سه‌بعدی
+            drawCircle(
+                color = ChampagneGold.copy(alpha = if (isConnected) 0.42f else 0.22f),
+                radius = globeR,
+                center = c,
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+
+            // مدارهای عرض جغرافیایی (Parallels)
+            for (latDeg in listOf(-60f, -30f, 0f, 30f, 60f)) {
+                val path = Path()
+                var started = false
+                for (lonStep in -90..90 step 6) {
+                    val (pt, vis) = project3D(latDeg, centerLonDeg + lonStep)
+                    if (vis) {
+                        if (!started) {
+                            path.moveTo(pt.x, pt.y)
+                            started = true
+                        } else {
+                            path.lineTo(pt.x, pt.y)
+                        }
+                    } else {
+                        started = false
+                    }
+                }
+                drawPath(
+                    path = path,
+                    color = PlatinumSilver.copy(alpha = 0.14f),
+                    style = Stroke(width = 0.8.dp.toPx())
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .size(162.dp)
-                    .scale(if (mode == UiMode.IDLE || mode == UiMode.CONNECTED) breathe else 1f)
-                    .clip(CircleShape)
-                    .background(
-                        if (isConnected) {
-                            Brush.radialGradient(
-                                listOf(
-                                    Color(0xFFF4F6FA),
-                                    Color(0xFFC8CCD6),
-                                    Color(0xFF7D8290)
-                                )
-                            )
+            // نصف‌النهارهای طول جغرافیایی (Meridians)
+            for (lonOffset in listOf(-60f, -30f, 0f, 30f, 60f)) {
+                val path = Path()
+                var started = false
+                for (latStep in -80..80 step 6) {
+                    val (pt, vis) = project3D(latStep.toFloat(), centerLonDeg + lonOffset)
+                    if (vis) {
+                        if (!started) {
+                            path.moveTo(pt.x, pt.y)
+                            started = true
                         } else {
-                            Brush.radialGradient(
-                                listOf(
-                                    Color(0xFF343640),
-                                    Color(0xFF22232A),
-                                    Color(0xFF16171C)
-                                )
-                            )
+                            path.lineTo(pt.x, pt.y)
                         }
+                    } else {
+                        started = false
+                    }
+                }
+                drawPath(
+                    path = path,
+                    color = PlatinumSilver.copy(alpha = 0.14f),
+                    style = Stroke(width = 0.8.dp.toPx())
+                )
+            }
+
+            // نقاط قاره‌های اروپا، خاورمیانه (ایران) و شمال آفریقا روی کره زمین
+            val continentLandmarks = listOf(
+                // Europe (NL, PL, DE, FR, UK, IT, ES, SE)
+                52.37f to 4.90f, 52.23f to 21.01f, 50.11f to 8.68f, 48.85f to 2.35f,
+                51.50f to -0.12f, 41.90f to 12.49f, 40.41f to -3.70f, 59.32f to 18.06f,
+                55.67f to 12.56f, 47.37f to 8.54f, 48.20f to 16.37f, 50.07f to 14.43f,
+                // Middle East & Iran
+                35.69f to 51.39f, 32.65f to 51.66f, 29.59f to 52.58f, 38.08f to 46.29f,
+                41.00f to 28.97f, 25.20f to 55.27f
+            )
+            for ((lat, lon) in continentLandmarks) {
+                val (pt, vis) = project3D(lat, lon)
+                if (vis) {
+                    drawCircle(
+                        color = ChampagneLight.copy(alpha = 0.30f),
+                        radius = 2.dp.toPx(),
+                        center = pt
                     )
-                    .border(
-                        width = 2.dp,
-                        brush = Brush.linearGradient(
-                            if (isConnected) {
-                                listOf(Color(0xFFFFFFFF), Color(0xFFD8DCE6), Color(0xFF6E7380))
-                            } else {
-                                listOf(Color(0xFFD0D4DF), Color(0xFF6B6E7B), Color(0xFF363842))
-                            }
-                        ),
-                        shape = CircleShape
+                }
+            }
+
+            // خط منحنی اتصال از ایران (تهران 35.69N, 51.39E) به کشور سرور مقصد (مثلاً هلند 52.37N, 4.90E)
+            val (originPt, originVis) = project3D(35.69f, 51.39f)
+            val (targetPt, targetVis) = project3D(countryGeo.latitude, countryGeo.longitude)
+            if (originVis && targetVis) {
+                val midX = (originPt.x + targetPt.x) / 2f
+                val midY = minOf(originPt.y, targetPt.y) - 18.dp.toPx()
+                val arcPath = Path().apply {
+                    moveTo(originPt.x, originPt.y)
+                    quadraticBezierTo(midX, midY, targetPt.x, targetPt.y)
+                }
+                drawPath(
+                    path = arcPath,
+                    color = ChampagneGold.copy(alpha = if (isConnected) 0.85f else 0.45f),
+                    style = Stroke(
+                        width = 1.6.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), phase = -pulse * 28f)
                     )
-                    .clickable(onClick = onClick),
-                contentAlignment = Alignment.Center
-            ) {
-                Crossfade(targetState = mode, label = "pbText") { m ->
-                    val fg = if (m == UiMode.CONNECTED) Color(0xFF16171C) else Color(0xFFF2F4F8)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(top = if (m == UiMode.CONNECTED) 16.dp else 0.dp)
-                    ) {
-                        Text(
-                            text = when (m) {
-                                UiMode.IDLE -> if (isVipMode) "VIP CONNECT" else "CONNECT"
-                                UiMode.SCANNING -> "SCANNING"
-                                UiMode.CONNECTING -> "CONNECTING"
-                                UiMode.CONNECTED -> "CONNECTED"
-                            },
-                            color = fg, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = when (m) {
-                                UiMode.IDLE -> Strings.smartConnect(lang, isVipMode)
-                                UiMode.SCANNING -> Strings.tapToCancel(lang)
-                                UiMode.CONNECTING -> Strings.tapToCancel(lang)
-                                UiMode.CONNECTED -> Strings.disconnect(lang)
-                            },
-                            color = fg.copy(alpha = 0.80f), fontSize = 11.5.sp, fontWeight = FontWeight.Bold
+                )
+                // نقطه مبدأ
+                drawCircle(
+                    color = PlatinumSilver.copy(alpha = 0.8f),
+                    radius = 3.dp.toPx(),
+                    center = originPt
+                )
+            }
+
+            // رادار چشمک‌زن روی موقعیت دقیق کشور سرور (هلند / لهستان / آلمان)
+            if (targetVis) {
+                val pulseRingR = (6.dp.toPx() + pulse * 16.dp.toPx())
+                drawCircle(
+                    color = ChampagneGold.copy(alpha = (1f - pulse) * 0.85f),
+                    radius = pulseRingR,
+                    center = targetPt,
+                    style = Stroke(width = 1.8.dp.toPx())
+                )
+                drawCircle(
+                    color = ChampagneGold.copy(alpha = 0.35f * beaconBlink),
+                    radius = 9.dp.toPx(),
+                    center = targetPt
+                )
+                drawCircle(
+                    color = if (isConnected) ChampagneLight else ChampagneGold,
+                    radius = 4.5.dp.toPx() * (0.85f + 0.3f * beaconBlink),
+                    center = targetPt
+                )
+            }
+
+            // امواج پالس اتصال یا حلقه اسکن
+            when (mode) {
+                UiMode.CONNECTED, UiMode.CONNECTING -> {
+                    for (k in 0..1) {
+                        val t = (pulse + k / 2f) % 1f
+                        val waveRadius = innerOrbR + 4.dp.toPx() + t * (globeR - innerOrbR)
+                        val waveAlpha = (1f - t) * (if (isConnected) 0.45f else 0.30f)
+                        drawCircle(
+                            color = ChampagneGold.copy(alpha = waveAlpha),
+                            radius = waveRadius,
+                            center = c,
+                            style = Stroke(width = (2.4f - t * 1.2f).dp.toPx())
                         )
                     }
+                }
+                UiMode.SCANNING -> {
+                    val rr = innerOrbR + 9.dp.toPx()
+                    val tl = Offset(c.x - rr, c.y - rr)
+                    val sz = Size(rr * 2f, rr * 2f)
+                    drawArc(
+                        color = color.copy(alpha = 0.20f), startAngle = 0f, sweepAngle = 360f,
+                        useCenter = false, topLeft = tl, size = sz, style = Stroke(3.5.dp.toPx())
+                    )
+                    drawArc(
+                        color = ChampagneGold, startAngle = -90f, sweepAngle = 360f * animProgress,
+                        useCenter = false, topLeft = tl, size = sz,
+                        style = Stroke(3.5.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        color = PlatinumBright, startAngle = spin, sweepAngle = 42f,
+                        useCenter = false, topLeft = tl, size = sz,
+                        style = Stroke(3.5.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+                else -> {}
+            }
+        }
+
+        // دکمه مرکزی پاور
+        Box(
+            modifier = Modifier
+                .offset(y = 6.dp)
+                .size(132.dp)
+                .scale(if (mode == UiMode.IDLE || mode == UiMode.CONNECTED) breathe else 1f)
+                .clip(CircleShape)
+                .background(
+                    if (isConnected) {
+                        Brush.radialGradient(
+                            listOf(
+                                ChampagneLight.copy(alpha = 0.96f),
+                                ChampagneGold.copy(alpha = 0.88f),
+                                Color(0xFF8C7A60)
+                            )
+                        )
+                    } else {
+                        Brush.radialGradient(
+                            listOf(
+                                Color(0xFF2E303B).copy(alpha = 0.90f),
+                                Color(0xFF1D1E26).copy(alpha = 0.92f),
+                                Color(0xFF13141A).copy(alpha = 0.95f)
+                            )
+                        )
+                    }
+                )
+                .border(
+                    width = 2.dp,
+                    brush = Brush.linearGradient(
+                        if (isConnected) {
+                            listOf(Color(0xFFFFFFFF), ChampagneGold, ChampagneBronze)
+                        } else {
+                            listOf(ChampagneGold.copy(alpha = 0.75f), PlatinumSilver.copy(alpha = 0.45f), Color(0xFF343642))
+                        }
+                    ),
+                    shape = CircleShape
+                )
+                .tvDpadClickable(shape = CircleShape, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Crossfade(targetState = mode, label = "pbText") { m ->
+                val fg = if (m == UiMode.CONNECTED) ObsidianDeep else PlatinumBright
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(top = if (m == UiMode.CONNECTED) 12.dp else 0.dp)
+                ) {
+                    Text(
+                        text = when (m) {
+                            UiMode.IDLE -> if (isVipMode) "VIP CONNECT" else "CONNECT"
+                            UiMode.SCANNING -> "SCANNING"
+                            UiMode.CONNECTING -> "CONNECTING"
+                            UiMode.CONNECTED -> "CONNECTED"
+                        },
+                        color = fg,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.8.sp
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = when (m) {
+                            UiMode.IDLE -> "${countryGeo.isoCode} • ${countryGeo.cityName}"
+                            UiMode.SCANNING -> Strings.tapToCancel(lang)
+                            UiMode.CONNECTING -> Strings.tapToCancel(lang)
+                            UiMode.CONNECTED -> "${countryGeo.countryName} • Stop"
+                        },
+                        color = fg.copy(alpha = 0.82f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -1359,13 +1522,13 @@ internal fun PowerButton(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .width(88.dp)
-                    .height(102.dp)
-                    .offset(y = (-12).dp)
+                    .width(74.dp)
+                    .height(84.dp)
+                    .offset(y = (-6).dp)
                     .graphicsLayer {
                         alpha = catPresence.coerceIn(0f, 1f)
-                        translationY = (1f - catPresence) * 28.dp.toPx()
-                        val sc = 0.80f + 0.20f * catPresence
+                        translationY = (1f - catPresence) * 20.dp.toPx()
+                        val sc = 0.82f + 0.18f * catPresence
                         scaleX = sc
                         scaleY = sc
                     }
@@ -1375,57 +1538,72 @@ internal fun PowerButton(
     }
 }
 
+/**
+ * انتخاب‌گر ۳ حالت سرویس (Public / Dedicated / Ghost Mode) با تم یکپارچه طلایی-شامپاینی و پلاتینیوم
+ * همراه با نشانگر اختصاصی وضعیت Ghost Mode و سوییچ محدودکننده ترافیک به پیام‌رسان‌های اضطراری
+ */
 @Composable
 internal fun ServiceTierSelectorBar(
     selectedMode: ServiceTierMode,
     dailyRemText: String,
     isVip: Boolean,
+    ghostMessagingOnly: Boolean = true,
+    onGhostMessagingOnlyChange: ((Boolean) -> Unit)? = null,
     onSelectMode: (ServiceTierMode) -> Unit
 ) {
+    val inf = rememberInfiniteTransition(label = "ghostIndicator")
+    val ghostBlink by inf.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "ghostBlink"
+    )
+
     Surface(
-        color = Color(0xFF181920).copy(alpha = 0.96f),
-        shape = RoundedCornerShape(18.dp),
+        color = ObsidianCard.copy(alpha = 0.96f),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF343642), RoundedCornerShape(18.dp))
+            .border(1.dp, ObsidianBorder, RoundedCornerShape(16.dp))
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 ServiceTierMode.values().forEach { tier ->
                     val isSelected = selectedMode == tier
-                    val accentColor = when (tier) {
-                        ServiceTierMode.PUBLIC -> Color(0xFF98E2C6)
-                        ServiceTierMode.DEDICATED -> Color(0xFFE6CFAF)
-                        ServiceTierMode.GHOST -> Color(0xFFC5B3F8)
+                    val borderBrush = when {
+                        isSelected && tier == ServiceTierMode.DEDICATED -> ChampagneGold
+                        isSelected && tier == ServiceTierMode.GHOST -> ChampagneLight
+                        isSelected -> PlatinumSilver
+                        else -> Color(0xFF2B2D38)
                     }
+                    val shape = RoundedCornerShape(11.dp)
                     Surface(
-                        color = if (isSelected) Color(0xFF282A35) else Color(0xFF1F2028),
-                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) ObsidianElevated else Color(0xFF1A1B22),
+                        shape = shape,
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(shape)
                             .border(
                                 width = if (isSelected) 1.3.dp else 1.dp,
-                                color = if (isSelected) accentColor else Color(0xFF2E303B),
-                                shape = RoundedCornerShape(12.dp)
+                                color = borderBrush,
+                                shape = shape
                             )
-                            .clickable { onSelectMode(tier) }
+                            .tvDpadClickable(shape = shape) { onSelectMode(tier) }
                     ) {
                         Column(
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
                                 text = tier.shortTitle,
-                                color = if (isSelected) Color(0xFFF5F7FA) else Color(0xFFA0A3B1),
-                                fontSize = 11.5.sp,
+                                color = if (isSelected) PlatinumBright else PlatinumMuted,
+                                fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                 maxLines = 1
                             )
-                            Spacer(Modifier.height(2.dp))
                             val subBadge = when (tier) {
                                 ServiceTierMode.PUBLIC -> "FREE"
                                 ServiceTierMode.DEDICATED -> if (isVip) "VIP 50GB" else "1GB/DAY"
@@ -1433,40 +1611,104 @@ internal fun ServiceTierSelectorBar(
                             }
                             Text(
                                 text = subBadge,
-                                color = if (isSelected) accentColor else Color(0xFF757886),
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                color = if (isSelected) ChampagneGold else Color(0xFF727684),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1
                             )
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(7.dp))
+
+            Spacer(Modifier.height(6.dp))
+
+            // ردیف اختصاصی وضعیت Ghost Mode و سوییچ قفل ترافیک روی پیام‌رسان‌های اضطراری
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF121319))
+                    .border(
+                        width = 1.dp,
+                        color = if (selectedMode == ServiceTierMode.GHOST && ghostMessagingOnly) {
+                            ChampagneGold.copy(alpha = 0.65f)
+                        } else {
+                            Color(0xFF272934)
+                        },
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = selectedMode.description,
-                    color = Color(0xFFB8BCC8),
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (selectedMode == ServiceTierMode.DEDICATED) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = dailyRemText,
-                        color = Color(0xFFE6CFAF),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (selectedMode == ServiceTierMode.GHOST && ghostMessagingOnly) {
+                                    ChampagneGold.copy(alpha = ghostBlink)
+                                } else if (selectedMode == ServiceTierMode.DEDICATED) {
+                                    ChampagneGold
+                                } else {
+                                    PlatinumSilver
+                                }
+                            )
                     )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = when (selectedMode) {
+                                ServiceTierMode.GHOST ->
+                                    if (ghostMessagingOnly) "GHOST SHIELD ACTIVE • Messaging-Only (42 KB/s Cap)"
+                                    else "Ghost Mode • Toggle switch to restrict to chat only"
+                                ServiceTierMode.DEDICATED ->
+                                    "Dedicated Pro • $dailyRemText"
+                                ServiceTierMode.PUBLIC ->
+                                    "Public Free • Toggle Ghost Lock for emergency chat"
+                            },
+                            color = if (selectedMode == ServiceTierMode.GHOST) ChampagneLight else PlatinumBright,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (onGhostMessagingOnlyChange != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (ghostMessagingOnly && selectedMode == ServiceTierMode.GHOST) "CHAT LOCK" else "GHOST",
+                            color = if (ghostMessagingOnly && selectedMode == ServiceTierMode.GHOST) ChampagneGold else PlatinumMuted,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Box(modifier = Modifier.scale(0.68f).height(24.dp)) {
+                            Switch(
+                                checked = selectedMode == ServiceTierMode.GHOST && ghostMessagingOnly,
+                                onCheckedChange = { checked ->
+                                    if (checked && selectedMode != ServiceTierMode.GHOST) {
+                                        onSelectMode(ServiceTierMode.GHOST)
+                                    }
+                                    onGhostMessagingOnlyChange(checked)
+                                },
+                                colors = metallicSwitchColors()
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1481,45 +1723,50 @@ internal fun PennyBottomNavBar(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color(0xFF14151B).copy(alpha = 0.98f),
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        color = Color(0xFF121319).copy(alpha = 0.98f),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         modifier = modifier
             .fillMaxWidth()
             .border(
                 width = 1.dp,
-                color = Color(0xFF2E303C),
-                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+                color = ObsidianBorder,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
             )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomNavTab.values().forEach { tab ->
                 val active = selectedTab == tab
-                val fg = if (active) Color(0xFFE6CFAF) else Color(0xFF8E92A0)
+                val fg = if (active) ChampagneGold else PlatinumMuted
+                val shape = RoundedCornerShape(12.dp)
                 Surface(
-                    color = if (active) Color(0xFF232530) else Color.Transparent,
-                    shape = RoundedCornerShape(14.dp),
+                    color = if (active) ObsidianElevated else Color.Transparent,
+                    shape = shape,
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 4.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onSelectTab(tab) }
+                        .clip(shape)
+                        .then(
+                            if (active) Modifier.border(1.dp, ChampagneGold.copy(alpha = 0.45f), shape)
+                            else Modifier
+                        )
+                        .tvDpadClickable(shape = shape) { onSelectTab(tab) }
                 ) {
                     Row(
-                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 10.dp),
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Canvas(modifier = Modifier.size(16.dp)) {
+                        Canvas(modifier = Modifier.size(15.dp)) {
                             val w = size.width
                             val h = size.height
-                            val st = 1.7.dp.toPx()
+                            val st = 1.65.dp.toPx()
                             when (tab) {
                                 BottomNavTab.HOME -> {
                                     drawCircle(
@@ -1569,15 +1816,15 @@ internal fun PennyBottomNavBar(
                                 }
                             }
                         }
-                        Spacer(Modifier.width(7.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(
                             text = if (tab == BottomNavTab.SERVERS && serverCount > 0) {
                                 "${tab.title} ($serverCount)"
                             } else {
                                 tab.title
                             },
-                            color = if (active) Color(0xFFF5F7FA) else Color(0xFF9498A6),
-                            fontSize = 12.sp,
+                            color = if (active) PlatinumBright else PlatinumMuted,
+                            fontSize = 11.5.sp,
                             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
                             maxLines = 1
                         )
@@ -1588,6 +1835,9 @@ internal fun PennyBottomNavBar(
     }
 }
 
+/**
+ * تب سرورها: هدر و انتخاب‌گر حالت ثابت هستند و فقط لیست سرورها اسکرول می‌شود
+ */
 @Composable
 internal fun ServersTabPage(
     selectedMode: ServiceTierMode,
@@ -1600,6 +1850,8 @@ internal fun ServersTabPage(
     dailyUsedBytes: Long,
     dailyMaxBytes: Long,
     vipActive: Boolean,
+    ghostMessagingOnly: Boolean = true,
+    onGhostMessagingOnlyChange: ((Boolean) -> Unit)? = null,
     onScanClick: () -> Unit,
     onServerClick: (PennyServer) -> Unit
 ) {
@@ -1611,48 +1863,51 @@ internal fun ServersTabPage(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 10.dp),
+                .padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Server Network",
-                    color = Color(0xFFF5F7FA),
-                    fontSize = 20.sp,
+                    color = PlatinumBright,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = "Select service mode & connect to verified nodes",
-                    color = Color(0xFF9EA2B0),
-                    fontSize = 11.5.sp
+                    text = "Verified stealth nodes • Zero config leak",
+                    color = PlatinumMuted,
+                    fontSize = 10.5.sp
                 )
             }
+            val scanShape = RoundedCornerShape(11.dp)
             Surface(
-                color = Color(0xFF252732),
-                shape = RoundedCornerShape(12.dp),
+                color = ObsidianElevated,
+                shape = scanShape,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                    .clickable(enabled = !busy) { onScanClick() }
+                    .clip(scanShape)
+                    .border(1.dp, ChampagneGold.copy(alpha = 0.65f), scanShape)
+                    .tvDpadClickable(enabled = !busy, shape = scanShape) { onScanClick() }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    UpdateArrowIcon(size = 13.dp, color = Color(0xFFE6CFAF))
-                    Spacer(Modifier.width(6.dp))
+                    UpdateArrowIcon(size = 12.dp, color = ChampagneGold)
+                    Spacer(Modifier.width(5.dp))
                     Text(
                         text = if (busy) "Scanning..." else "Scan Mode",
-                        color = Color(0xFFF5E6D3),
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
+                        color = ChampagneLight,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -1662,263 +1917,196 @@ internal fun ServersTabPage(
             selectedMode = selectedMode,
             dailyRemText = dailyRemText,
             isVip = vipActive,
+            ghostMessagingOnly = ghostMessagingOnly,
+            onGhostMessagingOnlyChange = onGhostMessagingOnlyChange,
             onSelectMode = onSelectMode
         )
 
-        Spacer(Modifier.height(10.dp))
-
-        // کارت وضعیت اختصاصی هر مود
-        Surface(
-            color = Color(0xFF1A1B22).copy(alpha = 0.95f),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, Color(0xFF323440), RoundedCornerShape(16.dp))
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                when (selectedMode) {
-                    ServiceTierMode.DEDICATED -> {
-                        val ratio = if (vipActive) {
-                            1f
-                        } else {
-                            (dailyRemBytes.toFloat() / dailyMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (vipActive) "Dedicated Pro • VIP 50 GB Plan" else "Dedicated Pro • 1 GB Daily Quota",
-                                color = Color(0xFFE6CFAF),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = if (vipActive) "UNRESTRICTED" else "${fmtBytes(dailyRemBytes)} Remaining",
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(Color(0xFF282A34))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(ratio)
-                                    .fillMaxHeight()
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(Color(0xFF9E8A6E), Color(0xFFE6CFAF))
-                                        )
-                                    )
-                            )
-                        }
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            text = "Encrypted Stealth Vault • Protected against config extraction • Resets daily at 00:00",
-                            color = Color(0xFF9498A6),
-                            fontSize = 9.5.sp
-                        )
-                    }
-                    ServiceTierMode.GHOST -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Ghost Mode • Extreme Censorship Bypass",
-                                color = Color(0xFFC5B3F8),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = "MESSAGING ONLY",
-                                color = Color(0xFFC5B3F8),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Designed for severe blackouts & heavy DPI filtering. Uses micro-fragmentation (5-12B) to keep Telegram, WhatsApp & text messages connected.",
-                            color = Color(0xFFB0B4C2),
-                            fontSize = 10.sp
-                        )
-                    }
-                    ServiceTierMode.PUBLIC -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Public Mode • Free Community Servers",
-                                color = Color(0xFF98E2C6),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                text = "UNLIMITED FREE",
-                                color = Color(0xFF98E2C6),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Public servers verified by real SOCKS5 download test. Free unlimited usage for general browsing.",
-                            color = Color(0xFFB0B4C2),
-                            fontSize = 10.sp
-                        )
-                    }
-                }
-            }
-        }
-
         if (busy && scanProgress > 0f) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
                     .background(Color(0xFF262832))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(scanProgress.coerceIn(0f, 1f))
                         .fillMaxHeight()
-                        .background(Color(0xFFE6CFAF))
+                        .background(ChampagneGold)
                 )
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (servers.isEmpty()) {
-            Surface(
-                color = Color(0xFF181920),
-                shape = RoundedCornerShape(18.dp),
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, Color(0xFF2E303C), RoundedCornerShape(18.dp))
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                Surface(
+                    color = ObsidianCard,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, ObsidianBorder, RoundedCornerShape(16.dp))
                 ) {
-                    Text(
-                        text = "No servers loaded for ${selectedMode.title}",
-                        color = Color(0xFFF2F4F8),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Tap 'Scan Mode' above to fetch and verify healthy nodes for this mode.",
-                        color = Color(0xFF9498A6),
-                        fontSize = 11.5.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        modifier = Modifier.padding(22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "No servers loaded for ${selectedMode.title}",
+                            color = PlatinumBright,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            text = "Tap 'Scan Mode' above to fetch and verify healthy nodes.",
+                            color = PlatinumMuted,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         } else {
-            servers.forEachIndexed { idx, srv ->
-                val isSelected = isRunning && srv.guid == selectedGuid
-                val tierBadge = when (srv.codeTag) {
-                    "DED-NL" -> "REALITY • NL"
-                    "DED-PL" -> "STEALTH • PL"
-                    "GHOST" -> "GHOST • ANTI-DPI"
-                    "VPS-1" -> "DEDICATED • DE"
-                    else -> "PUBLIC • FREE"
-                }
-                val badgeColor = when (srv.codeTag) {
-                    "DED-NL", "DED-PL", "VPS-1" -> Color(0xFFE6CFAF)
-                    "GHOST" -> Color(0xFFC5B3F8)
-                    else -> Color(0xFF98E2C6)
-                }
-                Surface(
-                    color = if (isSelected) Color(0xFF272935) else Color(0xFF191A22),
-                    shape = RoundedCornerShape(15.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .border(
-                            width = if (isSelected) 1.4.dp else 1.dp,
-                            color = if (isSelected) badgeColor else Color(0xFF2D2F3B),
-                            shape = RoundedCornerShape(15.dp)
-                        )
-                        .clickable(enabled = !busy) { onServerClick(srv) }
-                ) {
-                    Row(
+            // تنها بخشی از کل اپلیکیشن که اسکرول می‌شود: لیست سرورها
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 8.dp)
+            ) {
+                itemsIndexed(servers, key = { _, s -> s.guid }) { idx, srv ->
+                    val isSelected = isRunning && srv.guid == selectedGuid
+                    val geo = getCountryGeoInfo(srv.codeTag)
+                    val tierBadge = when (srv.codeTag) {
+                        "DED-NL" -> "REALITY • NL"
+                        "DED-PL" -> "STEALTH • PL"
+                        "GHOST" -> "GHOST • CHAT"
+                        "VPS-1" -> "DEDICATED • DE"
+                        else -> "PUBLIC • FREE"
+                    }
+                    val isOwn = isDedicatedServerTag(srv.codeTag)
+                    val itemShape = RoundedCornerShape(14.dp)
+
+                    Surface(
+                        color = if (isSelected) ObsidianElevated else ObsidianCard,
+                        shape = itemShape,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clip(itemShape)
+                            .border(
+                                width = if (isSelected) 1.4.dp else 1.dp,
+                                color = if (isSelected) ChampagneGold else ObsidianBorder,
+                                shape = itemShape
+                            )
+                            .tvDpadClickable(enabled = !busy, shape = itemShape) { onServerClick(srv) }
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = srv.label.ifBlank { "${selectedMode.shortTitle} Node #${idx + 1}" },
-                                    color = Color(0xFFF5F7FA),
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(badgeColor.copy(alpha = 0.16f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = tierBadge,
-                                        color = badgeColor,
-                                        fontSize = 8.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(42.dp)
+                                    .height(34.dp)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(
+                                        if (isOwn) Color(0xFF2D2720) else Color(0xFF22242E)
                                     )
-                                }
+                                    .border(
+                                        1.dp,
+                                        if (isOwn) ChampagneGold.copy(alpha = 0.7f) else Color(0xFF454857),
+                                        RoundedCornerShape(9.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (srv.codeTag == "GHOST") "GH" else geo.isoCode,
+                                    color = if (isOwn) ChampagneLight else PlatinumBright,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                text = if (isSelected) {
-                                    "Connected • Encrypted Tunnel Active (Config Hidden)"
-                                } else {
-                                    "Download-Verified • Tap to connect immediately"
-                                },
-                                color = if (isSelected) badgeColor else Color(0xFF8E92A0),
-                                fontSize = 10.sp
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = if (srv.ms > 0) "${srv.ms} ms" else "READY",
-                                color = badgeColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = if (isSelected) "ACTIVE" else "CONNECT ›",
-                                color = if (isSelected) Color(0xFFF5F7FA) else Color(0xFF9EA2B0),
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = srv.label.ifBlank { "${selectedMode.shortTitle} Node #${idx + 1}" },
+                                        color = PlatinumBright,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(5.dp))
+                                            .background(ChampagneGold.copy(alpha = if (isOwn) 0.18f else 0.08f))
+                                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                    ) {
+                                        Text(
+                                            text = tierBadge,
+                                            color = if (isOwn) ChampagneGold else PlatinumSilver,
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = if (isSelected) {
+                                        "Active Tunnel • ${geo.countryName} (${geo.coordLabel})"
+                                    } else {
+                                        "${geo.countryName} • ${geo.cityName} • Tap to connect"
+                                    },
+                                    color = if (isSelected) ChampagneGold else PlatinumMuted,
+                                    fontSize = 9.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(Modifier.width(8.dp))
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = if (srv.ms > 0) "${srv.ms} ms" else "READY",
+                                    color = if (isOwn) ChampagneGold else PlatinumSilver,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = if (isSelected) "ACTIVE" else "CONNECT ›",
+                                    color = if (isSelected) ChampagneLight else PlatinumMuted,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -1927,6 +2115,9 @@ internal fun ServersTabPage(
     }
 }
 
+/**
+ * تب پروفایل: بدون اسکرول عمودی (Zero-Scroll) و با رفع کامل مشکل فشرده شدن دکمه ACTIVATE ›
+ */
 @Composable
 internal fun ProfileTabPage(
     userUuid: String,
@@ -1938,6 +2129,8 @@ internal fun ProfileTabPage(
     vipExpireMs: Long,
     vipUsedBytes: Long,
     vipMaxBytes: Long,
+    ghostMessagingOnly: Boolean = true,
+    onGhostMessagingOnlyChange: (Boolean) -> Unit = {},
     autoSwitch: Boolean,
     onAutoSwitchChange: (Boolean) -> Unit,
     autoReconnect: Boolean,
@@ -1953,98 +2146,118 @@ internal fun ProfileTabPage(
     val dailyRatio = (dailyRemBytes.toFloat() / dailyMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = "User Profile & Quota",
-            color = Color(0xFFF5F7FA),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "User Profile & Quota",
+                color = PlatinumBright,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(ObsidianElevated)
+                    .border(1.dp, ChampagneGold.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "MODE: ${serviceTierMode.shortTitle.uppercase()}",
+                    color = ChampagneGold,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
 
         // 1) کارت شناسه اختصاصی کاربر (UUID + Hardware Fingerprint)
         Surface(
-            color = Color(0xFF191A22),
-            shape = RoundedCornerShape(18.dp),
+            color = ObsidianCard,
+            shape = RoundedCornerShape(15.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFF353744), RoundedCornerShape(18.dp))
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Dedicated User Identity",
-                            color = Color(0xFFE6CFAF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            color = ChampagneGold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
                         )
                         Text(
-                            text = "Hardware Fingerprint: $deviceId",
-                            color = Color(0xFF9EA2B0),
-                            fontSize = 10.5.sp,
-                            fontFamily = FontFamily.Monospace
+                            text = "HW ID: $deviceId • Anti-Reset Bound",
+                            color = PlatinumMuted,
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1
                         )
                     }
+                    val copyShape = RoundedCornerShape(9.dp)
                     Surface(
-                        color = Color(0xFF282A36),
-                        shape = RoundedCornerShape(10.dp),
+                        color = ObsidianElevated,
+                        shape = copyShape,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .clickable { onCopyUuid() }
+                            .clip(copyShape)
+                            .border(1.dp, ChampagneGold.copy(alpha = 0.55f), copyShape)
+                            .tvDpadClickable(shape = copyShape) { onCopyUuid() }
                     ) {
                         Text(
                             text = "Copy UUID",
-                            color = Color(0xFFF5E6D3),
-                            fontSize = 10.5.sp,
+                            color = ChampagneLight,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Surface(
-                    color = Color(0xFF121318),
-                    shape = RoundedCornerShape(10.dp),
+                    color = ObsidianDeep,
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, Color(0xFF282A34), RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFF282A34), RoundedCornerShape(8.dp))
                 ) {
                     Text(
                         text = userUuid,
-                        color = Color(0xFFD8DCE6),
-                        fontSize = 11.sp,
+                        color = PlatinumSilver,
+                        fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Bound to hardware DRM & signing certificate. Clearing app data or reinstalling will not reset this UUID or daily quota.",
-                    color = Color(0xFF8C909E),
-                    fontSize = 9.5.sp
-                )
             }
         }
 
-        // 2) کارت سهمیه ۱ گیگابایت روزانه سرویس اختصاصی + وضعیت VIP
+        // 2) کارت سهمیه ۱ گیگابایت روزانه سرویس اختصاصی + دکمه اصلاح‌شده ACTIVATE VIP
         Surface(
-            color = Color(0xFF191A22),
-            shape = RoundedCornerShape(18.dp),
+            color = ObsidianCard,
+            shape = RoundedCornerShape(15.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFF353744), RoundedCornerShape(18.dp))
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2052,39 +2265,40 @@ internal fun ProfileTabPage(
                 ) {
                     Text(
                         text = "Dedicated Pro Daily Quota",
-                        color = Color(0xFFF2F4F8),
-                        fontSize = 13.5.sp,
+                        color = PlatinumBright,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                     Text(
-                        text = "Active Mode: ${serviceTierMode.shortTitle}",
-                        color = Color(0xFFE6CFAF),
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "Resets at 00:00",
+                        color = ChampagneGold,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
                     )
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Used Today: ${fmtBytes(dailyUsedBytes)}",
-                        color = Color(0xFFB8BCC8),
-                        fontSize = 11.sp
+                        text = "Used: ${fmtBytes(dailyUsedBytes)}",
+                        color = PlatinumMuted,
+                        fontSize = 10.sp
                     )
                     Text(
-                        text = "Remaining: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
-                        color = Color(0xFFF5E6D3),
-                        fontSize = 11.sp,
+                        text = "Left: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
+                        color = ChampagneLight,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(5.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(6.dp)
+                        .height(5.dp)
                         .clip(RoundedCornerShape(3.dp))
                         .background(Color(0xFF262832))
                 ) {
@@ -2094,173 +2308,171 @@ internal fun ProfileTabPage(
                             .fillMaxHeight()
                             .background(
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF8E93A2), Color(0xFFE6CFAF))
+                                    listOf(Color(0xFF8E93A2), ChampagneGold)
                                 )
                             )
                     )
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Quota automatically renews every day at 00:00. After 1 GB is reached, Dedicated Pro pauses and you can continue on Public or Ghost Mode.",
-                    color = Color(0xFF8C909E),
-                    fontSize = 9.5.sp
-                )
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
+                val vipShape = RoundedCornerShape(11.dp)
                 Surface(
-                    color = Color(0xFF242632),
-                    shape = RoundedCornerShape(12.dp),
+                    color = ObsidianElevated,
+                    shape = vipShape,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.55f), RoundedCornerShape(12.dp))
-                        .clickable { onOpenVipDialog() }
+                        .clip(vipShape)
+                        .border(1.dp, ChampagneGold.copy(alpha = 0.65f), vipShape)
+                        .tvDpadClickable(shape = vipShape) { onOpenVipDialog() }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            GlassDiamondIcon(size = 16.dp)
+                        // استفاده از Modifier.weight(1f) تا متن سمت چپ هرگز دکمه ACTIVATE › را فشرده نکند
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GlassDiamondIcon(size = 14.dp)
                             Spacer(Modifier.width(8.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = if (vipActive) "VIP 50 GB Plan Active" else "Upgrade to VIP (50 GB / Month)",
-                                    color = Color(0xFFF5F7FA),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold
+                                    color = PlatinumBright,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 val vipSub = if (vipActive) {
                                     val remD = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
                                     val remB = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
                                     "$remD days • ${fmtBytes(remB)} remaining"
                                 } else {
-                                    "Unlock 50 GB high-speed dedicated traffic & zero ads"
+                                    "50 GB dedicated traffic & zero ads"
                                 }
                                 Text(
                                     text = vipSub,
-                                    color = Color(0xFFB0B4C2),
-                                    fontSize = 10.sp
+                                    color = PlatinumMuted,
+                                    fontSize = 9.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                        Text(
-                            text = if (vipActive) "MANAGE" else "ACTIVATE ›",
-                            color = Color(0xFFE6CFAF),
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(ChampagneGold.copy(alpha = 0.18f))
+                                .border(1.dp, ChampagneGold.copy(alpha = 0.65f), RoundedCornerShape(7.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (vipActive) "MANAGE" else "ACTIVATE ›",
+                                color = ChampagneLight,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // 3) تنظیمات ضد فیلتر و ابزارهای سیستم
+        // 3) تنظیمات Ghost Mode و حفاظت شبکه (فشرده و بدون اسکرول)
         Surface(
-            color = Color(0xFF191A22),
-            shape = RoundedCornerShape(18.dp),
+            color = ObsidianCard,
+            shape = RoundedCornerShape(15.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0xFF353744), RoundedCornerShape(18.dp))
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(15.dp))
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "Protection & Diagnostics",
-                    color = Color(0xFFF2F4F8),
-                    fontSize = 13.5.sp,
+                    text = "Ghost Protocol & Protection",
+                    color = PlatinumBright,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-Switch Unresponsive Server", color = Color(0xFFE8ECF4), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Automatically switches if download drops", color = Color(0xFF8C909E), fontSize = 10.sp)
-                    }
-                    androidx.compose.material3.Switch(
-                        checked = autoSwitch,
-                        onCheckedChange = onAutoSwitchChange,
-                        colors = metallicSwitchColors()
-                    )
-                }
+                CompactSettingToggleRow(
+                    title = "Ghost Mode Messaging-Only Lock",
+                    subtitle = "Caps Ghost speed to 42 KB/s & blocks video/updates",
+                    checked = ghostMessagingOnly,
+                    onCheckedChange = onGhostMessagingOnlyChange
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-Reconnect on Network Change", color = Color(0xFFE8ECF4), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Keeps VPN alive between Wi-Fi & Mobile Data", color = Color(0xFF8C909E), fontSize = 10.sp)
-                    }
-                    androidx.compose.material3.Switch(
-                        checked = autoReconnect,
-                        onCheckedChange = onAutoReconnectChange,
-                        colors = metallicSwitchColors()
-                    )
-                }
+                CompactSettingToggleRow(
+                    title = "Auto-Switch Unresponsive Server",
+                    subtitle = "Switches node if tunnel download drops",
+                    checked = autoSwitch,
+                    onCheckedChange = onAutoSwitchChange
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Bypass Iranian Domestic Traffic (.ir)", color = Color(0xFFE8ECF4), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Direct routing for banks & local apps", color = Color(0xFF8C909E), fontSize = 10.sp)
+                CompactSettingToggleRow(
+                    title = "Auto-Reconnect & Bypass Domestic (.ir)",
+                    subtitle = "Keeps VPN alive & routes banks directly",
+                    checked = autoReconnect && splitTunnelLocal,
+                    onCheckedChange = {
+                        onAutoReconnectChange(it)
+                        onSplitTunnelChange(it)
                     }
-                    androidx.compose.material3.Switch(
-                        checked = splitTunnelLocal,
-                        onCheckedChange = onSplitTunnelChange,
-                        colors = metallicSwitchColors()
-                    )
-                }
+                )
+
+                Spacer(Modifier.height(2.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val btnShape = RoundedCornerShape(10.dp)
                     Surface(
-                        color = Color(0xFF232530),
-                        shape = RoundedCornerShape(12.dp),
+                        color = ObsidianElevated,
+                        shape = btnShape,
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0xFF383A48), RoundedCornerShape(12.dp))
-                            .clickable { onOpenLogs() }
+                            .clip(btnShape)
+                            .border(1.dp, ObsidianBorder, btnShape)
+                            .tvDpadClickable(shape = btnShape) { onOpenLogs() }
                     ) {
                         Text(
                             text = "Activity Logs",
-                            color = Color(0xFFE8ECF4),
-                            fontSize = 11.5.sp,
+                            color = PlatinumBright,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 10.dp)
+                            modifier = Modifier.padding(vertical = 7.dp)
                         )
                     }
                     Surface(
-                        color = Color(0xFF232530),
-                        shape = RoundedCornerShape(12.dp),
+                        color = ObsidianElevated,
+                        shape = btnShape,
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0xFF383A48), RoundedCornerShape(12.dp))
-                            .clickable { onOpenUpdate() }
+                            .clip(btnShape)
+                            .border(1.dp, ChampagneGold.copy(alpha = 0.45f), btnShape)
+                            .tvDpadClickable(shape = btnShape) { onOpenUpdate() }
                     ) {
                         Text(
                             text = "Check Update",
-                            color = Color(0xFFE8ECF4),
-                            fontSize = 11.5.sp,
+                            color = ChampagneLight,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 10.dp)
+                            modifier = Modifier.padding(vertical = 7.dp)
                         )
                     }
                 }
@@ -2269,4 +2481,41 @@ internal fun ProfileTabPage(
     }
 }
 
-
+@Composable
+private fun CompactSettingToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+            Text(
+                text = title,
+                color = PlatinumBright,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                color = PlatinumMuted,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Box(modifier = Modifier.scale(0.76f).height(28.dp)) {
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = metallicSwitchColors()
+            )
+        }
+    }
+}

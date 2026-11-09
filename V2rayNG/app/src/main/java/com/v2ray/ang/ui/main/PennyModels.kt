@@ -20,7 +20,7 @@ internal enum class ConnectionProfile(val label: String, val tag: String) {
  * ۳ حالت اصلی سرویس طبق معماری جدید:
  * 1) PUBLIC: سرورهای عمومی رایگان (بدون محدودیت حجم اختصاصی)
  * 2) DEDICATED: سرورهای اختصاصی پرسرعت با سهمیه ۱ گیگابایت روزانه به ازای هر شناسه سخت‌افزاری (یا ۵۰ گیگ VIP)
- * 3) GHOST: حالت عبور از فیلترینگ شدید و اختلال سراسری (مخصوص پیام‌رسان و اتصال اضطراری)
+ * 3) GHOST: حالت عبور از فیلترینگ شدید و اختلال سراسری (مخصوص پیام‌رسان و اتصال اضطراری با مصرف بسیار کم)
  */
 internal enum class ServiceTierMode(
     val title: String,
@@ -32,19 +32,19 @@ internal enum class ServiceTierMode(
         title = "Public Mode",
         shortTitle = "Public",
         badge = "FREE • UNLIMITED",
-        description = "Community public servers • Free everyday browsing"
+        description = "Community public nodes • Free general browsing"
     ),
     DEDICATED(
         title = "Dedicated Pro",
         shortTitle = "Dedicated",
-        badge = "1 GB / DAY • HIGH SPEED",
+        badge = "1 GB / DAY • PRO",
         description = "Private high-speed nodes • 1 GB/day per hardware UUID"
     ),
     GHOST(
         title = "Ghost Mode",
         shortTitle = "Ghost Mode",
-        badge = "EXTREME ANTI-DPI",
-        description = "Heavy censorship bypass • Optimized for messaging & chat"
+        badge = "CHAT ONLY • LOW DATA",
+        description = "Emergency anti-DPI • Restricted to messaging protocols"
     )
 }
 
@@ -55,6 +55,71 @@ internal enum class BottomNavTab(val title: String) {
     HOME("Home"),
     SERVERS("Servers"),
     PROFILE("Profile")
+}
+
+/**
+ * اطلاعات جغرافیایی کشور سرور برای نمایش روی کره زمین سه‌بعدی و رادار چشمک‌زن
+ */
+internal data class CountryGeoInfo(
+    val isoCode: String,
+    val countryName: String,
+    val cityName: String,
+    val latitude: Float,
+    val longitude: Float,
+    val coordLabel: String
+)
+
+internal fun getCountryGeoInfo(codeTag: String): CountryGeoInfo {
+    return when (codeTag) {
+        "DED-NL" -> CountryGeoInfo(
+            isoCode = "NL",
+            countryName = "NETHERLANDS",
+            cityName = "Amsterdam",
+            latitude = 52.37f,
+            longitude = 4.90f,
+            coordLabel = "52.37°N, 4.90°E"
+        )
+        "DED-PL" -> CountryGeoInfo(
+            isoCode = "PL",
+            countryName = "POLAND",
+            cityName = "Warsaw",
+            latitude = 52.23f,
+            longitude = 21.01f,
+            coordLabel = "52.23°N, 21.01°E"
+        )
+        "VPS-1" -> CountryGeoInfo(
+            isoCode = "DE",
+            countryName = "GERMANY",
+            cityName = "Frankfurt",
+            latitude = 50.11f,
+            longitude = 8.68f,
+            coordLabel = "50.11°N, 8.68°E"
+        )
+        "GHOST" -> CountryGeoInfo(
+            isoCode = "NL",
+            countryName = "NETHERLANDS • GHOST",
+            cityName = "Stealth Relay",
+            latitude = 52.37f,
+            longitude = 4.90f,
+            coordLabel = "52.37°N, 4.90°E"
+        )
+        "CF-1", "CF-2", "BPB" -> CountryGeoInfo(
+            isoCode = "EU",
+            countryName = "EUROPE EDGE",
+            cityName = "Frankfurt",
+            latitude = 50.11f,
+            longitude = 8.68f,
+            coordLabel = "50.11°N, 8.68°E"
+        )
+        else -> CountryGeoInfo(
+            isoCode = "GL",
+            countryName = "GLOBAL NODE",
+            cityName = "Public Relay",
+            latitude = 48.85f,
+            longitude = 2.35f,
+            coordLabel = "48.85°N, 2.35°E"
+        )
+    }
 }
 
 internal data class PennyServer(
@@ -74,7 +139,7 @@ internal object Strings {
     fun splashTagline(l: AppLang) = "Connects When Others Can't"
     fun ready(l: AppLang) = "Ready to Connect"
     fun connectedBadge(l: AppLang, vip: Boolean) =
-        if (vip) "Connected to VIP (1M / 50GB)" else "Connected"
+        if (vip) "Connected • Encrypted Tunnel" else "Connected"
 
     fun smartConnect(l: AppLang, vip: Boolean) =
         if (vip) "VIP Connect" else "Smart Connect"
@@ -87,8 +152,8 @@ internal object Strings {
     fun totalData(l: AppLang) = "Total Data"
 
     fun noServerYet(l: AppLang, vip: Boolean) =
-        if (vip) "No Dedicated/VIP servers ready yet; tap Scan or Connect."
-        else "No servers scanned yet; tap Scan or Connect."
+        if (vip) "Tap Scan or Connect to initialize Dedicated nodes"
+        else "Tap Scan or Connect to initialize Public nodes"
 
     fun scanServersBtn(l: AppLang, vip: Boolean) =
         if (vip) "Scan Dedicated" else "Scan Servers"
@@ -102,11 +167,11 @@ internal object Strings {
             min < 60 -> "${min}m ago"
             else -> "${min / 60}h ago"
         }
-        return "Last ${tag}scan: $ago  •  $count servers ready"
+        return "Last ${tag}scan: $ago  •  $count nodes ready"
     }
 
     fun noScanYet(l: AppLang, vip: Boolean) =
-        if (vip) "No Dedicated scan performed yet" else "No scan performed yet"
+        if (vip) "Dedicated Vault Ready • Tap Connect" else "Tap Scan or Connect to start"
 
     fun menuBestConfigs(l: AppLang, vip: Boolean) =
         if (vip) "Dedicated Pro Servers" else "Best Servers List"
@@ -183,7 +248,6 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
             if (cfg != null) {
-                // پاک‌سازی کامل نام و مشخصات کانفیگ در حافظه تا کاربر هیچ اطلاعی از سرور اصلی نبیند
                 val targetRemark = when (origin) {
                     "DED-NL" -> "PennyVPN DED-NL"
                     "DED-PL" -> "PennyVPN DED-PL"
@@ -204,14 +268,12 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         }
 
         val displayLabel = when (origin) {
-            "DED-NL" -> "Dedicated Pro • NL #${index + 1}"
-            "DED-PL" -> "Dedicated Pro • PL #${index + 1}"
-            "GHOST" -> "Ghost Stealth • #${index + 1}"
-            "VPS-1" -> "Dedicated Pro • DE #${index + 1}"
-            "CF-1" -> "Dedicated Edge • #${index + 1}"
-            "CF-2" -> "Dedicated Edge • #${index + 1}"
-            "BPB" -> "Dedicated Edge • #${index + 1}"
-            else -> "Public Free • #${index + 1}"
+            "DED-NL" -> "Netherlands Pro • #${index + 1}"
+            "DED-PL" -> "Poland Pro • #${index + 1}"
+            "GHOST" -> "Ghost Messaging • #${index + 1}"
+            "VPS-1" -> "Germany Pro • #${index + 1}"
+            "CF-1", "CF-2", "BPB" -> "Europe Edge • #${index + 1}"
+            else -> "Public Node • #${index + 1}"
         }
         s.copy(
             codeTag = origin,

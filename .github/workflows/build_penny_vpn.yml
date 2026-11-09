@@ -105,24 +105,46 @@ jobs:
             unzip -l "$f" | grep "libhev-socks5-tunnel.so" || { echo "Missing libhev-socks5-tunnel.so in $f"; exit 1; }
           done
 
-      - name: Upload Penny VPN Signed Release APK Artifact
+      - name: Package Mobile & Android TV Release APKs
+        run: |
+          mkdir -p dist_apks
+          UNIV_APK=$(ls V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk | head -n 1)
+          ARM64_APK=$(ls V2rayNG/app/build/outputs/apk/playstore/release/*arm64-v8a*.apk | head -n 1 || true)
+          ARM32_APK=$(ls V2rayNG/app/build/outputs/apk/playstore/release/*armeabi-v7a*.apk | head -n 1 || true)
+          cp "$UNIV_APK" dist_apks/PennyVPN-Mobile-v2.8.0-universal.apk
+          cp "$UNIV_APK" dist_apks/PennyVPN-AndroidTV-v2.8.0-universal.apk
+          if [ -n "$ARM64_APK" ] && [ -f "$ARM64_APK" ]; then
+            cp "$ARM64_APK" dist_apks/PennyVPN-AndroidTV-v2.8.0-arm64.apk
+          fi
+          if [ -n "$ARM32_APK" ] && [ -f "$ARM32_APK" ]; then
+            cp "$ARM32_APK" dist_apks/PennyVPN-AndroidTV-v2.8.0-arm32-tvbox.apk
+          fi
+          ls -lh dist_apks/
+
+      - name: Upload Penny VPN Mobile APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Penny-VPN-Release-APK
-          path: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk
+          name: Penny-VPN-Mobile-APK
+          path: dist_apks/PennyVPN-Mobile-*.apk
 
-      - name: Publish Signed APK to GitHub Releases (for In-App Updater)
+      - name: Upload Penny VPN Android TV APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Penny-VPN-AndroidTV-APK
+          path: dist_apks/PennyVPN-AndroidTV-*.apk
+
+      - name: Publish Signed Mobile & Android TV APKs to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v2.6.2
-          name: "Penny VPN v2.6.2 (Clean IP Scanner, ISP Auto-Tuner & Network Doctor)"
+          tag_name: v2.8.0
+          name: "Penny VPN v2.8.0 (Mobile + Android TV Edition • 3D Country Globe & Ghost Chat Lock)"
           body: |
-            ### Penny VPN v2.6.2 — Connects When Others Can't
-            - **Preserve User Configs**: Scanning subscription servers never deletes or renames user-imported configs.
-            - **On-Device Clean IP Scanner & Network Doctor**: Probes 14 Cloudflare Anycast ranges across ports `443`, `8443`, and `2083` to bypass ISP DNS poisoning (`10.10.34.36`) and SNI filtering.
-            - **Iran ISP Auto-Tuner & Direct Routing**: Automatically tunes TLS ClientHello Fragment size for Irancell, Hamrah Aval (MCI), Rightel, and Broadband, while routing `.ir` and Iranian banking apps directly.
-            - **Deterministic Release Signature**: Updates install cleanly over previous builds without uninstalling.
-          files: V2rayNG/app/build/outputs/apk/playstore/release/*universal*.apk
+            ### Penny VPN v2.8.0 — Mobile & Android TV Edition
+            - **Android TV & Google TV Native Support**: Includes Leanback TV Launcher support, D-Pad remote control navigation, and a 2-column widescreen TV layout (`PennyVPN-AndroidTV-v2.8.0-*.apk`).
+            - **Interactive 3D World Globe & Blinking Country Radar**: Rotates to the active server country (Netherlands `NL`, Poland `PL`, Germany `DE`) with a pulsing radar beacon and live coordinates.
+            - **Ghost Mode Messaging-Only Traffic Lock**: Dedicated status indicator and toggle switch that blocks heavy video/update domains at the SOCKS5 layer, excludes video apps from the VPN tunnel, and caps Ghost bandwidth to `42 KB/s` for emergency messaging without draining private server quota.
+            - **Zero-Scroll UI & Unified Obsidian/Champagne-Gold Theme**: Fixed server & VIP card layouts with zero vertical scrolling on Home and Profile.
+          files: dist_apks/*.apk
           draft: false
           prerelease: false

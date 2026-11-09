@@ -22,6 +22,12 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
 
     <!-- https://developer.android.com/about/versions/11/privacy/package-visibility -->
     <uses-permission
@@ -66,6 +72,7 @@
 
         <activity
             android:name=".ui.main.MainActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>

@@ -16,6 +16,47 @@ internal enum class ConnectionProfile(val label: String, val tag: String) {
     STREAMING("Streaming", "High Speed")
 }
 
+/**
+ * ۳ حالت اصلی سرویس طبق معماری جدید:
+ * 1) PUBLIC: سرورهای عمومی رایگان (بدون محدودیت حجم اختصاصی)
+ * 2) DEDICATED: سرورهای اختصاصی پرسرعت با سهمیه ۱ گیگابایت روزانه به ازای هر شناسه سخت‌افزاری (یا ۵۰ گیگ VIP)
+ * 3) GHOST: حالت عبور از فیلترینگ شدید و اختلال سراسری (مخصوص پیام‌رسان و اتصال اضطراری)
+ */
+internal enum class ServiceTierMode(
+    val title: String,
+    val shortTitle: String,
+    val badge: String,
+    val description: String
+) {
+    PUBLIC(
+        title = "Public Mode",
+        shortTitle = "Public",
+        badge = "FREE • UNLIMITED",
+        description = "Community public servers • Free everyday browsing"
+    ),
+    DEDICATED(
+        title = "Dedicated Pro",
+        shortTitle = "Dedicated",
+        badge = "1 GB / DAY • HIGH SPEED",
+        description = "Private high-speed nodes • 1 GB/day per hardware UUID"
+    ),
+    GHOST(
+        title = "Ghost Mode",
+        shortTitle = "Ghost Mode",
+        badge = "EXTREME ANTI-DPI",
+        description = "Heavy censorship bypass • Optimized for messaging & chat"
+    )
+}
+
+/**
+ * ۳ تب اصلی ناوبری پایین صفحه
+ */
+internal enum class BottomNavTab(val title: String) {
+    HOME("Home"),
+    SERVERS("Servers"),
+    PROFILE("Profile")
+}
+
 internal data class PennyServer(
     val guid: String,
     val codeTag: String,
@@ -46,16 +87,16 @@ internal object Strings {
     fun totalData(l: AppLang) = "Total Data"
 
     fun noServerYet(l: AppLang, vip: Boolean) =
-        if (vip) "No VIP servers scanned yet; tap Scan or Connect."
+        if (vip) "No Dedicated/VIP servers ready yet; tap Scan or Connect."
         else "No servers scanned yet; tap Scan or Connect."
 
     fun scanServersBtn(l: AppLang, vip: Boolean) =
-        if (vip) "Scan VIP" else "Scan Servers"
+        if (vip) "Scan Dedicated" else "Scan Servers"
 
     fun nextServerBtn(l: AppLang) = "Next Server"
 
     fun scanInfo(l: AppLang, min: Long, count: Int, vip: Boolean): String {
-        val tag = if (vip) "VIP " else ""
+        val tag = if (vip) "Dedicated " else ""
         val ago = when {
             min < 1 -> "just now"
             min < 60 -> "${min}m ago"
@@ -65,10 +106,10 @@ internal object Strings {
     }
 
     fun noScanYet(l: AppLang, vip: Boolean) =
-        if (vip) "No VIP scan performed yet" else "No scan performed yet"
+        if (vip) "No Dedicated scan performed yet" else "No scan performed yet"
 
     fun menuBestConfigs(l: AppLang, vip: Boolean) =
-        if (vip) "1M 50GB Dedicated Servers" else "Best Servers List"
+        if (vip) "Dedicated Pro Servers" else "Best Servers List"
 
     fun menuAppLog(l: AppLang) = "App Activity Logs"
     fun menuCoreLog(l: AppLang) = "Core Logs (Logcat)"
@@ -83,10 +124,15 @@ internal fun detectServerOriginTag(guid: String): String {
     return try {
         val cfg = MmkvManager.decodeServerConfig(guid) ?: return "PUB"
         val combined = "${cfg.host.orEmpty()} ${cfg.sni.orEmpty()} ${cfg.server.orEmpty()} ${cfg.remarks}".lowercase(Locale.US)
+        val nlHost = PennyServerScanner.DED_NL_HOST.lowercase(Locale.US)
+        val plHost = PennyServerScanner.DED_PL_HOST.lowercase(Locale.US)
         val vps1 = PennyServerScanner.VPS1_HOST.lowercase(Locale.US)
         val bpb1 = PennyServerScanner.BPB_HOST.lowercase(Locale.US)
         val bpb2 = PennyServerScanner.BPB2_HOST.lowercase(Locale.US)
         when {
+            combined.contains("ghost-node") || combined.contains("pennyvpn ghost") -> "GHOST"
+            combined.contains(nlHost) || combined.contains("ded-nl") -> "DED-NL"
+            combined.contains(plHost) || combined.contains("ded-pl") -> "DED-PL"
             combined.contains(vps1) || combined.contains("own-vps") || combined.contains("vps-1") || combined.contains("zenith") || combined.contains("parham-confing") -> "VPS-1"
             combined.contains(bpb1) || combined.contains("own-cf1") || combined.contains("cf-1") -> "CF-1"
             combined.contains(bpb2) || combined.contains("own-cf2") || combined.contains("cf-2") -> "CF-2"
@@ -100,7 +146,15 @@ internal fun detectServerOriginTag(guid: String): String {
 }
 
 internal fun isDedicatedServerTag(codeTag: String): Boolean {
-    return codeTag == "VPS-1" || codeTag == "CF-1" || codeTag == "CF-2" || codeTag == "BPB" || codeTag.startsWith("OWN")
+    return codeTag == "DED-NL" ||
+        codeTag == "DED-PL" ||
+        codeTag == "VPS-1" ||
+        codeTag == "GHOST" ||
+        codeTag == "CF-1" ||
+        codeTag == "CF-2" ||
+        codeTag == "BPB" ||
+        codeTag.startsWith("OWN") ||
+        codeTag.startsWith("DED")
 }
 
 internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): List<PennyServer> {
@@ -109,13 +163,17 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         val realVerified = (MmkvManager.decodeServerAffiliationInfo(s.guid)?.testDelayMillis ?: 0L) > 0L
         Triple(s, origin, realVerified)
     }
-    // ۱. ابتدا سرورهایی که تست واقعی Xray (RealPing) را پاس کرده‌اند (به ترتیب کمترین پینگ واقعی)
-    // ۲. در صورت برابری، اولویت با سرور اختصاصی VPS-1
+
     val sorted = tagged.sortedWith(
-        compareBy<Triple<PennyServer, String, Boolean>> { (_, _, realVerified) ->
+        compareBy<Triple<PennyServer, String, Boolean>> { (_, origin, _) ->
+            when (origin) {
+                "DED-NL", "DED-PL" -> 0
+                "GHOST" -> 1
+                "VPS-1" -> 2
+                else -> 3
+            }
+        }.thenBy { (_, _, realVerified) ->
             if (realVerified) 0 else 1
-        }.thenBy { (_, origin, _) ->
-            if (origin == "VPS-1") 0 else 1
         }.thenBy { (s, _, _) ->
             if (s.ms > 0L) s.ms else Long.MAX_VALUE
         }
@@ -125,14 +183,18 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         try {
             val cfg = MmkvManager.decodeServerConfig(s.guid)
             if (cfg != null) {
+                // پاک‌سازی کامل نام و مشخصات کانفیگ در حافظه تا کاربر هیچ اطلاعی از سرور اصلی نبیند
                 val targetRemark = when (origin) {
+                    "DED-NL" -> "PennyVPN DED-NL"
+                    "DED-PL" -> "PennyVPN DED-PL"
+                    "GHOST" -> "PennyVPN GHOST"
                     "VPS-1" -> "PennyVPN OWN-VPS1"
                     "CF-1" -> "PennyVPN OWN-CF1"
                     "CF-2" -> "PennyVPN OWN-CF2"
                     "BPB" -> "PennyVPN OWN-BPB"
-                    else -> if (cfg.remarks.isBlank()) "PennyVPN PUBLIC" else cfg.remarks
+                    else -> "PennyVPN PUBLIC"
                 }
-                if (cfg.remarks != targetRemark && (origin != "PUB" || cfg.remarks.startsWith("Penny", ignoreCase = true))) {
+                if (cfg.remarks != targetRemark) {
                     cfg.remarks = targetRemark
                     MmkvManager.encodeServerConfig(s.guid, cfg)
                 }
@@ -142,16 +204,19 @@ internal fun assignLabels(list: List<PennyServer>, isVipList: Boolean = false): 
         }
 
         val displayLabel = when (origin) {
-            "VPS-1" -> "OWN Dedicated VPS • #${index + 1}"
-            "CF-1" -> "OWN Server 1 • #${index + 1}"
-            "CF-2" -> "OWN Server 2 • #${index + 1}"
-            "BPB" -> "OWN BPB • #${index + 1}"
-            else -> "Public Node • #${index + 1}"
+            "DED-NL" -> "Dedicated Pro • NL #${index + 1}"
+            "DED-PL" -> "Dedicated Pro • PL #${index + 1}"
+            "GHOST" -> "Ghost Stealth • #${index + 1}"
+            "VPS-1" -> "Dedicated Pro • DE #${index + 1}"
+            "CF-1" -> "Dedicated Edge • #${index + 1}"
+            "CF-2" -> "Dedicated Edge • #${index + 1}"
+            "BPB" -> "Dedicated Edge • #${index + 1}"
+            else -> "Public Free • #${index + 1}"
         }
         s.copy(
             codeTag = origin,
             label = displayLabel,
-            isVipServer = isVipList
+            isVipServer = isVipList || isDedicatedServerTag(origin)
         )
     }
 }

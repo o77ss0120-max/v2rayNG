@@ -119,6 +119,19 @@ internal object PennyServerScanner {
     private const val ENC_VPS1_SS_B64 = "03363e153a29cdbadcf091c9f7878cf59fe3e190b4bba6cf546274524f146a79742f2738186e2628272fc2ddd4e2a19e"
     private const val ENC_VPS1_SUB_URL = "32151c1f4c52abbaa6ac8e959d8c92f5ffffe9eeded7c6cb303d23386d404f1c0831712a056a31214130e7c0bbf2ff929cc6fc86a3b4aea990a4a8969f6d7d4452604c48736d1c2a080939260a1731ceded2f9c7e8c8c4ca8986e8b59bdc95cab1626e765c787d7f07786f343b37"
 
+    // کانفیگ‌های اختصاصی مخفی (رمزنگاری چندلایه XOR-Hex + SHA256 Keystream بدون هیچ ردپایی در کد یا لاگ)
+    private const val ENC_DED_NL_HOST = "6956465d464faab9a6ad8e969d82"
+    private const val ENC_DED_NL_PORT = "6251505f"
+    private const val ENC_DED_NL_UUID = "6c525f0a151eb6babfa899c39a9888a6abb4f5e683dec7d6606f21232b1315045923717b"
+    private const val ENC_DED_NL_PBK = "203851221d0bb3b2e1d8c2e4c4c0899ba1fcaf98b3a59aac443062725110015062302128183653393a2fe3"
+    private const val ENC_DED_NL_SPX = "7f532e56404cbdbff1fa99c1c8868af4fae4"
+    private const val ENC_DED_NL_SNI = "2a130119171efda5fff0c3d5c1c6d3a5beffbbb08b"
+    private const val ENC_DED_NL_SID = "6a05510a"
+
+    private const val ENC_DED_PL_HOST = "331304075810f6e3f3fac8ce80c6d4acba"
+    private const val ENC_DED_PL_PORT = "6e555b"
+    private const val ENC_DED_PL_SSB64 = "03363e153a29cdbadcf091c9f7878cf5aee3e9a782b5a5816151526747486647583b0a36373a4158365cb3c3"
+
     private const val ENC_BPB1_HOST = "32500a1e4f04e6e8e0afc1d198838ff4a3a8e9af9f859d9e7627607679405f1d5e243e"
     private const val ENC_BPB1_SNI = "12500a3e4f04e6e8e0afe1f198838ff4a3a8e9af9f85bdbe5627607679407f1d5e043e"
     private const val ENC_BPB1_UUID = "6f05515e141ee2babfa0c2c5cb9888a0fee7f5e6d38bc1d6663820222743490a0224712b"
@@ -139,6 +152,18 @@ internal object PennyServerScanner {
     private val VPS1_SS_B64: String by lazy { decodeXorHex(ENC_VPS1_SS_B64) }
     val DEDICATED_VPS_SUB_URL: String by lazy { decodeXorHex(ENC_VPS1_SUB_URL) }
 
+    val DED_NL_HOST: String by lazy { decodeXorHex(ENC_DED_NL_HOST) }
+    val DED_NL_PORT: Int by lazy { decodeXorHex(ENC_DED_NL_PORT).toIntOrNull() ?: 8080 }
+    private val DED_NL_UUID: String by lazy { decodeXorHex(ENC_DED_NL_UUID) }
+    private val DED_NL_PBK: String by lazy { decodeXorHex(ENC_DED_NL_PBK) }
+    private val DED_NL_SPX: String by lazy { decodeXorHex(ENC_DED_NL_SPX) }
+    private val DED_NL_SNI: String by lazy { decodeXorHex(ENC_DED_NL_SNI) }
+    private val DED_NL_SID: String by lazy { decodeXorHex(ENC_DED_NL_SID) }
+
+    val DED_PL_HOST: String by lazy { decodeXorHex(ENC_DED_PL_HOST) }
+    val DED_PL_PORT: Int by lazy { decodeXorHex(ENC_DED_PL_PORT).toIntOrNull() ?: 443 }
+    private val DED_PL_SSB64: String by lazy { decodeXorHex(ENC_DED_PL_SSB64) }
+
     val BPB_HOST: String by lazy { decodeXorHex(ENC_BPB1_HOST) }
     val BPB_MIXED_SNI: String by lazy { decodeXorHex(ENC_BPB1_SNI) }
     private val BPB1_UUID: String by lazy { decodeXorHex(ENC_BPB1_UUID) }
@@ -148,6 +173,41 @@ internal object PennyServerScanner {
     val BPB2_MIXED_SNI: String by lazy { decodeXorHex(ENC_BPB2_SNI) }
     private val BPB2_UUID: String by lazy { decodeXorHex(ENC_BPB2_UUID) }
     private val BPB2_TR_PWD: String by lazy { decodeXorHex(ENC_BPB2_TR_PWD) }
+
+    // فایل باینری استتار شده به شکل جدول متریک فونت (OpenType OTTO Header) روی گیت‌هاب
+    // که با کلید SHA-256 CTR رمزنگاری شده و هیچ سانسورچی یا اسکنری قادر به تشخیص محتوای آن نیست
+    const val STEALTH_VAULT_GITHUB_URL =
+        "https://raw.githubusercontent.com/o77ss0120-max/v2rayNG/master/V2rayNG/app/src/main/assets/font_metrics_v2.bin"
+
+    /**
+     * رمزگشایی فایل باینری استتارشده (font_metrics_v2.bin) در حافظه RAM
+     */
+    fun decryptStealthVaultBytes(rawBytes: ByteArray): String {
+        if (rawBytes.size <= 8) return ""
+        if (rawBytes[0] != 'O'.code.toByte() ||
+            rawBytes[1] != 'T'.code.toByte() ||
+            rawBytes[2] != 'T'.code.toByte() ||
+            rawBytes[3] != 'O'.code.toByte()
+        ) {
+            return ""
+        }
+        val payloadLen = rawBytes.size - 8
+        val out = ByteArray(payloadLen)
+        val keyPrefix = "PENNY_STEALTH_VAULT_KEY_2026_V3:"
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        var blockIdx = 0
+        var offset = 0
+        while (offset < payloadLen) {
+            val stream = md.digest((keyPrefix + blockIdx).toByteArray(StandardCharsets.UTF_8))
+            for (b in stream) {
+                if (offset >= payloadLen) break
+                out[offset] = (rawBytes[8 + offset].toInt() xor b.toInt()).toByte()
+                offset++
+            }
+            blockIdx++
+        }
+        return String(out, StandardCharsets.UTF_8).trim()
+    }
 
     // استخر آی‌پی‌های تمیز کلودفلر برای اسکنر داخلی Clean IP
     val CANDIDATE_CF_ANYCAST_IPS = listOf(
@@ -179,12 +239,10 @@ internal object PennyServerScanner {
     )
 
     @Volatile
-    var detectedIspProfile: String = "Auto (Dedicated VPS + Multi-Protocol)"
+    var detectedIspProfile: String = "Auto (Stealth Vault + Multi-Protocol)"
 
-    // پورت‌های استاندارد TLS کلودفلر در BPB-VPN (پورت‌های 8443 و 443 و 2083)
     val BPB_TLS_PORTS = listOf(8443, 443, 2083)
 
-    // تنظیمات استاندارد TLS Fragment هماهنگ با هسته Xray-core (بدون maxSplit یا UDP noise که باعث رد شدن کانفیگ شود)
     const val BPB_FINALMASK_NORMAL_JSON =
         """{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","length":"100-200","delay":"1"}}]}"""
     const val BPB_FINALMASK_SMART_JSON =
@@ -196,8 +254,14 @@ internal object PennyServerScanner {
     val DEDICATED_BPB_SUB_URL: String by lazy { decodeXorHex(ENC_BPB1_SUB_NORM) }
     val DEDICATED_BPB2_FRAGMENT_SUB_URL: String by lazy { decodeXorHex(ENC_BPB2_SUB_FRAG) }
 
+    val PUBLIC_SUBSCRIPTION_SOURCES: List<String> = listOf(
+        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
+        "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
+    )
+
     val SIGNED_STANDARD_SUBSCRIPTION_SOURCES: List<String> by lazy {
         listOf(
+            STEALTH_VAULT_GITHUB_URL,
             DEDICATED_VPS_SUB_URL,
             "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
             "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
@@ -206,13 +270,19 @@ internal object PennyServerScanner {
 
     val SIGNED_VIP_SUBSCRIPTION_SOURCES: List<String> by lazy {
         listOf(
-            DEDICATED_VPS_SUB_URL,
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
-            "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt"
+            STEALTH_VAULT_GITHUB_URL,
+            DEDICATED_VPS_SUB_URL
         )
     }
 
-    // حذف cp.cloudflare.com چون Worker/Pages کلودفلر اجازه اتصال خروجی TCP به آی‌پی‌های خود کلودفلر را ندارد
+    fun getSubscriptionSourcesForMode(mode: ServiceTierMode): List<String> {
+        return when (mode) {
+            ServiceTierMode.PUBLIC -> PUBLIC_SUBSCRIPTION_SOURCES
+            ServiceTierMode.DEDICATED -> listOf(STEALTH_VAULT_GITHUB_URL, DEDICATED_VPS_SUB_URL)
+            ServiceTierMode.GHOST -> listOf(STEALTH_VAULT_GITHUB_URL, DEDICATED_VPS_SUB_URL)
+        }
+    }
+
     val TEST_URLS = listOf(
         "https://www.gstatic.com/generate_204",
         "https://www.google.com/generate_204"
@@ -222,11 +292,6 @@ internal object PennyServerScanner {
         return URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
     }
 
-    /**
-     * تنظیم بهینه DNS (روی 8.8.8.8) و PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD="2"
-     * تا در getV2rayConfig4Speedtest هنگامی که postProcessForSpeedtest مقدار v2rayConfig.dns = null قرار می‌دهد،
-     * آدرس دامنه‌ها مستقیماً به IP تبدیل شود و RealPing دچار خطا نشود.
-     */
     fun applyBpbCoreOptimizations(fragLength: String = "100-200", fragInterval: String = "1") {
         try {
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, false)
@@ -244,9 +309,6 @@ internal object PennyServerScanner {
         }
     }
 
-    /**
-     * تشخیص خودکار اپراتور اینترنت (ایرانسل، همراه اول، رایتل، مخابرات/شاتل) و تنظیم هوشمند TLS Fragment
-     */
     fun detectCarrierAndTuneFragment(context: Context, onLog: ((String) -> Unit)? = null): String {
         return try {
             val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
@@ -274,10 +336,6 @@ internal object PennyServerScanner {
         }
     }
 
-    /**
-     * اسکنر داخلی آی‌پی تمیز کلودفلر (On-Device Clean IP Scanner):
-     * تست موازی رنج‌های Anycast کلودفلر روی پورت‌های 443 و 8443 و انتخاب سریع‌ترین آی‌پی‌های باز روی اینترنت فعلی کاربر
-     */
     suspend fun scanCleanCloudflareIps(onLog: ((String) -> Unit)? = null): List<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
             val sem = Semaphore(8)
@@ -314,13 +372,6 @@ internal object PennyServerScanner {
             results
         }
 
-    /**
-     * ابزار عیب‌یاب هوشمند شبکه (Network Doctor):
-     * ۱. بررسی مسمومیت DNS مخابرات (10.10.34.36)
-     * ۲. تشخیص اپراتور و تنظیم بهینه TLS Fragment
-     * ۳. اسکن آی‌پی‌های تمیز کلودفلر روی اینترنت فعلی کاربر
-     * ۴. فعال‌سازی مسیریابی مستقیم سایت‌ها و بانک‌های ایران
-     */
     suspend fun runNetworkDoctor(context: Context, onLog: (String) -> Unit): String =
         withContext(Dispatchers.IO) {
             onLog("Network Doctor: Starting 4-stage anti-censorship diagnosis...")
@@ -351,15 +402,32 @@ internal object PennyServerScanner {
         }
 
     /**
-     * نودهای داخلی سرور اختصاصی VPS به ترتیب متنوع‌ترین پروتکل‌ها برای تست دانلود واقعی:
-     * ۱. VLESS-WS (با Host اسپوف‌شده ورزش۳ و مستقیم)
-     * ۲. VLESS-HTTPUpgrade (با Host اسپوف‌شده و مستقیم)
-     * ۳. Hysteria2 (UDP + Salamander)
-     * ۴. Trojan-WS و VMess-WS
-     * ۵. Shadowsocks (aes-256-gcm) و VLESS-gRPC
+     * نودهای اختصاصی پرسرعت (Stealth Vault):
+     * شامل سرور هلند (VLESS-Reality)، سرور لهستان (Shadowsocks) و سرور اختصاصی آلمان/اروپا (Multi-Protocol VPS)
+     * هیچ‌کدام از آی‌پی‌ها، پورت‌ها یا UUIDها در متن کد یا لاگ نمایش داده نمی‌شوند.
      */
     fun getBuiltinBpbFallbackConfigs(): String {
         val nodes = mutableListOf<String>()
+
+        // 1) Netherlands VLESS-Reality TCP (پروتکل فوق‌مقاوم Reality با SNI مایکروسافت)
+        val nlH = DED_NL_HOST
+        val nlP = DED_NL_PORT
+        val nlU = DED_NL_UUID
+        val nlPbk = DED_NL_PBK
+        val nlSpx = DED_NL_SPX
+        val nlSni = DED_NL_SNI
+        val nlSid = DED_NL_SID
+
+        nodes.add("vless://$nlU@$nlH:$nlP?security=reality&encryption=none&pbk=$nlPbk&headerType=&fp=chrome&spx=$nlSpx&type=tcp&sni=$nlSni&sid=$nlSid#DED-NL")
+        nodes.add("vless://$nlU@$nlH:$nlP?security=reality&encryption=none&pbk=$nlPbk&headerType=&fp=firefox&spx=$nlSpx&type=tcp&sni=$nlSni&sid=$nlSid#DED-NL")
+
+        // 2) Poland Shadowsocks (AES-256-GCM روی پورت 443)
+        val plH = DED_PL_HOST
+        val plP = DED_PL_PORT
+        val plSs = DED_PL_SSB64
+        nodes.add("ss://$plSs@$plH:$plP#DED-PL")
+
+        // 3) Dedicated Multi-Protocol VPS
         val h = VPS1_HOST
         val p = VPS1_PORT
         val u = VPS1_UUID
@@ -371,10 +439,10 @@ internal object PennyServerScanner {
         val huPath = urlEncode("/parham-confing-hu?u=$tk")
         val trPath = urlEncode("/parham-confing-trojan?u=$tk")
 
-        fun buildVmess(hostHeader: String): String {
+        fun buildVmess(hostHeader: String, tag: String = "OWN-VPS1"): String {
             val vmessJson = JSONObject()
                 .put("v", "2")
-                .put("ps", "OWN-VPS1")
+                .put("ps", tag)
                 .put("add", h)
                 .put("port", p.toString())
                 .put("id", u)
@@ -394,28 +462,58 @@ internal object PennyServerScanner {
             return "vmess://$vmessB64"
         }
 
-        // چیدمان متنوع پروتکل‌ها در ابتدای لیست تا در صورت مسدود بودن یک پروتکل، بلافاصله پروتکل بعدی تست دانلود شود
         nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=cdn.varzesh3.com&path=$wsPath#OWN-VPS1")
-        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=$h&path=$wsPath#OWN-VPS1")
         nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=cdn.varzesh3.com&path=$huPath#OWN-VPS1")
-        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=$h&path=$huPath#OWN-VPS1")
         nodes.add("hysteria2://$u@$h:$p?sni=www.google.com&obfs=salamander&obfs-password=$hyObfs&insecure=1#OWN-VPS1")
         nodes.add("trojan://$u@$h:$p?security=none&type=ws&host=cdn.varzesh3.com&path=$trPath#OWN-VPS1")
         nodes.add(buildVmess("cdn.varzesh3.com"))
         nodes.add("ss://$ssCred@$h:$p#OWN-VPS1")
         nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=grpc&serviceName=parham-confing-grpc#OWN-VPS1")
-        nodes.add("trojan://$u@$h:$p?security=none&type=ws&host=$h&path=$trPath#OWN-VPS1")
-        nodes.add(buildVmess(h))
-        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=www.speedtest.net&path=$wsPath#OWN-VPS1")
-        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=www.aparat.com&path=$wsPath#OWN-VPS1")
 
         return nodes.joinToString("\n")
     }
 
     /**
-     * پاک‌سازی URL (حذف fragment مثل #💦 BPB Normal قبل از افزودن پارامتر زمان)
-     * و اطمینان از وجود ?app=xray فقط برای لینک‌های BPB Panel روی کلودفلر
+     * نودهای اختصاصی حالت Ghost Mode (مخصوص شرایط فیلترینگ شدید، قطعی و اختلال سراسری برای پیام‌رسان‌ها):
+     * استفاده از Micro-Fragmentation (5-12B) + Reality + HTTPUpgrade + Shadowsocks
      */
+    fun getGhostModeConfigs(): String {
+        val nodes = mutableListOf<String>()
+        val microFm = urlEncode(BPB_FINALMASK_MICRO_JSON)
+        val smartFm = urlEncode(BPB_FINALMASK_SMART_JSON)
+
+        val nlH = DED_NL_HOST
+        val nlP = DED_NL_PORT
+        val nlU = DED_NL_UUID
+        val nlPbk = DED_NL_PBK
+        val nlSpx = DED_NL_SPX
+        val nlSni = DED_NL_SNI
+        val nlSid = DED_NL_SID
+
+        nodes.add("vless://$nlU@$nlH:$nlP?security=reality&encryption=none&pbk=$nlPbk&headerType=&fp=chrome&spx=$nlSpx&type=tcp&sni=$nlSni&sid=$nlSid&fm=$microFm#GHOST-NODE")
+        nodes.add("vless://$nlU@$nlH:$nlP?security=reality&encryption=none&pbk=$nlPbk&headerType=&fp=randomized&spx=$nlSpx&type=tcp&sni=$nlSni&sid=$nlSid&fm=$smartFm#GHOST-NODE")
+
+        val plH = DED_PL_HOST
+        val plP = DED_PL_PORT
+        val plSs = DED_PL_SSB64
+        nodes.add("ss://$plSs@$plH:$plP#GHOST-NODE")
+
+        val h = VPS1_HOST
+        val p = VPS1_PORT
+        val u = VPS1_UUID
+        val tk = VPS1_TOKEN
+        val hyObfs = VPS1_HY2_OBFS
+        val huPath = urlEncode("/parham-confing-hu?u=$tk")
+        val wsPath = urlEncode("/parham-confing-ws?ed=2048&u=$tk")
+
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=httpupgrade&host=cdn.varzesh3.com&path=$huPath&fm=$microFm#GHOST-NODE")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=ws&host=www.aparat.com&path=$wsPath&fm=$smartFm#GHOST-NODE")
+        nodes.add("hysteria2://$u@$h:$p?sni=www.google.com&obfs=salamander&obfs-password=$hyObfs&insecure=1#GHOST-NODE")
+        nodes.add("vless://$u@$h:$p?encryption=none&security=none&type=grpc&serviceName=parham-confing-grpc&fm=$microFm#GHOST-NODE")
+
+        return nodes.joinToString("\n")
+    }
+
     fun normalizeSubscriptionUrl(urlStr: String): String {
         var clean = urlStr.trim().substringBefore('#').trim()
         val isBpbPages = clean.contains(".pages.dev", ignoreCase = true) ||
@@ -435,9 +533,6 @@ internal object PennyServerScanner {
         return sb.toString()
     }
 
-    /**
-     * دانلود مستقیم از طریق آی‌پی‌های CLEAN_CF_ENDPOINTS همراه با لاگ دقیق علت خطا در بلوک catch
-     */
     private fun downloadViaCleanIpTls(cleanUrl: String, onLog: (String) -> Unit): String {
         val parsed = URL(cleanUrl)
         val originalHost = parsed.host
@@ -493,11 +588,8 @@ internal object PennyServerScanner {
                 if (statusLine.contains(" 200 ") && body.isNotEmpty()) {
                     onLog("BPB-Fragment TLS download OK via $endpoint:$port (${body.length} chars)")
                     return body
-                } else {
-                    onLog("Clean IP TLS ($endpoint:$port) non-200 status: $statusLine")
                 }
-            } catch (e: Exception) {
-                onLog("Clean IP TLS ($endpoint:$port -> $originalHost) error: ${e.javaClass.simpleName}: ${e.message}")
+            } catch (_: Exception) {
             } finally {
                 try { sslSocket?.close() } catch (_: Exception) {}
                 try { rawSocket?.close() } catch (_: Exception) {}
@@ -518,11 +610,10 @@ internal object PennyServerScanner {
         val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true) ||
             cleanUrl.contains(".workers.dev", ignoreCase = true)
 
-        // برای دامنه‌های pages.dev مستقیماً یک‌بار از تانل Clean IP + TLS Record Split استفاده کن و در صورت مسدود بودن وقت را تلف نکن
         if (isPagesDev) {
             val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
             if (bypassed.isNotEmpty()) return bypassed
-            throw IllegalStateException("Clean IP TLS download skipped for ${URL(cleanUrl).host}; using built-in nodes")
+            throw IllegalStateException("Clean IP TLS download skipped; using built-in vault")
         }
 
         val sep = if ('?' in cleanUrl) '&' else '?'
@@ -531,10 +622,9 @@ internal object PennyServerScanner {
         val url = URL(urlWithTs)
         val resolvedIp = runCatching { InetAddress.getByName(url.host).hostAddress.orEmpty() }.getOrDefault("")
         if (resolvedIp.startsWith("10.10.") || resolvedIp == "127.0.0.1" || resolvedIp == "0.0.0.0") {
-            onLog?.invoke("Detected ISP DNS poisoning ($resolvedIp) for ${url.host}; switching to Clean IP TLS")
             val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
             if (bypassed.isNotEmpty()) return bypassed
-            throw IllegalStateException("ISP DNS hijacked ($resolvedIp) for ${url.host}")
+            throw IllegalStateException("ISP DNS hijacked ($resolvedIp)")
         }
 
         val conn = url.openConnection() as HttpURLConnection
@@ -542,7 +632,7 @@ internal object PennyServerScanner {
             conn.connectTimeout = 7000
             conn.readTimeout = 7000
             conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.5")
+            conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.6")
             val code = conn.responseCode
             if (code != HttpURLConnection.HTTP_OK) {
                 throw IllegalStateException("HTTP $code")
@@ -564,7 +654,13 @@ internal object PennyServerScanner {
                     }
                     out.write(buf, 0, read)
                 }
-                return out.toString(StandardCharsets.UTF_8.name()).trim()
+                val rawBytes = out.toByteArray()
+                val decryptedVault = decryptStealthVaultBytes(rawBytes)
+                if (decryptedVault.isNotEmpty()) {
+                    onLog?.invoke("Stealth Vault decrypted in RAM (${decryptedVault.lines().size} encrypted nodes)")
+                    return decryptedVault
+                }
+                return String(rawBytes, StandardCharsets.UTF_8).trim()
             }
         } finally {
             conn.disconnect()

@@ -1374,3 +1374,899 @@ internal fun PowerButton(
         }
     }
 }
+
+@Composable
+internal fun ServiceTierSelectorBar(
+    selectedMode: ServiceTierMode,
+    dailyRemText: String,
+    isVip: Boolean,
+    onSelectMode: (ServiceTierMode) -> Unit
+) {
+    Surface(
+        color = Color(0xFF181920).copy(alpha = 0.96f),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF343642), RoundedCornerShape(18.dp))
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ServiceTierMode.values().forEach { tier ->
+                    val isSelected = selectedMode == tier
+                    val accentColor = when (tier) {
+                        ServiceTierMode.PUBLIC -> Color(0xFF98E2C6)
+                        ServiceTierMode.DEDICATED -> Color(0xFFE6CFAF)
+                        ServiceTierMode.GHOST -> Color(0xFFC5B3F8)
+                    }
+                    Surface(
+                        color = if (isSelected) Color(0xFF282A35) else Color(0xFF1F2028),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = if (isSelected) 1.3.dp else 1.dp,
+                                color = if (isSelected) accentColor else Color(0xFF2E303B),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable { onSelectMode(tier) }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = tier.shortTitle,
+                                color = if (isSelected) Color(0xFFF5F7FA) else Color(0xFFA0A3B1),
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            val subBadge = when (tier) {
+                                ServiceTierMode.PUBLIC -> "FREE"
+                                ServiceTierMode.DEDICATED -> if (isVip) "VIP 50GB" else "1GB/DAY"
+                                ServiceTierMode.GHOST -> "CHAT ONLY"
+                            }
+                            Text(
+                                text = subBadge,
+                                color = if (isSelected) accentColor else Color(0xFF757886),
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(7.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = selectedMode.description,
+                    color = Color(0xFFB8BCC8),
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedMode == ServiceTierMode.DEDICATED) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = dailyRemText,
+                        color = Color(0xFFE6CFAF),
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PennyBottomNavBar(
+    selectedTab: BottomNavTab,
+    serverCount: Int,
+    onSelectTab: (BottomNavTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color(0xFF14151B).copy(alpha = 0.98f),
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = Color(0xFF2E303C),
+                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BottomNavTab.values().forEach { tab ->
+                val active = selectedTab == tab
+                val fg = if (active) Color(0xFFE6CFAF) else Color(0xFF8E92A0)
+                Surface(
+                    color = if (active) Color(0xFF232530) else Color.Transparent,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onSelectTab(tab) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Canvas(modifier = Modifier.size(16.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            val st = 1.7.dp.toPx()
+                            when (tab) {
+                                BottomNavTab.HOME -> {
+                                    drawCircle(
+                                        color = fg,
+                                        radius = w * 0.40f,
+                                        center = Offset(w * 0.5f, h * 0.5f),
+                                        style = Stroke(width = st)
+                                    )
+                                    drawLine(
+                                        color = fg,
+                                        start = Offset(w * 0.5f, h * 0.22f),
+                                        end = Offset(w * 0.5f, h * 0.52f),
+                                        strokeWidth = st,
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                BottomNavTab.SERVERS -> {
+                                    drawRoundRect(
+                                        color = fg,
+                                        topLeft = Offset(w * 0.12f, h * 0.16f),
+                                        size = Size(w * 0.76f, h * 0.26f),
+                                        style = Stroke(width = st)
+                                    )
+                                    drawRoundRect(
+                                        color = fg,
+                                        topLeft = Offset(w * 0.12f, h * 0.56f),
+                                        size = Size(w * 0.76f, h * 0.26f),
+                                        style = Stroke(width = st)
+                                    )
+                                }
+                                BottomNavTab.PROFILE -> {
+                                    drawCircle(
+                                        color = fg,
+                                        radius = w * 0.22f,
+                                        center = Offset(w * 0.5f, h * 0.32f),
+                                        style = Stroke(width = st)
+                                    )
+                                    drawArc(
+                                        color = fg,
+                                        startAngle = 200f,
+                                        sweepAngle = 140f,
+                                        useCenter = false,
+                                        topLeft = Offset(w * 0.18f, h * 0.54f),
+                                        size = Size(w * 0.64f, h * 0.44f),
+                                        style = Stroke(width = st, cap = StrokeCap.Round)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            text = if (tab == BottomNavTab.SERVERS && serverCount > 0) {
+                                "${tab.title} ($serverCount)"
+                            } else {
+                                tab.title
+                            },
+                            color = if (active) Color(0xFFF5F7FA) else Color(0xFF9498A6),
+                            fontSize = 12.sp,
+                            fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ServersTabPage(
+    selectedMode: ServiceTierMode,
+    onSelectMode: (ServiceTierMode) -> Unit,
+    servers: List<PennyServer>,
+    selectedGuid: String?,
+    isRunning: Boolean,
+    busy: Boolean,
+    scanProgress: Float,
+    dailyUsedBytes: Long,
+    dailyMaxBytes: Long,
+    vipActive: Boolean,
+    onScanClick: () -> Unit,
+    onServerClick: (PennyServer) -> Unit
+) {
+    val dailyRemBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
+    val dailyRemText = if (vipActive) {
+        "VIP 50 GB Active"
+    } else {
+        "${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)} left"
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = "Server Network",
+                    color = Color(0xFFF5F7FA),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = "Select service mode & connect to verified nodes",
+                    color = Color(0xFF9EA2B0),
+                    fontSize = 11.5.sp
+                )
+            }
+            Surface(
+                color = Color(0xFF252732),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .clickable(enabled = !busy) { onScanClick() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    UpdateArrowIcon(size = 13.dp, color = Color(0xFFE6CFAF))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (busy) "Scanning..." else "Scan Mode",
+                        color = Color(0xFFF5E6D3),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        ServiceTierSelectorBar(
+            selectedMode = selectedMode,
+            dailyRemText = dailyRemText,
+            isVip = vipActive,
+            onSelectMode = onSelectMode
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        // کارت وضعیت اختصاصی هر مود
+        Surface(
+            color = Color(0xFF1A1B22).copy(alpha = 0.95f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF323440), RoundedCornerShape(16.dp))
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                when (selectedMode) {
+                    ServiceTierMode.DEDICATED -> {
+                        val ratio = if (vipActive) {
+                            1f
+                        } else {
+                            (dailyRemBytes.toFloat() / dailyMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (vipActive) "Dedicated Pro • VIP 50 GB Plan" else "Dedicated Pro • 1 GB Daily Quota",
+                                color = Color(0xFFE6CFAF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = if (vipActive) "UNRESTRICTED" else "${fmtBytes(dailyRemBytes)} Remaining",
+                                color = Color(0xFFF2F4F8),
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Color(0xFF282A34))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(ratio)
+                                    .fillMaxHeight()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(Color(0xFF9E8A6E), Color(0xFFE6CFAF))
+                                        )
+                                    )
+                            )
+                        }
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            text = "Encrypted Stealth Vault • Protected against config extraction • Resets daily at 00:00",
+                            color = Color(0xFF9498A6),
+                            fontSize = 9.5.sp
+                        )
+                    }
+                    ServiceTierMode.GHOST -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Ghost Mode • Extreme Censorship Bypass",
+                                color = Color(0xFFC5B3F8),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "MESSAGING ONLY",
+                                color = Color(0xFFC5B3F8),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Designed for severe blackouts & heavy DPI filtering. Uses micro-fragmentation (5-12B) to keep Telegram, WhatsApp & text messages connected.",
+                            color = Color(0xFFB0B4C2),
+                            fontSize = 10.sp
+                        )
+                    }
+                    ServiceTierMode.PUBLIC -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Public Mode • Free Community Servers",
+                                color = Color(0xFF98E2C6),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "UNLIMITED FREE",
+                                color = Color(0xFF98E2C6),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Public servers verified by real SOCKS5 download test. Free unlimited usage for general browsing.",
+                            color = Color(0xFFB0B4C2),
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        if (busy && scanProgress > 0f) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF262832))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(scanProgress.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(Color(0xFFE6CFAF))
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        if (servers.isEmpty()) {
+            Surface(
+                color = Color(0xFF181920),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF2E303C), RoundedCornerShape(18.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "No servers loaded for ${selectedMode.title}",
+                        color = Color(0xFFF2F4F8),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Tap 'Scan Mode' above to fetch and verify healthy nodes for this mode.",
+                        color = Color(0xFF9498A6),
+                        fontSize = 11.5.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            servers.forEachIndexed { idx, srv ->
+                val isSelected = isRunning && srv.guid == selectedGuid
+                val tierBadge = when (srv.codeTag) {
+                    "DED-NL" -> "REALITY • NL"
+                    "DED-PL" -> "STEALTH • PL"
+                    "GHOST" -> "GHOST • ANTI-DPI"
+                    "VPS-1" -> "DEDICATED • DE"
+                    else -> "PUBLIC • FREE"
+                }
+                val badgeColor = when (srv.codeTag) {
+                    "DED-NL", "DED-PL", "VPS-1" -> Color(0xFFE6CFAF)
+                    "GHOST" -> Color(0xFFC5B3F8)
+                    else -> Color(0xFF98E2C6)
+                }
+                Surface(
+                    color = if (isSelected) Color(0xFF272935) else Color(0xFF191A22),
+                    shape = RoundedCornerShape(15.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(15.dp))
+                        .border(
+                            width = if (isSelected) 1.4.dp else 1.dp,
+                            color = if (isSelected) badgeColor else Color(0xFF2D2F3B),
+                            shape = RoundedCornerShape(15.dp)
+                        )
+                        .clickable(enabled = !busy) { onServerClick(srv) }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = srv.label.ifBlank { "${selectedMode.shortTitle} Node #${idx + 1}" },
+                                    color = Color(0xFFF5F7FA),
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(badgeColor.copy(alpha = 0.16f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = tierBadge,
+                                        color = badgeColor,
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = if (isSelected) {
+                                    "Connected • Encrypted Tunnel Active (Config Hidden)"
+                                } else {
+                                    "Download-Verified • Tap to connect immediately"
+                                },
+                                color = if (isSelected) badgeColor else Color(0xFF8E92A0),
+                                fontSize = 10.sp
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = if (srv.ms > 0) "${srv.ms} ms" else "READY",
+                                color = badgeColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = if (isSelected) "ACTIVE" else "CONNECT ›",
+                                color = if (isSelected) Color(0xFFF5F7FA) else Color(0xFF9EA2B0),
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ProfileTabPage(
+    userUuid: String,
+    deviceId: String,
+    serviceTierMode: ServiceTierMode,
+    dailyUsedBytes: Long,
+    dailyMaxBytes: Long,
+    vipActive: Boolean,
+    vipExpireMs: Long,
+    vipUsedBytes: Long,
+    vipMaxBytes: Long,
+    autoSwitch: Boolean,
+    onAutoSwitchChange: (Boolean) -> Unit,
+    autoReconnect: Boolean,
+    onAutoReconnectChange: (Boolean) -> Unit,
+    splitTunnelLocal: Boolean,
+    onSplitTunnelChange: (Boolean) -> Unit,
+    onCopyUuid: () -> Unit,
+    onOpenVipDialog: () -> Unit,
+    onOpenLogs: () -> Unit,
+    onOpenUpdate: () -> Unit
+) {
+    val dailyRemBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
+    val dailyRatio = (dailyRemBytes.toFloat() / dailyMaxBytes.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "User Profile & Quota",
+            color = Color(0xFFF5F7FA),
+            fontSize = 20.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
+
+        // 1) کارت شناسه اختصاصی کاربر (UUID + Hardware Fingerprint)
+        Surface(
+            color = Color(0xFF191A22),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF353744), RoundedCornerShape(18.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Dedicated User Identity",
+                            color = Color(0xFFE6CFAF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "Hardware Fingerprint: $deviceId",
+                            color = Color(0xFF9EA2B0),
+                            fontSize = 10.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Surface(
+                        color = Color(0xFF282A36),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .clickable { onCopyUuid() }
+                    ) {
+                        Text(
+                            text = "Copy UUID",
+                            color = Color(0xFFF5E6D3),
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = Color(0xFF121318),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFF282A34), RoundedCornerShape(10.dp))
+                ) {
+                    Text(
+                        text = userUuid,
+                        color = Color(0xFFD8DCE6),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Bound to hardware DRM & signing certificate. Clearing app data or reinstalling will not reset this UUID or daily quota.",
+                    color = Color(0xFF8C909E),
+                    fontSize = 9.5.sp
+                )
+            }
+        }
+
+        // 2) کارت سهمیه ۱ گیگابایت روزانه سرویس اختصاصی + وضعیت VIP
+        Surface(
+            color = Color(0xFF191A22),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF353744), RoundedCornerShape(18.dp))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Dedicated Pro Daily Quota",
+                        color = Color(0xFFF2F4F8),
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = "Active Mode: ${serviceTierMode.shortTitle}",
+                        color = Color(0xFFE6CFAF),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Used Today: ${fmtBytes(dailyUsedBytes)}",
+                        color = Color(0xFFB8BCC8),
+                        fontSize = 11.sp
+                    )
+                    Text(
+                        text = "Remaining: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
+                        color = Color(0xFFF5E6D3),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFF262832))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(dailyRatio)
+                            .fillMaxHeight()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF8E93A2), Color(0xFFE6CFAF))
+                                )
+                            )
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Quota automatically renews every day at 00:00. After 1 GB is reached, Dedicated Pro pauses and you can continue on Public or Ghost Mode.",
+                    color = Color(0xFF8C909E),
+                    fontSize = 9.5.sp
+                )
+
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = Color(0xFF242632),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                        .clickable { onOpenVipDialog() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            GlassDiamondIcon(size = 16.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (vipActive) "VIP 50 GB Plan Active" else "Upgrade to VIP (50 GB / Month)",
+                                    color = Color(0xFFF5F7FA),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                val vipSub = if (vipActive) {
+                                    val remD = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
+                                    val remB = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
+                                    "$remD days • ${fmtBytes(remB)} remaining"
+                                } else {
+                                    "Unlock 50 GB high-speed dedicated traffic & zero ads"
+                                }
+                                Text(
+                                    text = vipSub,
+                                    color = Color(0xFFB0B4C2),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                        Text(
+                            text = if (vipActive) "MANAGE" else "ACTIVATE ›",
+                            color = Color(0xFFE6CFAF),
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3) تنظیمات ضد فیلتر و ابزارهای سیستم
+        Surface(
+            color = Color(0xFF191A22),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF353744), RoundedCornerShape(18.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Protection & Diagnostics",
+                    color = Color(0xFFF2F4F8),
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Switch Unresponsive Server", color = Color(0xFFE8ECF4), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Automatically switches if download drops", color = Color(0xFF8C909E), fontSize = 10.sp)
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = autoSwitch,
+                        onCheckedChange = onAutoSwitchChange,
+                        colors = metallicSwitchColors()
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Reconnect on Network Change", color = Color(0xFFE8ECF4), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Keeps VPN alive between Wi-Fi & Mobile Data", color = Color(0xFF8C909E), fontSize = 10.sp)
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = autoReconnect,
+                        onCheckedChange = onAutoReconnectChange,
+                        colors = metallicSwitchColors()
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Bypass Iranian Domestic Traffic (.ir)", color = Color(0xFFE8ECF4), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Direct routing for banks & local apps", color = Color(0xFF8C909E), fontSize = 10.sp)
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = splitTunnelLocal,
+                        onCheckedChange = onSplitTunnelChange,
+                        colors = metallicSwitchColors()
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        color = Color(0xFF232530),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFF383A48), RoundedCornerShape(12.dp))
+                            .clickable { onOpenLogs() }
+                    ) {
+                        Text(
+                            text = "Activity Logs",
+                            color = Color(0xFFE8ECF4),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        )
+                    }
+                    Surface(
+                        color = Color(0xFF232530),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFF383A48), RoundedCornerShape(12.dp))
+                            .clickable { onOpenUpdate() }
+                    ) {
+                        Text(
+                            text = "Check Update",
+                            color = Color(0xFFE8ECF4),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+

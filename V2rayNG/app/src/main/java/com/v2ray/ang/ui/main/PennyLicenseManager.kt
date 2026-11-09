@@ -1,10 +1,13 @@
 package com.v2ray.ang.ui.main
 
 import android.content.Context
+import android.media.MediaDrm
+import android.os.Build
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
 import org.json.JSONObject
+import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -14,6 +17,7 @@ import java.security.MessageDigest
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.util.Locale
+import java.util.UUID
 
 internal data class VerifiedLicense(
     val serial: String,
@@ -33,26 +37,67 @@ internal data class ServerQuotaState(
     val message: String
 )
 
+internal data class DailyQuotaSyncResult(
+    val usedBytes: Long,
+    val maxBytes: Long,
+    val blocked: Boolean
+)
+
 internal object VipLicenseManager {
     const val VIP_DURATION_MS = 30L * 24L * 60L * 60L * 1000L // ۱ ماه (۳۰ روز)
     const val VIP_MAX_BYTES = 50L * 1024L * 1024L * 1024L      // ۵۰ گیگابایت
 
-    // کلید عمومی جدید ECDSA P-256 (چرخانده‌شده پس از ابطال کلید قبلی).
-    // کلید خصوصی هیچ‌گاه در ریپو قرار ندارد و فقط روی سرور لایسنس یا متغیر محیطی ادمین نگهداری می‌شود.
     const val ROTATED_PUBLIC_KEY_B64 =
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEf1YXmwm/4ojudflyQNF470nc0kSAIdSM+K5OUIWqHHhxNCusYcvAygnbn9OFs6CGEpxTRB7AK6xfyyStgOE11Q=="
     const val SERVER_PUBLIC_KEY_B64 =
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFBrRITbwn5r34OrlnHCjhqPtBsIbAX1uZ1KHJGSXGgzz37VSbpst3c8dVa/BSYL4iZj0MBnDI2qUT4AbZg9jbA=="
 
-    // آدرس پیش‌فرض سرور بررسی لایسنس و شمارش حجم ۵۰ گیگ (قابل تنظیم روی سرور اختصاصی یا Cloudflare Worker شما)
     const val DEFAULT_LICENSE_API_BASE = "https://ais-pre-luudtt26z2k4ltbojg23wu-178499689419.europe-west2.run.app"
 
+    private val WIDEVINE_UUID = UUID(-0x121074568629b532L, -0x5c37d8232ae2de13L)
+
+    @Volatile
+    private var cachedHwDigest: ByteArray? = null
+
+    /**
+     * استخراج اثرانگشت سخت‌افزاری پایدار (MediaDrm Widevine + Signing-Key ANDROID_ID + SoC Hardware)
+     * که با Clear Data یا حذف و نصب مجدد اپلیکیشن تغییر نمی‌کند.
+     */
+    private fun computeHardwareDigest(context: Context): ByteArray {
+        cachedHwDigest?.let { return it }
+        val androidId = runCatching {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+        }.getOrDefault("")
+
+        val widevineHex = runCatching {
+            val drm = MediaDrm(WIDEVINE_UUID)
+            try {
+                val idBytes = drm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
+                idBytes.joinToString("") { String.format(Locale.US, "%02x", it.toInt() and 0xFF) }
+            } finally {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    runCatching { drm.close() }
+                } else {
+                    @Suppress("DEPRECATION")
+                    runCatching { drm.release() }
+                }
+            }
+        }.getOrDefault("")
+
+        val hwSpec = "${Build.BOARD}|${Build.BRAND}|${Build.DEVICE}|${Build.HARDWARE}"
+        val rawSeed = "PENNY_HW_FINGERPRINT_V3:$androidId:$widevineHex:$hwSpec"
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(rawSeed.toByteArray(StandardCharsets.UTF_8))
+        cachedHwDigest = digest
+        return digest
+    }
+
+    /**
+     * شناسه ۱۲ کاراکتری سخت‌افزاری دستگاه (ثابت در برابر حذف و نصب مجدد)
+     */
     fun getDeviceId(context: Context): String {
         return try {
-            val rawId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-                ?: "UNKNOWN_DEVICE"
-            val digest = MessageDigest.getInstance("SHA-256")
-                .digest(("PENNY_DEV_ID_V2:" + rawId).toByteArray(StandardCharsets.UTF_8))
+            val digest = computeHardwareDigest(context)
             val sb = StringBuilder()
             for (i in 0 until 6) {
                 if (i == 2 || i == 4) sb.append("-")
@@ -62,6 +107,112 @@ internal object VipLicenseManager {
         } catch (e: Exception) {
             Log.w("PennyVPN", "DeviceId fallback: ${e.message}")
             "0000-0000-0000"
+        }
+    }
+
+    /**
+     * تولید UUID اختصاصی و یکتا برای هر کاربر بر اساس اثرانگشت سخت‌افزاری دستگاه:
+     * فرمت استاندارد xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+     * حتی با پاک کردن دیتای اپ یا حذف و نصب مجدد، دقیقاً همین UUID تولید می‌شود.
+     */
+    fun getUserUuid(context: Context): String {
+        return try {
+            val d = computeHardwareDigest(context).clone()
+            d[6] = ((d[6].toInt() and 0x0F) or 0x40).toByte() // Version 4
+            d[8] = ((d[8].toInt() and 0x3F) or 0x80).toByte() // Variant RFC4122
+            val sb = StringBuilder(36)
+            for (i in 0 until 16) {
+                if (i == 4 || i == 6 || i == 8 || i == 10) sb.append('-')
+                sb.append(String.format(Locale.US, "%02x", d[i].toInt() and 0xFF))
+            }
+            sb.toString()
+        } catch (_: Exception) {
+            "00000000-0000-4000-8000-000000000000"
+        }
+    }
+
+    /**
+     * ذخیره‌سازی و بازیابی چندلایه سهمیه روزانه ۱ گیگابایت برای مقاومت در برابر پاک‌کردن کش/دیتا
+     */
+    fun readTamperResistantDailyUsed(context: Context, deviceId: String, dayKey: String, prefsUsed: Long): Long {
+        var maxObserved = prefsUsed.coerceAtLeast(0L)
+        try {
+            val backupFile = File(context.noBackupFilesDir, ".pny_q_${deviceId.hashCode()}.dat")
+            if (backupFile.exists()) {
+                val text = backupFile.readText(StandardCharsets.UTF_8).trim()
+                val parts = text.split("|")
+                if (parts.size >= 2 && parts[0] == dayKey) {
+                    val v = parts[1].toLongOrNull() ?: 0L
+                    if (v > maxObserved) maxObserved = v
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return maxObserved
+    }
+
+    fun writeTamperResistantDailyUsed(context: Context, deviceId: String, dayKey: String, usedBytes: Long) {
+        try {
+            val backupFile = File(context.noBackupFilesDir, ".pny_q_${deviceId.hashCode()}.dat")
+            backupFile.writeText("$dayKey|$usedBytes", StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * همگام‌سازی سهمیه ۱ گیگابایت روزانه و وضعیت آنلاین کاربر با سرور مانیتورینگ/کنترل از راه دور
+     */
+    fun syncDailyQuotaAndTelemetry(
+        apiBaseUrl: String,
+        deviceId: String,
+        userUuid: String,
+        dayKey: String,
+        localUsedBytes: Long,
+        deltaBytes: Long,
+        activeMode: String,
+        connectedServerLabel: String
+    ): DailyQuotaSyncResult? {
+        val cleanBase = apiBaseUrl.trim().trimEnd('/')
+        if (!cleanBase.startsWith("https://", ignoreCase = true) && !cleanBase.startsWith("http://", ignoreCase = true)) {
+            return null
+        }
+        return try {
+            val conn = URL("$cleanBase/api/v1/quota/daily-sync").openConnection() as HttpURLConnection
+            try {
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+
+                val reqJson = JSONObject()
+                    .put("deviceId", deviceId)
+                    .put("userUuid", userUuid)
+                    .put("dayKey", dayKey)
+                    .put("usedBytes", localUsedBytes.coerceAtLeast(0L))
+                    .put("deltaBytes", deltaBytes.coerceAtLeast(0L))
+                    .put("mode", activeMode)
+                    .put("serverLabel", connectedServerLabel)
+                    .toString()
+
+                OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->
+                    writer.write(reqJson)
+                }
+
+                if (conn.responseCode !in 200..299) return null
+                val respText = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+                val obj = JSONObject(respText)
+                if (!obj.optBoolean("ok", false)) return null
+                DailyQuotaSyncResult(
+                    usedBytes = obj.optLong("usedBytes", localUsedBytes),
+                    maxBytes = obj.optLong("maxBytes", 1L * 1024L * 1024L * 1024L),
+                    blocked = obj.optBoolean("blocked", false)
+                )
+            } finally {
+                conn.disconnect()
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -94,11 +245,6 @@ internal object VipLicenseManager {
             verifyWithSingleKey(dataBytes, sigBytes, SERVER_PUBLIC_KEY_B64)
     }
 
-    /**
-     * بررسی امضای دیجیتال لایسنس ECDSA P-256 با کلید عمومی چرخانده‌شده جدید:
-     * PL1.<payload_base64url>.<sig_base64url>
-     * پشتیبانی از جداکننده '|' یا ':' در payload: SERIAL|DEVICE_ID|ACTIVATE_BEFORE_MS
-     */
     fun verifyLicenseOfflineSignature(
         rawCode: String,
         currentDeviceId: String,
@@ -115,8 +261,8 @@ internal object VipLicenseManager {
                 maxBytes = VIP_MAX_BYTES
             ) to "OK"
         }
-        if (!trimmed.startsWith("PL1.", ignoreCase = true)) {
-            return null to "Invalid license format. Use PL1.<payload>.<sig> or your VIP code."
+        if (!trimmed.startsWith("PL1.", ignoreCase = true) && !trimmed.startsWith("PV1.", ignoreCase = true)) {
+            return null to "Invalid license format. Use your VIP activation code."
         }
         val parts = trimmed.split(".")
         if (parts.size != 3) return null to "Malformed ECDSA license token."
@@ -126,7 +272,20 @@ internal object VipLicenseManager {
             if (!verifyEcdsaSignature(payloadBytes, sigBytes, ROTATED_PUBLIC_KEY_B64)) {
                 return null to "Invalid or revoked ECDSA P-256 signature!"
             }
-            val payloadStr = String(payloadBytes, StandardCharsets.UTF_8)
+            val payloadStr = String(payloadBytes, StandardCharsets.UTF_8).trim()
+            if (payloadStr.startsWith("{")) {
+                val json = JSONObject(payloadStr)
+                val serial = json.optString("s", "VIP2026")
+                val expSec = json.optLong("exp", 0L)
+                val maxB = json.optLong("max", VIP_MAX_BYTES)
+                val durMs = if (expSec > 0L) (expSec * 1000L - effectiveNowMs).coerceAtLeast(VIP_DURATION_MS) else VIP_DURATION_MS
+                return VerifiedLicense(
+                    serial = serial,
+                    deviceId = "ANY",
+                    durationMs = durMs,
+                    maxBytes = maxB
+                ) to "OK"
+            }
             val delimiter = if ('|' in payloadStr) '|' else ':'
             val fields = payloadStr.split(delimiter)
             if (fields.size < 3) return null to "Corrupted license payload."
@@ -155,11 +314,6 @@ internal object VipLicenseManager {
         }
     }
 
-    /**
-     * فعال‌سازی لایسنس روی سرور (Server-Side License & Quota Verification):
-     * حتی اگر کاربر دیتای اپ را پاک کند (Clear Data) یا فایل SharedPreferences را تغییر دهد،
-     * وضعیت مصرف حجم ۵۰ گیگ، قفل Device ID و تاریخ انقضا روی سرور ذخیره و اعمال می‌شود.
-     */
     fun activateOnServer(
         apiBaseUrl: String,
         rawCode: String,
@@ -236,10 +390,6 @@ internal object VipLicenseManager {
         }
     }
 
-    /**
-     * همگام‌سازی دوره‌ای مصرف ترافیک با سرور (Server-Side 50 GB Quota Accounting):
-     * مصرف بایت‌های تانل را به سرور گزارش می‌دهد و مقدار واقعی باقی‌مانده و وضعیت انقضا را از سرور می‌گیرد.
-     */
     fun syncTrafficWithServer(
         apiBaseUrl: String,
         serial: String,
@@ -291,10 +441,6 @@ internal object VipLicenseManager {
         }
     }
 
-    /**
-     * بررسی اجباری امضای دیجیتال ECDSA P-256 روی تمام لیست‌های سرور (#PENNY-SIG:<base64>).
-     * هرگونه لیست بدون امضا یا دستکاری‌شده (چه عادی و چه VIP) فوراً رد می‌شود.
-     */
     fun verifySignedServerList(rawContent: String): Pair<Boolean, String> {
         val normalized = rawContent.replace("\r\n", "\n").trim()
         val lines = normalized.lines()

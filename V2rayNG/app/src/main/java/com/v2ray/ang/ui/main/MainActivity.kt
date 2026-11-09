@@ -977,22 +977,22 @@ class MainActivity : HelperBaseComponentActivity() {
 
         val isConnectedMode = mode == UiMode.CONNECTED
         val bgTopColor by animateColorAsState(
-            targetValue = if (isConnectedMode) Color(0xFF393632) else Color(0xFF212026),
+            targetValue = if (isConnectedMode) Color(0xFF1B1C23) else Color(0xFF17181E),
             animationSpec = tween(900),
             label = "bgTopColor"
         )
         val bgMidColor by animateColorAsState(
-            targetValue = if (isConnectedMode) Color(0xFF22242E) else Color(0xFF141418),
+            targetValue = if (isConnectedMode) Color(0xFF111217) else Color(0xFF101116),
             animationSpec = tween(900),
             label = "bgMidColor"
         )
         val bgBottomColor by animateColorAsState(
-            targetValue = if (isConnectedMode) Color(0xFF101218) else Color(0xFF0A0A0D),
+            targetValue = if (isConnectedMode) Color(0xFF090A0D) else Color(0xFF08090C),
             animationSpec = tween(900),
             label = "bgBottomColor"
         )
         val ambientGlowAlpha by animateFloatAsState(
-            targetValue = if (isConnectedMode) 0.34f else 0.0f,
+            targetValue = if (isConnectedMode) 0.07f else 0.0f,
             animationSpec = tween(950),
             label = "ambientGlowAlpha"
         )
@@ -1070,10 +1070,10 @@ class MainActivity : HelperBaseComponentActivity() {
                                 Brush.radialGradient(
                                     colors = listOf(
                                         Color(0xFFE6CFAF).copy(alpha = ambientGlowAlpha),
-                                        Color(0xFFD8DCE6).copy(alpha = ambientGlowAlpha * 0.55f),
+                                        Color(0xFFD8DCE6).copy(alpha = ambientGlowAlpha * 0.45f),
                                         Color.Transparent
                                     ),
-                                    radius = 950f
+                                    radius = 780f
                                 )
                             )
                     )
@@ -1086,7 +1086,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     modifier = Modifier
                         .size(240.dp)
                         .align(Alignment.Center)
-                        .alpha(if (isConnectedMode) 0.06f else 0.03f)
+                        .alpha(if (isConnectedMode) 0.04f else 0.025f)
                 )
 
                 // ═══════════════════════ رابط کاربری موبایل (بدون اسکرول در Home، Doctor و Profile، اسکرول فقط در لیست سرورها) ═══════════════════════
@@ -1119,6 +1119,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                         selectedMode = serviceTierMode,
                                         dailyRemText = "${fmtBytes(dailyRemBytes)} left",
                                         isVip = vipActive,
+                                        isConnected = mode == UiMode.CONNECTED,
                                         ghostMessagingOnly = ghostMessagingOnly,
                                         onGhostMessagingOnlyChange = onGhostToggleChanged,
                                         onSelectMode = onModeSelected

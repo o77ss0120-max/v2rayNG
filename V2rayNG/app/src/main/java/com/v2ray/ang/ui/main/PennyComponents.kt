@@ -428,11 +428,6 @@ internal fun ModernServerCard(
                     "PUB" -> "PUB"
                     else -> geo.isoCode
                 }
-                val shortBadgeSub = when (currentSrv.codeTag) {
-                    "GHOST" -> "CHAT"
-                    "PUB" -> "FREE"
-                    else -> "PRO"
-                }
                 val tierLabel = when (currentSrv.codeTag) {
                     "GHOST" -> "GHOST STEALTH"
                     "PUB" -> "PUBLIC"
@@ -445,11 +440,11 @@ internal fun ModernServerCard(
                         .padding(horizontal = 11.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // باکس استاندارد و بدون سرریز (NL / PRO ، PL / PRO ، GH / CHAT)
+                    // باکس استاندارد تک‌خطی کد کشور (NL / PL / DE / GH) بدون هیچ‌گونه بریدگی عمودی
                     Box(
                         modifier = Modifier
-                            .width(46.dp)
-                            .height(36.dp)
+                            .width(44.dp)
+                            .height(38.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(
                                 Brush.linearGradient(
@@ -462,31 +457,20 @@ internal fun ModernServerCard(
                             )
                             .border(
                                 1.dp,
-                                if (isOwn) ChampagneGold.copy(alpha = 0.82f) else Color(0xFF4C505E),
+                                if (isOwn) ChampagneGold.copy(alpha = 0.85f) else Color(0xFF4C505E),
                                 RoundedCornerShape(10.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = shortBadgeTop,
-                                color = if (isOwn) ChampagneLight else PlatinumBright,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                            Text(
-                                text = shortBadgeSub,
-                                color = if (isOwn) ChampagneGold else PlatinumMuted,
-                                fontSize = 7.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
+                        Text(
+                            text = shortBadgeTop,
+                            color = if (isOwn) ChampagneLight else PlatinumBright,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     Spacer(Modifier.width(10.dp))
@@ -1194,14 +1178,17 @@ internal fun PowerButton(
     val color by animateColorAsState(target, tween(700), label = "pbColor")
     val animProgress by animateFloatAsState(progress, tween(400), label = "pbProgress")
 
-    // چرخش نرم کره زمین به سمت طول و عرض جغرافیایی کشور سرور (مثلاً هلند 52.37N, 4.90E)
-    val centerLonDeg by animateFloatAsState(
-        targetValue = countryGeo.longitude,
+    // تمرکز دوربین سه‌بعدی کره زمین روی میانه مسیر ایران (35.69N, 51.39E) و کشور مقصد (مثلاً هلند یا لهستان)
+    val targetCamLon = ((countryGeo.longitude + 51.39f) * 0.45f).coerceIn(-10f, 45f)
+    val targetCamLat = ((countryGeo.latitude + 35.69f) * 0.46f).coerceIn(18f, 46f)
+
+    val baseLonDeg by animateFloatAsState(
+        targetValue = targetCamLon,
         animationSpec = tween(900, easing = FastOutSlowInEasing),
         label = "globeLon"
     )
     val centerLatDeg by animateFloatAsState(
-        targetValue = (countryGeo.latitude * 0.55f).coerceIn(-35f, 42f),
+        targetValue = targetCamLat,
         animationSpec = tween(900, easing = FastOutSlowInEasing),
         label = "globeLat"
     )
@@ -1218,27 +1205,34 @@ internal fun PowerButton(
     val inf = rememberInfiniteTransition(label = "pbInf")
     val pulse by inf.animateFloat(
         initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing)),
         label = "pbPulse"
     )
+    val globeSway by inf.animateFloat(
+        initialValue = -4.5f, targetValue = 4.5f,
+        animationSpec = infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "globeSway"
+    )
     val beaconBlink by inf.animateFloat(
-        initialValue = 0.25f, targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(tween(580, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        initialValue = 0.20f, targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "beaconBlink"
     )
     val spin by inf.animateFloat(
         initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
         label = "pbSpin"
     )
     val breathe by inf.animateFloat(
         initialValue = 1f,
-        targetValue = if (isConnected) 1.04f else 1.02f,
+        targetValue = if (isConnected) 1.025f else 1.012f,
         animationSpec = infiniteRepeatable(
-            tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse
+            tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse
         ),
         label = "pbBreathe"
     )
+
+    val centerLonDeg = baseLonDeg + globeSway
 
     Box(
         modifier = Modifier
@@ -1246,285 +1240,413 @@ internal fun PowerButton(
             .height(216.dp),
         contentAlignment = Alignment.Center
     ) {
-        // لایه کره زمین سه‌بعدی، قاره‌ها، مسیر تانل از ایران به کشور مقصد و نقطه چشمک‌زن کشور سرور
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val c = Offset(size.width / 2f, size.height / 2f + 6.dp.toPx())
-            val globeR = 96.dp.toPx()
-            val innerOrbR = 66.dp.toPx()
-
-            fun project3D(latDeg: Float, lonDeg: Float): Pair<Offset, Boolean> {
-                val lat = latDeg * (PI.toFloat() / 180f)
-                val lon = (lonDeg - centerLonDeg) * (PI.toFloat() / 180f)
-                val cLat = centerLatDeg * (PI.toFloat() / 180f)
-                val x = globeR * cos(lat) * sin(lon)
-                val y = -globeR * (sin(lat) * cos(cLat) - cos(lat) * sin(cLat) * cos(lon))
-                val z = sin(lat) * sin(cLat) + cos(lat) * cos(cLat) * cos(lon)
-                return Offset(c.x + x, c.y + y) to (z >= -0.05f)
-            }
-
-            // هاله اطراف کره زمین
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        ChampagneGold.copy(alpha = if (isConnected) 0.22f else 0.09f),
-                        PlatinumSilver.copy(alpha = 0.05f),
-                        Color.Transparent
-                    ),
-                    center = c,
-                    radius = globeR * 1.18f
-                ),
-                radius = globeR * 1.18f,
-                center = c
-            )
-
-            // دایره محیطی کره زمین سه‌بعدی
-            drawCircle(
-                color = ChampagneGold.copy(alpha = if (isConnected) 0.42f else 0.22f),
-                radius = globeR,
-                center = c,
-                style = Stroke(width = 1.2.dp.toPx())
-            )
-
-            // مدارهای عرض جغرافیایی (Parallels)
-            for (latDeg in listOf(-60f, -30f, 0f, 30f, 60f)) {
-                val path = Path()
-                var started = false
-                for (lonStep in -90..90 step 6) {
-                    val (pt, vis) = project3D(latDeg, centerLonDeg + lonStep)
-                    if (vis) {
-                        if (!started) {
-                            path.moveTo(pt.x, pt.y)
-                            started = true
-                        } else {
-                            path.lineTo(pt.x, pt.y)
-                        }
-                    } else {
-                        started = false
-                    }
-                }
-                drawPath(
-                    path = path,
-                    color = PlatinumSilver.copy(alpha = 0.14f),
-                    style = Stroke(width = 0.8.dp.toPx())
-                )
-            }
-
-            // نصف‌النهارهای طول جغرافیایی (Meridians)
-            for (lonOffset in listOf(-60f, -30f, 0f, 30f, 60f)) {
-                val path = Path()
-                var started = false
-                for (latStep in -80..80 step 6) {
-                    val (pt, vis) = project3D(latStep.toFloat(), centerLonDeg + lonOffset)
-                    if (vis) {
-                        if (!started) {
-                            path.moveTo(pt.x, pt.y)
-                            started = true
-                        } else {
-                            path.lineTo(pt.x, pt.y)
-                        }
-                    } else {
-                        started = false
-                    }
-                }
-                drawPath(
-                    path = path,
-                    color = PlatinumSilver.copy(alpha = 0.14f),
-                    style = Stroke(width = 0.8.dp.toPx())
-                )
-            }
-
-            // نقاط قاره‌های اروپا، خاورمیانه (ایران) و شمال آفریقا روی کره زمین
-            val continentLandmarks = listOf(
-                // Europe (NL, PL, DE, FR, UK, IT, ES, SE)
-                52.37f to 4.90f, 52.23f to 21.01f, 50.11f to 8.68f, 48.85f to 2.35f,
-                51.50f to -0.12f, 41.90f to 12.49f, 40.41f to -3.70f, 59.32f to 18.06f,
-                55.67f to 12.56f, 47.37f to 8.54f, 48.20f to 16.37f, 50.07f to 14.43f,
-                // Middle East & Iran
-                35.69f to 51.39f, 32.65f to 51.66f, 29.59f to 52.58f, 38.08f to 46.29f,
-                41.00f to 28.97f, 25.20f to 55.27f
-            )
-            for ((lat, lon) in continentLandmarks) {
-                val (pt, vis) = project3D(lat, lon)
-                if (vis) {
-                    drawCircle(
-                        color = ChampagneLight.copy(alpha = 0.30f),
-                        radius = 2.dp.toPx(),
-                        center = pt
-                    )
-                }
-            }
-
-            // خط منحنی اتصال از ایران (تهران 35.69N, 51.39E) به کشور سرور مقصد (مثلاً هلند 52.37N, 4.90E)
-            val (originPt, originVis) = project3D(35.69f, 51.39f)
-            val (targetPt, targetVis) = project3D(countryGeo.latitude, countryGeo.longitude)
-            if (originVis && targetVis) {
-                val midX = (originPt.x + targetPt.x) / 2f
-                val midY = minOf(originPt.y, targetPt.y) - 18.dp.toPx()
-                val arcPath = Path().apply {
-                    moveTo(originPt.x, originPt.y)
-                    quadraticBezierTo(midX, midY, targetPt.x, targetPt.y)
-                }
-                drawPath(
-                    path = arcPath,
-                    color = ChampagneGold.copy(alpha = if (isConnected) 0.85f else 0.45f),
-                    style = Stroke(
-                        width = 1.6.dp.toPx(),
-                        cap = StrokeCap.Round,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), phase = -pulse * 28f)
-                    )
-                )
-                // نقطه مبدأ
-                drawCircle(
-                    color = PlatinumSilver.copy(alpha = 0.8f),
-                    radius = 3.dp.toPx(),
-                    center = originPt
-                )
-            }
-
-            // رادار چشمک‌زن روی موقعیت دقیق کشور سرور (هلند / لهستان / آلمان)
-            if (targetVis) {
-                val pulseRingR = (6.dp.toPx() + pulse * 16.dp.toPx())
-                drawCircle(
-                    color = ChampagneGold.copy(alpha = (1f - pulse) * 0.85f),
-                    radius = pulseRingR,
-                    center = targetPt,
-                    style = Stroke(width = 1.8.dp.toPx())
-                )
-                drawCircle(
-                    color = ChampagneGold.copy(alpha = 0.35f * beaconBlink),
-                    radius = 9.dp.toPx(),
-                    center = targetPt
-                )
-                drawCircle(
-                    color = if (isConnected) ChampagneLight else ChampagneGold,
-                    radius = 4.5.dp.toPx() * (0.85f + 0.3f * beaconBlink),
-                    center = targetPt
-                )
-            }
-
-            // امواج پالس اتصال یا حلقه اسکن
-            when (mode) {
-                UiMode.CONNECTED, UiMode.CONNECTING -> {
-                    for (k in 0..1) {
-                        val t = (pulse + k / 2f) % 1f
-                        val waveRadius = innerOrbR + 4.dp.toPx() + t * (globeR - innerOrbR)
-                        val waveAlpha = (1f - t) * (if (isConnected) 0.45f else 0.30f)
-                        drawCircle(
-                            color = ChampagneGold.copy(alpha = waveAlpha),
-                            radius = waveRadius,
-                            center = c,
-                            style = Stroke(width = (2.4f - t * 1.2f).dp.toPx())
-                        )
-                    }
-                }
-                UiMode.SCANNING -> {
-                    val rr = innerOrbR + 9.dp.toPx()
-                    val tl = Offset(c.x - rr, c.y - rr)
-                    val sz = Size(rr * 2f, rr * 2f)
-                    drawArc(
-                        color = color.copy(alpha = 0.20f), startAngle = 0f, sweepAngle = 360f,
-                        useCenter = false, topLeft = tl, size = sz, style = Stroke(3.5.dp.toPx())
-                    )
-                    drawArc(
-                        color = ChampagneGold, startAngle = -90f, sweepAngle = 360f * animProgress,
-                        useCenter = false, topLeft = tl, size = sz,
-                        style = Stroke(3.5.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                    drawArc(
-                        color = PlatinumBright, startAngle = spin, sweepAngle = 42f,
-                        useCenter = false, topLeft = tl, size = sz,
-                        style = Stroke(3.5.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-                else -> {}
-            }
-        }
-
-        // دکمه مرکزی پاور
+        // ── کره زمین سه‌بعدی کامل در مرکز صفحه (بدون دایره مات وسط)؛ قابل لمس برای اتصال و قطع اتصال ──
         Box(
             modifier = Modifier
                 .offset(y = 6.dp)
-                .size(132.dp)
-                .scale(if (mode == UiMode.IDLE || mode == UiMode.CONNECTED) breathe else 1f)
+                .size(188.dp)
+                .scale(breathe)
                 .clip(CircleShape)
-                .background(
-                    if (isConnected) {
-                        Brush.radialGradient(
-                            listOf(
-                                ChampagneLight.copy(alpha = 0.96f),
-                                ChampagneGold.copy(alpha = 0.88f),
-                                Color(0xFF8C7A60)
-                            )
-                        )
-                    } else {
-                        Brush.radialGradient(
-                            listOf(
-                                Color(0xFF2E303B).copy(alpha = 0.90f),
-                                Color(0xFF1D1E26).copy(alpha = 0.92f),
-                                Color(0xFF13141A).copy(alpha = 0.95f)
-                            )
-                        )
-                    }
-                )
-                .border(
-                    width = 2.dp,
-                    brush = Brush.linearGradient(
-                        if (isConnected) {
-                            listOf(Color(0xFFFFFFFF), ChampagneGold, ChampagneBronze)
-                        } else {
-                            listOf(ChampagneGold.copy(alpha = 0.75f), PlatinumSilver.copy(alpha = 0.45f), Color(0xFF343642))
-                        }
-                    ),
-                    shape = CircleShape
-                )
                 .tvDpadClickable(shape = CircleShape, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Crossfade(targetState = mode, label = "pbText") { m ->
-                val fg = if (m == UiMode.CONNECTED) ObsidianDeep else PlatinumBright
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(top = if (m == UiMode.CONNECTED) 12.dp else 0.dp)
-                ) {
-                    Text(
-                        text = when (m) {
-                            UiMode.IDLE -> if (isVipMode) "VIP CONNECT" else "CONNECT"
-                            UiMode.SCANNING -> "SCANNING"
-                            UiMode.CONNECTING -> "CONNECTING"
-                            UiMode.CONNECTED -> "CONNECTED"
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val c = Offset(size.width / 2f, size.height / 2f)
+                val globeR = size.minDimension * 0.46f
+
+                fun project3D(latDeg: Float, lonDeg: Float): Pair<Offset, Boolean> {
+                    val lat = latDeg * (PI.toFloat() / 180f)
+                    val lon = (lonDeg - centerLonDeg) * (PI.toFloat() / 180f)
+                    val cLat = centerLatDeg * (PI.toFloat() / 180f)
+                    val x = globeR * cos(lat) * sin(lon)
+                    val y = -globeR * (sin(lat) * cos(cLat) - cos(lat) * sin(cLat) * cos(lon))
+                    val z = sin(lat) * sin(cLat) + cos(lat) * cos(cLat) * cos(lon)
+                    return Offset(c.x + x, c.y + y) to (z >= -0.02f)
+                }
+
+                // ۱) هاله بیرونی اتمسفر کره زمین
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            ChampagneGold.copy(alpha = if (isConnected) 0.28f else 0.14f),
+                            PlatinumSilver.copy(alpha = 0.06f),
+                            Color.Transparent
+                        ),
+                        center = c,
+                        radius = globeR * 1.15f
+                    ),
+                    radius = globeR * 1.15f,
+                    center = c
+                )
+
+                // ۲) بدنه سه‌بعدی کره زمین (اقیانوس‌ها با نورپردازی کروی سه‌بعدی)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = if (isConnected) {
+                            listOf(
+                                Color(0xFF2B2F3E),
+                                Color(0xFF181B26),
+                                Color(0xFF0B0D13)
+                            )
+                        } else {
+                            listOf(
+                                Color(0xFF232633),
+                                Color(0xFF14161F),
+                                Color(0xFF090A0F)
+                            )
                         },
-                        color = fg,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.8.sp
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = when (m) {
-                            UiMode.IDLE -> "${countryGeo.isoCode} • ${countryGeo.cityName}"
-                            UiMode.SCANNING -> Strings.tapToCancel(lang)
-                            UiMode.CONNECTING -> Strings.tapToCancel(lang)
-                            UiMode.CONNECTED -> "${countryGeo.countryName} • Stop"
-                        },
-                        color = fg.copy(alpha = 0.82f),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
+                        center = Offset(c.x - globeR * 0.28f, c.y - globeR * 0.28f),
+                        radius = globeR * 1.35f
+                    ),
+                    radius = globeR,
+                    center = c
+                )
+
+                // ۳) مدارهای عرض جغرافیایی (Parallels) هر ۱۵ درجه
+                for (latDeg in listOf(-45f, -30f, -15f, 0f, 15f, 30f, 45f, 60f, 75f)) {
+                    val path = Path()
+                    var started = false
+                    for (lonStep in -90..90 step 5) {
+                        val (pt, vis) = project3D(latDeg, centerLonDeg + lonStep)
+                        if (vis) {
+                            if (!started) {
+                                path.moveTo(pt.x, pt.y)
+                                started = true
+                            } else {
+                                path.lineTo(pt.x, pt.y)
+                            }
+                        } else {
+                            started = false
+                        }
+                    }
+                    val isEquator = latDeg == 0f
+                    drawPath(
+                        path = path,
+                        color = if (isEquator) ChampagneGold.copy(alpha = 0.26f)
+                        else PlatinumSilver.copy(alpha = 0.15f),
+                        style = Stroke(width = if (isEquator) 1.1.dp.toPx() else 0.75.dp.toPx())
                     )
                 }
+
+                // ۴) نصف‌النهارهای طول جغرافیایی (Meridians) هر ۱۵ درجه
+                for (lonOffset in -75..75 step 15) {
+                    val path = Path()
+                    var started = false
+                    for (latStep in -75..75 step 5) {
+                        val (pt, vis) = project3D(latStep.toFloat(), centerLonDeg + lonOffset)
+                        if (vis) {
+                            if (!started) {
+                                path.moveTo(pt.x, pt.y)
+                                started = true
+                            } else {
+                                path.lineTo(pt.x, pt.y)
+                            }
+                        } else {
+                            started = false
+                        }
+                    }
+                    drawPath(
+                        path = path,
+                        color = PlatinumSilver.copy(alpha = 0.15f),
+                        style = Stroke(width = 0.75.dp.toPx())
+                    )
+                }
+
+                // ۵) ترسیم قاره‌های کره زمین (اروپا، ایران و خاورمیانه، اسکاندیناوی و شمال آفریقا)
+                fun drawContinentPolygon(coords: List<Pair<Float, Float>>, fillAlpha: Float, strokeAlpha: Float) {
+                    val poly = Path()
+                    var count = 0
+                    for ((lat, lon) in coords) {
+                        val (pt, vis) = project3D(lat, lon)
+                        if (vis) {
+                            if (count == 0) poly.moveTo(pt.x, pt.y)
+                            else poly.lineTo(pt.x, pt.y)
+                            count++
+                        }
+                    }
+                    if (count >= 3) {
+                        poly.close()
+                        drawPath(
+                            path = poly,
+                            color = ChampagneGold.copy(alpha = fillAlpha)
+                        )
+                        drawPath(
+                            path = poly,
+                            color = ChampagneLight.copy(alpha = strokeAlpha),
+                            style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                }
+
+                // قاره اروپا (پرتغال/اسپانیا، فرانسه، هلند، آلمان، لهستان، بالتیک، ایتالیا، بالکان)
+                val europeOutline = listOf(
+                    36.5f to -9.0f, 43.3f to -8.4f, 48.4f to -4.5f, 51.0f to 1.8f,
+                    52.4f to 4.9f, 54.5f to 8.5f, 54.8f to 14.0f, 54.7f to 20.5f,
+                    59.4f to 24.7f, 55.7f to 37.6f, 47.2f to 39.7f, 46.4f to 30.7f,
+                    41.0f to 28.9f, 38.0f to 23.7f, 40.8f to 14.2f, 44.4f to 8.9f,
+                    43.3f to 5.4f, 41.4f to 2.1f
+                )
+                // شبه‌جزیره اسکاندیناوی و بریتانیا
+                val scandinaviaOutline = listOf(
+                    55.6f to 12.6f, 58.0f to 7.0f, 62.0f to 5.5f, 68.0f to 15.0f,
+                    70.0f to 25.0f, 65.8f to 24.1f, 60.1f to 24.9f, 59.3f to 18.0f
+                )
+                val ukOutline = listOf(
+                    50.1f to -5.2f, 54.6f to -5.9f, 58.6f to -3.1f, 52.6f to 1.7f, 51.1f to 1.3f
+                )
+                // ایران، ترکیه و خاورمیانه
+                val iranMiddleEastOutline = listOf(
+                    41.0f to 29.0f, 41.6f to 41.6f, 38.4f to 48.8f, 37.0f to 54.0f,
+                    36.2f to 59.6f, 31.3f to 61.5f, 25.3f to 60.6f, 26.6f to 56.2f,
+                    29.9f to 48.5f, 24.5f to 54.4f, 21.5f to 39.2f, 30.0f to 32.5f,
+                    36.8f to 36.2f
+                )
+                // شمال آفریقا
+                val northAfricaOutline = listOf(
+                    35.8f to -5.8f, 36.8f to 10.2f, 32.9f to 13.2f, 31.2f to 29.9f,
+                    24.0f to 32.9f, 22.0f to 15.0f, 28.0f to -10.0f
+                )
+
+                val landFill = if (isConnected) 0.24f else 0.16f
+                val landStroke = if (isConnected) 0.55f else 0.36f
+                drawContinentPolygon(europeOutline, landFill, landStroke)
+                drawContinentPolygon(scandinaviaOutline, landFill, landStroke)
+                drawContinentPolygon(ukOutline, landFill, landStroke)
+                drawContinentPolygon(iranMiddleEastOutline, landFill, landStroke)
+                drawContinentPolygon(northAfricaOutline, landFill * 0.8f, landStroke * 0.8f)
+
+                // شبکه نقاط شهرها و مراکز داده روی قاره‌ها
+                val worldDataPoints = listOf(
+                    52.37f to 4.90f, 52.23f to 21.01f, 50.11f to 8.68f, 48.85f to 2.35f,
+                    51.50f to -0.12f, 41.90f to 12.49f, 40.41f to -3.70f, 59.32f to 18.06f,
+                    55.67f to 12.56f, 47.37f to 8.54f, 48.20f to 16.37f, 50.07f to 14.43f,
+                    60.17f to 24.94f, 35.69f to 51.39f, 32.65f to 51.66f, 29.59f to 52.58f,
+                    38.08f to 46.29f, 36.29f to 59.60f, 41.00f to 28.97f, 25.20f to 55.27f
+                )
+                for ((lat, lon) in worldDataPoints) {
+                    val (pt, vis) = project3D(lat, lon)
+                    if (vis) {
+                        drawCircle(
+                            color = PlatinumBright.copy(alpha = 0.42f),
+                            radius = 1.6.dp.toPx(),
+                            center = pt
+                        )
+                    }
+                }
+
+                // ۶) کمان متحرک مسیر اتصال از ایران (تهران 35.69N, 51.39E) به کشور سرور مقصد (مثلاً هلند یا لهستان)
+                val (originPt, originVis) = project3D(35.69f, 51.39f)
+                val (targetPt, targetVis) = project3D(countryGeo.latitude, countryGeo.longitude)
+                if (originVis && targetVis) {
+                    val midX = (originPt.x + targetPt.x) / 2f
+                    val midY = minOf(originPt.y, targetPt.y) - 24.dp.toPx()
+                    val arcPath = Path().apply {
+                        moveTo(originPt.x, originPt.y)
+                        quadraticBezierTo(midX, midY, targetPt.x, targetPt.y)
+                    }
+                    // هاله زیرین کمان مسیر
+                    drawPath(
+                        path = arcPath,
+                        color = ChampagneGold.copy(alpha = if (isConnected) 0.32f else 0.18f),
+                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    // خط کمان متحرک نقطه‌چین
+                    drawPath(
+                        path = arcPath,
+                        color = if (isConnected) ChampagneLight else ChampagneGold.copy(alpha = 0.78f),
+                        style = Stroke(
+                            width = 2.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 6f), phase = -pulse * 30f)
+                        )
+                    )
+
+                    // دو بسته داده نورانی متحرک روی کمان از ایران به سمت کشور مقصد
+                    for (pktIdx in 0..1) {
+                        val tPkt = (pulse + pktIdx * 0.5f) % 1f
+                        val oneMinusT = 1f - tPkt
+                        val pktX = oneMinusT * oneMinusT * originPt.x +
+                            2f * oneMinusT * tPkt * midX +
+                            tPkt * tPkt * targetPt.x
+                        val pktY = oneMinusT * oneMinusT * originPt.y +
+                            2f * oneMinusT * tPkt * midY +
+                            tPkt * tPkt * targetPt.y
+                        drawCircle(
+                            color = ChampagneGold.copy(alpha = 0.45f),
+                            radius = 5.dp.toPx(),
+                            center = Offset(pktX, pktY)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.2.dp.toPx(),
+                            center = Offset(pktX, pktY)
+                        )
+                    }
+
+                    // نقطه مبدأ (ایران)
+                    drawCircle(
+                        color = PlatinumSilver.copy(alpha = 0.35f),
+                        radius = 6.dp.toPx(),
+                        center = originPt
+                    )
+                    drawCircle(
+                        color = PlatinumBright,
+                        radius = 3.2.dp.toPx(),
+                        center = originPt
+                    )
+                }
+
+                // ۷) نقطه رادار چشمک‌زن روی موقعیت دقیق کشور سرور (هلند / لهستان / آلمان)
+                if (targetVis) {
+                    for (ringIdx in 0..1) {
+                        val rPhase = (pulse + ringIdx * 0.5f) % 1f
+                        val pulseRingR = 5.dp.toPx() + rPhase * 22.dp.toPx()
+                        drawCircle(
+                            color = ChampagneGold.copy(alpha = (1f - rPhase) * 0.90f),
+                            radius = pulseRingR,
+                            center = targetPt,
+                            style = Stroke(width = (2.0f - rPhase).dp.toPx())
+                        )
+                    }
+                    // هاله چشمک‌زن مرکزی رادار
+                    drawCircle(
+                        color = ChampagneGold.copy(alpha = 0.48f * beaconBlink),
+                        radius = 10.dp.toPx(),
+                        center = targetPt
+                    )
+                    // هسته درخشان چشمک‌زن کشور سرور
+                    drawCircle(
+                        color = Color.White,
+                        radius = 4.8.dp.toPx() * (0.85f + 0.30f * beaconBlink),
+                        center = targetPt
+                    )
+                    drawCircle(
+                        color = ChampagneGold,
+                        radius = 2.6.dp.toPx(),
+                        center = targetPt
+                    )
+                }
+
+                // ۸) حلقه محیطی کروی و حلقه وضعیت اتصال/اسکن دور کره زمین
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        if (isConnected) {
+                            listOf(Color.White, ChampagneGold, ChampagneBronze)
+                        } else {
+                            listOf(ChampagneGold.copy(alpha = 0.78f), PlatinumSilver.copy(alpha = 0.45f), Color(0xFF3A3D4A))
+                        }
+                    ),
+                    radius = globeR,
+                    center = c,
+                    style = Stroke(width = if (isConnected) 2.4.dp.toPx() else 1.6.dp.toPx())
+                )
+
+                when (mode) {
+                    UiMode.CONNECTED, UiMode.CONNECTING -> {
+                        val orbitR = globeR + 6.dp.toPx()
+                        val tl = Offset(c.x - orbitR, c.y - orbitR)
+                        val sz = Size(orbitR * 2f, orbitR * 2f)
+                        drawArc(
+                            color = ChampagneGold.copy(alpha = 0.75f),
+                            startAngle = spin,
+                            sweepAngle = 65f,
+                            useCenter = false,
+                            topLeft = tl,
+                            size = sz,
+                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                        drawArc(
+                            color = PlatinumSilver.copy(alpha = 0.65f),
+                            startAngle = spin + 180f,
+                            sweepAngle = 65f,
+                            useCenter = false,
+                            topLeft = tl,
+                            size = sz,
+                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                    UiMode.SCANNING -> {
+                        val rr = globeR + 5.dp.toPx()
+                        val tl = Offset(c.x - rr, c.y - rr)
+                        val sz = Size(rr * 2f, rr * 2f)
+                        drawArc(
+                            color = color.copy(alpha = 0.22f), startAngle = 0f, sweepAngle = 360f,
+                            useCenter = false, topLeft = tl, size = sz, style = Stroke(3.dp.toPx())
+                        )
+                        drawArc(
+                            color = ChampagneGold, startAngle = -90f, sweepAngle = 360f * animProgress,
+                            useCenter = false, topLeft = tl, size = sz,
+                            style = Stroke(3.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                        drawArc(
+                            color = PlatinumBright, startAngle = spin, sweepAngle = 45f,
+                            useCenter = false, topLeft = tl, size = sz,
+                            style = Stroke(3.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                    else -> {}
+                }
+            }
+        }
+
+        // کپسول شیشه‌ای باریک در لبه پایینی کره زمین (بدون پوشاندن نقشه، مدارها، کمان اتصال و رادار چشمک‌زن)
+        Surface(
+            color = if (isConnected) Color(0xFF1E1B16).copy(alpha = 0.92f)
+            else Color(0xFF15171F).copy(alpha = 0.90f),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = (-2).dp)
+                .border(
+                    1.dp,
+                    if (isConnected) ChampagneGold.copy(alpha = 0.88f)
+                    else PlatinumSilver.copy(alpha = 0.45f),
+                    RoundedCornerShape(20.dp)
+                )
+                .clickable(onClick = onClick)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isConnected) ChampagneGold.copy(alpha = beaconBlink)
+                            else PlatinumSilver
+                        )
+                )
+                Text(
+                    text = when (mode) {
+                        UiMode.IDLE -> if (isVipMode) "TAP GLOBE • VIP CONNECT" else "TAP GLOBE • CONNECT"
+                        UiMode.SCANNING -> "SCANNING NODES..."
+                        UiMode.CONNECTING -> "CONNECTING TO ${countryGeo.isoCode}..."
+                        UiMode.CONNECTED -> "CONNECTED • ${countryGeo.isoCode} (TAP TO STOP)"
+                    },
+                    color = if (isConnected) ChampagneLight else PlatinumBright,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.6.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
         }
 
         if (catPresence > 0.01f) {
             Image(
                 painter = painterResource(id = R.drawable.penny_cat_peeking),
-                contentDescription = "Peeking Cat on Connect Button",
+                contentDescription = "Peeking Cat on 3D Earth Globe",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .width(74.dp)
-                    .height(84.dp)
-                    .offset(y = (-6).dp)
+                    .width(68.dp)
+                    .height(78.dp)
+                    .offset(y = (-8).dp)
                     .graphicsLayer {
                         alpha = catPresence.coerceIn(0f, 1f)
                         translationY = (1f - catPresence) * 20.dp.toPx()

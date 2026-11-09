@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -66,6 +67,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 // ═══════════════════════ پالت رنگی یکپارچه Penny VPN (Obsidian + Platinum Silver + Champagne Gold) ═══════════════════════
 private val ObsidianDeep = Color(0xFF0C0D11)
@@ -1353,197 +1355,110 @@ internal fun PowerButton(
                     )
                 }
 
-                // ۵) تابع ترسیم دقیق مرز کشورها و قاره‌ها روی کره سه‌بعدی
-                fun drawGeoPolygon(
-                    coords: List<Pair<Float, Float>>,
+                // ۵) ترسیم کپی دقیق ۱۰۰٪ واقعی مرز کشورها و دریاچه‌ها از دیتاست ماهواره‌ای Natural Earth 50m
+                fun project3DClamped(latDeg: Float, lonDeg: Float): Pair<Offset, Float> {
+                    val lat = latDeg * (PI.toFloat() / 180f)
+                    val lon = (lonDeg - centerLonDeg) * (PI.toFloat() / 180f)
+                    val cLat = centerLatDeg * (PI.toFloat() / 180f)
+                    val x = globeR * cos(lat) * sin(lon)
+                    val y = -globeR * (sin(lat) * cos(cLat) - cos(lat) * sin(cLat) * cos(lon))
+                    val z = sin(lat) * sin(cLat) + cos(lat) * cos(cLat) * cos(lon)
+                    return if (z >= 0f) {
+                        Offset(c.x + x, c.y + y) to z
+                    } else {
+                        val norm = sqrt(x * x + y * y).coerceAtLeast(0.001f)
+                        Offset(c.x + (x / norm) * globeR, c.y + (y / norm) * globeR) to z
+                    }
+                }
+
+                fun drawRealCountryRing(
+                    latLonPairs: FloatArray,
                     fillColor: Color,
                     strokeColor: Color,
-                    strokeWidthDp: Float = 0.9f
+                    strokeWidthPx: Float
                 ) {
+                    val n = latLonPairs.size / 2
+                    if (n < 3) return
                     val poly = Path()
-                    var count = 0
-                    for ((lat, lon) in coords) {
-                        val (pt, vis) = project3D(lat, lon)
-                        if (vis) {
-                            if (count == 0) poly.moveTo(pt.x, pt.y)
-                            else poly.lineTo(pt.x, pt.y)
-                            count++
-                        }
+                    var visibleCount = 0
+                    var i = 0
+                    while (i < latLonPairs.size - 1) {
+                        val lat = latLonPairs[i]
+                        val lon = latLonPairs[i + 1]
+                        val (pt, z) = project3DClamped(lat, lon)
+                        if (z > 0.01f) visibleCount++
+                        if (i == 0) poly.moveTo(pt.x, pt.y)
+                        else poly.lineTo(pt.x, pt.y)
+                        i += 2
                     }
-                    if (count >= 3) {
+                    if (visibleCount >= 2) {
                         poly.close()
                         drawPath(path = poly, color = fillColor)
                         drawPath(
                             path = poly,
                             color = strokeColor,
-                            style = Stroke(width = strokeWidthDp.dp.toPx(), cap = StrokeCap.Round)
+                            style = Stroke(
+                                width = strokeWidthPx,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
                         )
                     }
                 }
 
-                val baseLandFill = ChampagneGold.copy(alpha = if (isConnected) 0.19f else 0.13f)
-                val baseLandStroke = ChampagneLight.copy(alpha = if (isConnected) 0.46f else 0.32f)
+                val baseLandFill = ChampagneGold.copy(alpha = if (isConnected) 0.21f else 0.14f)
+                val baseLandStroke = ChampagneLight.copy(alpha = if (isConnected) 0.52f else 0.36f)
+                val oceanLakeFill = if (isConnected) Color(0xFF151822) else Color(0xFF12141D)
+                val lakeStroke = ChampagneLight.copy(alpha = 0.38f)
 
-                // ── الف) اسپانیا و پرتغال (شبه جزیره ایبری واقعی) ──
-                val iberiaGeo = listOf(
-                    36.0f to -5.6f, 37.0f to -8.9f, 38.7f to -9.5f, 41.9f to -8.9f,
-                    43.0f to -9.3f, 43.7f to -7.6f, 43.4f to -1.8f, 42.4f to 3.2f,
-                    41.4f to 2.2f, 39.5f to -0.3f, 38.7f to 0.2f, 36.7f to -4.4f
-                )
-                // ── ب) فرانسه و بلژیک ──
-                val franceGeo = listOf(
-                    43.4f to -1.8f, 46.2f to -1.2f, 48.4f to -4.7f, 49.7f to -1.9f,
-                    51.0f to 1.8f, 51.3f to 3.4f, 50.8f to 5.9f, 49.0f to 8.2f,
-                    47.6f to 7.6f, 46.2f to 6.1f, 43.7f to 7.4f, 43.1f to 5.9f,
-                    43.3f to 3.2f, 42.4f to 3.2f
-                )
-                // ── ج) بریتانیا و ایرلند ──
-                val ukGeo = listOf(
-                    50.1f to -5.2f, 51.5f to -5.1f, 53.3f to -4.6f, 54.9f to -5.0f,
-                    56.6f to -6.2f, 58.6f to -5.0f, 58.6f to -3.1f, 57.6f to -1.8f,
-                    55.8f to -2.1f, 53.6f to 0.1f, 52.7f to 1.7f, 51.1f to 1.4f,
-                    50.7f to -1.2f
-                )
-                val irelandGeo = listOf(
-                    51.5f to -9.8f, 53.4f to -10.1f, 55.3f to -7.4f, 54.5f to -5.5f,
-                    53.3f to -6.1f, 52.2f to -6.4f
-                )
-                // ── د) ایتالیا (چکمه ایتالیا و سیسیل) ──
-                val italyGeo = listOf(
-                    43.8f to 7.5f, 45.8f to 6.8f, 46.5f to 10.4f, 46.6f to 13.7f,
-                    45.4f to 12.3f, 44.0f to 12.6f, 41.9f to 16.2f, 40.1f to 18.5f,
-                    39.8f to 16.5f, 38.0f to 15.6f, 39.0f to 16.0f, 40.7f to 14.3f,
-                    41.8f to 12.2f, 43.7f to 10.3f, 44.4f to 8.9f
-                )
-                // ── هـ) سوئیس، اتریش، چک، مجارستان، بالکان و یونان ──
-                val centralBalkansGeo = listOf(
-                    47.6f to 7.6f, 49.0f to 13.5f, 50.9f to 14.8f, 49.5f to 18.9f,
-                    49.0f to 22.7f, 48.0f to 28.2f, 45.2f to 29.7f, 42.0f to 28.0f,
-                    41.0f to 29.0f, 40.6f to 26.0f, 40.5f to 22.9f, 38.0f to 24.0f,
-                    36.4f to 22.5f, 38.2f to 20.4f, 40.4f to 19.3f, 42.5f to 18.4f,
-                    45.5f to 13.6f, 46.6f to 13.7f, 46.5f to 10.4f
-                )
-                // ── و) اسکاندیناوی (نروژ، سوئد، فنلاند، دانمارک) ──
-                val scandinaviaGeo = listOf(
-                    58.0f to 7.0f, 60.4f to 5.3f, 62.5f to 6.2f, 65.5f to 12.2f,
-                    68.5f to 15.5f, 71.1f to 25.8f, 69.8f to 30.0f, 66.0f to 29.5f,
-                    61.0f to 28.8f, 60.2f to 24.9f, 60.5f to 21.5f, 63.8f to 22.6f,
-                    65.8f to 24.1f, 63.5f to 19.8f, 59.3f to 18.1f, 56.2f to 16.0f,
-                    55.4f to 13.0f, 57.7f to 11.9f, 59.0f to 10.5f
-                )
-                val denmarkGeo = listOf(
-                    54.8f to 8.4f, 57.7f to 10.6f, 56.1f to 10.3f, 54.5f to 10.2f
-                )
-                // ── ز) شرق اروپا، بالتیک، اوکراین و غرب روسیه ──
-                val easternEuropeGeo = listOf(
-                    54.3f to 22.8f, 55.9f to 21.1f, 57.8f to 22.0f, 59.4f to 24.7f,
-                    59.9f to 30.3f, 64.5f to 40.5f, 62.0f to 55.0f, 52.0f to 56.0f,
-                    47.0f to 52.0f, 42.5f to 48.0f, 41.6f to 41.6f, 44.6f to 37.8f,
-                    45.3f to 33.5f, 46.5f to 30.7f, 48.0f to 28.2f, 49.0f to 22.7f,
-                    52.1f to 23.6f
-                )
-                // ── ح) ترکیه (آناتولی واقعی) ──
-                val turkeyGeo = listOf(
-                    41.0f to 28.9f, 42.0f to 35.1f, 41.0f to 41.5f, 39.4f to 44.4f,
-                    37.1f to 42.4f, 36.8f to 36.2f, 36.2f to 33.0f, 36.9f to 30.7f,
-                    36.7f to 27.4f, 38.4f to 26.3f, 40.0f to 26.2f
-                )
-                // ── ط) عراق، سوریه، شام و شبه‌جزیره عربستان ──
-                val arabiaLevantGeo = listOf(
-                    36.8f to 36.2f, 37.1f to 42.4f, 34.5f to 45.6f, 30.3f to 48.3f,
-                    29.0f to 48.2f, 26.2f to 50.2f, 25.3f to 51.5f, 24.2f to 54.5f,
-                    26.2f to 56.3f, 22.5f to 59.8f, 17.0f to 54.1f, 12.8f to 45.0f,
-                    16.9f to 42.6f, 21.5f to 39.2f, 28.0f to 34.5f, 31.3f to 34.2f,
-                    33.9f to 35.5f
-                )
-                // ── ی) آسیای میانه، افغانستان و پاکستان ──
-                val centralAsiaGeo = listOf(
-                    47.0f to 53.0f, 45.0f to 62.0f, 42.0f to 72.0f, 35.0f to 74.0f,
-                    24.8f to 67.0f, 25.2f to 60.6f, 31.0f to 61.8f, 36.5f to 61.2f,
-                    37.9f to 58.4f, 37.0f to 54.0f, 40.0f to 52.8f, 44.5f to 50.3f
-                )
-                // ── ک) شمال آفریقا و مصر (مدیترانه و دریای سرخ) ──
-                val northAfricaGeo = listOf(
-                    35.8f to -5.8f, 36.8f to 3.1f, 37.3f to 9.9f, 35.8f to 10.9f,
-                    32.9f to 13.2f, 30.5f to 19.0f, 32.8f to 22.0f, 31.2f to 29.9f,
-                    31.3f to 32.3f, 27.8f to 33.8f, 22.0f to 36.9f, 15.6f to 39.5f,
-                    12.0f to 43.4f, 10.0f to 25.0f, 16.0f to -16.0f, 27.0f to -13.2f,
-                    33.6f to -7.6f
-                )
+                val allPolys = RealWorldGeoAtlas.polygons
+                // مرحله الف: رسم تمام کشورهای پس‌زمینه (اروپا، خاورمیانه، شمال آفریقا، آسیای میانه و روسیه) با مرز واقعی هر کشور
+                for (poly in allPolys) {
+                    if (!poly.isWater && poly.iso != "IR" && poly.iso != countryGeo.isoCode) {
+                        drawRealCountryRing(
+                            latLonPairs = poly.latLonPairs,
+                            fillColor = baseLandFill,
+                            strokeColor = baseLandStroke,
+                            strokeWidthPx = 0.72.dp.toPx()
+                        )
+                    }
+                }
 
-                // ── مرز دقیق کشورهای هدف در اروپا (هلند NL، لهستان PL، آلمان DE) ──
-                val netherlandsGeo = listOf(
-                    51.4f to 3.4f, 52.0f to 4.1f, 52.9f to 4.7f, 53.4f to 6.2f,
-                    53.2f to 7.2f, 51.9f to 6.8f, 50.8f to 5.9f, 51.4f to 4.4f
-                )
-                val germanyGeo = listOf(
-                    54.8f to 8.4f, 54.4f to 10.2f, 54.1f to 13.8f, 51.1f to 14.9f,
-                    49.0f to 13.5f, 47.6f to 12.9f, 47.5f to 10.2f, 47.6f to 7.6f,
-                    49.2f to 6.4f, 50.8f to 6.0f, 51.9f to 6.8f, 53.2f to 7.2f
-                )
-                val polandGeo = listOf(
-                    53.9f to 14.2f, 54.8f to 18.6f, 54.4f to 19.7f, 54.3f to 22.8f,
-                    52.1f to 23.6f, 50.5f to 24.1f, 49.0f to 22.7f, 49.5f to 18.9f,
-                    50.9f to 14.8f
-                )
+                // مرحله ب: رسم کشور مبدأ (ایران IR به همراه جزیره قشم) با هایلایت متمایز پلاتینیوم-طلایی
+                for (poly in allPolys) {
+                    if (poly.iso == "IR") {
+                        drawRealCountryRing(
+                            latLonPairs = poly.latLonPairs,
+                            fillColor = PlatinumSilver.copy(alpha = 0.36f),
+                            strokeColor = ChampagneLight.copy(alpha = 0.92f),
+                            strokeWidthPx = 1.25.dp.toPx()
+                        )
+                    }
+                }
 
-                // ── مرز دقیق و واقعی کشور ایران (مبدأ اتصال: دریای خزر، خلیج فارس، تنگه هرمز، خراسان و زاگرس) ──
-                val iranGeo = listOf(
-                    39.4f to 44.4f, 38.9f to 46.5f, 38.4f to 48.9f, 37.5f to 49.5f,
-                    36.7f to 51.4f, 36.8f to 54.0f, 37.9f to 58.4f, 36.5f to 61.2f,
-                    34.0f to 60.5f, 31.0f to 61.8f, 28.6f to 61.1f, 25.2f to 60.6f,
-                    25.6f to 57.8f, 27.2f to 56.3f, 26.5f to 54.9f, 27.5f to 52.6f,
-                    28.9f to 50.8f, 30.3f to 48.3f, 32.0f to 47.8f, 33.1f to 46.2f,
-                    34.5f to 45.6f, 36.2f to 45.5f, 37.7f to 44.6f
-                )
+                // مرحله ج: رسم کشور مقصد سرور فعال (هلند NL، لهستان PL، آلمان DE، فرانسه FR) با هایلایت طلایی درخشان
+                for (poly in allPolys) {
+                    if (poly.iso == countryGeo.isoCode) {
+                        drawRealCountryRing(
+                            latLonPairs = poly.latLonPairs,
+                            fillColor = ChampagneGold.copy(alpha = 0.62f),
+                            strokeColor = Color.White,
+                            strokeWidthPx = 1.45.dp.toPx()
+                        )
+                    }
+                }
 
-                // رسم تمام مناطق جهان
-                drawGeoPolygon(iberiaGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(
-                    franceGeo,
-                    if (countryGeo.isoCode == "FR") ChampagneGold.copy(alpha = 0.42f) else baseLandFill,
-                    if (countryGeo.isoCode == "FR") Color.White else baseLandStroke,
-                    if (countryGeo.isoCode == "FR") 1.4f else 0.9f
-                )
-                drawGeoPolygon(ukGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(irelandGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(italyGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(centralBalkansGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(scandinaviaGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(denmarkGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(easternEuropeGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(turkeyGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(arabiaLevantGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(centralAsiaGeo, baseLandFill, baseLandStroke)
-                drawGeoPolygon(northAfricaGeo, baseLandFill * 0.85f, baseLandStroke * 0.85f)
-
-                // رسم آلمان، لهستان و هلند با هایلایت ویژه کشور سرور انتخاب‌شده
-                drawGeoPolygon(
-                    germanyGeo,
-                    if (countryGeo.isoCode == "DE") ChampagneGold.copy(alpha = 0.46f) else baseLandFill,
-                    if (countryGeo.isoCode == "DE") Color.White else baseLandStroke,
-                    if (countryGeo.isoCode == "DE") 1.5f else 0.95f
-                )
-                drawGeoPolygon(
-                    polandGeo,
-                    if (countryGeo.isoCode == "PL") ChampagneGold.copy(alpha = 0.46f) else baseLandFill,
-                    if (countryGeo.isoCode == "PL") Color.White else baseLandStroke,
-                    if (countryGeo.isoCode == "PL") 1.5f else 0.95f
-                )
-                drawGeoPolygon(
-                    netherlandsGeo,
-                    if (countryGeo.isoCode == "NL") ChampagneGold.copy(alpha = 0.52f) else baseLandFill,
-                    if (countryGeo.isoCode == "NL") Color.White else baseLandStroke,
-                    if (countryGeo.isoCode == "NL") 1.6f else 1.0f
-                )
-
-                // رسم نقشه ایران با مرز برجسته نقره‌ای-طلایی به عنوان کشور مبدأ
-                drawGeoPolygon(
-                    iranGeo,
-                    PlatinumSilver.copy(alpha = 0.30f),
-                    ChampagneLight.copy(alpha = 0.82f),
-                    1.3f
-                )
+                // مرحله د: رسم دریاچه‌های واقعی داخل خشکی (دریاچه ارومیه، دریاچه وان، دریاچه آرال و...)
+                for (poly in allPolys) {
+                    if (poly.isWater) {
+                        drawRealCountryRing(
+                            latLonPairs = poly.latLonPairs,
+                            fillColor = oceanLakeFill,
+                            strokeColor = lakeStroke,
+                            strokeWidthPx = 0.55.dp.toPx()
+                        )
+                    }
+                }
 
                 // ۶) کمان متحرک مسیر اتصال از ایران (تهران) به کشور سرور مقصد (هلند / لهستان / آلمان)
                 val (originPt, originVis) = project3D(35.69f, 51.39f)

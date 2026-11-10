@@ -613,6 +613,7 @@ internal fun ServiceQualityUptimeCard(
     splitTunnelLocal: Boolean,
     adUnitId: String,
     showAds: Boolean,
+    onSponsorClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val liveBadgeText = when {
@@ -632,8 +633,6 @@ internal fun ServiceQualityUptimeCard(
         bestPingMs > 0 -> "Nodes Verified"
         else -> "Standby"
     }
-
-    var adLoaded by remember { mutableStateOf(false) }
 
     Surface(
         color = ObsidianCard.copy(alpha = 0.95f),
@@ -741,26 +740,63 @@ internal fun ServiceQualityUptimeCard(
             }
 
             if (showAds) {
-                AndroidView(
+                Spacer(Modifier.height(6.dp))
+                val sponsorShape = RoundedCornerShape(9.dp)
+                Surface(
+                    color = Color(0xFF1E1D24),
+                    shape = sponsorShape,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (adLoaded) 42.dp else 0.dp),
-                    factory = { ctx ->
-                        AdView(ctx).apply {
-                            setAdSize(AdSize.BANNER)
-                            this.adUnitId = adUnitId
-                            adListener = object : com.google.android.gms.ads.AdListener() {
-                                override fun onAdLoaded() {
-                                    adLoaded = true
-                                }
-                                override fun onAdFailedToLoad(error: LoadAdError) {
-                                    adLoaded = false
-                                }
+                        .clip(sponsorShape)
+                        .border(1.dp, ChampagneGold.copy(alpha = 0.55f), sponsorShape)
+                        .tvDpadClickable(shape = sponsorShape) { onSponsorClick() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(ChampagneGold.copy(alpha = 0.22f))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "AD",
+                                    color = ChampagneLight,
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
-                            loadAd(AdRequest.Builder().build())
+                            Text(
+                                text = "Sponsor • Tap for +500 MB Free VIP Quota",
+                                color = PlatinumBright,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
+                        Text(
+                            text = "+500 MB ›",
+                            color = ChampagneGold,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
-                )
+                }
             }
         }
     }
@@ -2398,6 +2434,7 @@ internal fun NetworkDoctorTabPage(
     ghostMessagingOnly: Boolean,
     adUnitId: String,
     showAds: Boolean,
+    onSponsorClick: () -> Unit = {},
     onAutoTuneClick: () -> Unit,
     onScanNodesClick: () -> Unit,
     onOpenLogsClick: () -> Unit
@@ -2470,7 +2507,8 @@ internal fun NetworkDoctorTabPage(
             cleanDnsShield = cleanDnsShield,
             splitTunnelLocal = splitTunnelLocal,
             adUnitId = adUnitId,
-            showAds = showAds
+            showAds = showAds,
+            onSponsorClick = onSponsorClick
         )
 
         // 3) ماتریس عیب‌یابی زنده شبکه (۲×۲ کارت فشرده)
@@ -2698,6 +2736,7 @@ internal fun ProfileTabPage(
     onKillSwitchChange: (Boolean) -> Unit = {},
     onCopyUuid: () -> Unit,
     onOpenVipDialog: () -> Unit,
+    onWatchSponsorAd: () -> Unit = {},
     onOpenLogs: () -> Unit,
     onOpenUpdate: () -> Unit
 ) {
@@ -2736,7 +2775,7 @@ internal fun ProfileTabPage(
             }
         }
 
-        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode و دکمه ارتقا به VIP 50GB
+        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode + دکمه جایزه +500MB Adsterra و ارتقا به VIP 50GB
         Surface(
             color = ObsidianCard,
             shape = RoundedCornerShape(14.dp),
@@ -2744,7 +2783,7 @@ internal fun ProfileTabPage(
                 .fillMaxWidth()
                 .border(1.dp, ObsidianBorder, RoundedCornerShape(14.dp))
         ) {
-            Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2754,37 +2793,63 @@ internal fun ProfileTabPage(
                         Text(
                             text = "VIP Mode Daily Quota & HW ID",
                             color = ChampagneGold,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             maxLines = 1
                         )
                         Text(
-                            text = "UUID: ${userUuid.take(18)}... • Left: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
+                            text = "UUID: ${userUuid.take(16)}... • Left: ${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)}",
                             color = PlatinumMuted,
-                            fontSize = 9.sp,
+                            fontSize = 8.5.sp,
                             fontFamily = FontFamily.Monospace,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    val copyShape = RoundedCornerShape(8.dp)
-                    Surface(
-                        color = ObsidianElevated,
-                        shape = copyShape,
-                        modifier = Modifier
-                            .clip(copyShape)
-                            .border(1.dp, ChampagneGold.copy(alpha = 0.55f), copyShape)
-                            .tvDpadClickable(shape = copyShape) { onCopyUuid() }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        Text(
-                            text = "Copy ID",
-                            color = ChampagneLight,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
+                        if (!vipActive) {
+                            val bonusShape = RoundedCornerShape(8.dp)
+                            Surface(
+                                color = Color(0xFF28231C),
+                                shape = bonusShape,
+                                modifier = Modifier
+                                    .clip(bonusShape)
+                                    .border(1.dp, ChampagneGold.copy(alpha = 0.75f), bonusShape)
+                                    .tvDpadClickable(shape = bonusShape) { onWatchSponsorAd() }
+                            ) {
+                                Text(
+                                    text = "+500 MB Free",
+                                    color = ChampagneLight,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        val copyShape = RoundedCornerShape(8.dp)
+                        Surface(
+                            color = ObsidianElevated,
+                            shape = copyShape,
+                            modifier = Modifier
+                                .clip(copyShape)
+                                .border(1.dp, ChampagneGold.copy(alpha = 0.55f), copyShape)
+                                .tvDpadClickable(shape = copyShape) { onCopyUuid() }
+                        ) {
+                            Text(
+                                text = "Copy ID",
+                                color = ChampagneLight,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
 
@@ -2808,74 +2873,93 @@ internal fun ProfileTabPage(
                     )
                 }
 
-                Spacer(Modifier.height(6.dp))
-                val vipShape = RoundedCornerShape(10.dp)
-                Surface(
-                    color = ObsidianElevated,
-                    shape = vipShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(vipShape)
-                        .border(1.dp, ChampagneGold.copy(alpha = 0.65f), vipShape)
-                        .tvDpadClickable(shape = vipShape) { onOpenVipDialog() }
+                Spacer(Modifier.height(5.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
+                    val vipShape = RoundedCornerShape(10.dp)
+                    Surface(
+                        color = ObsidianElevated,
+                        shape = vipShape,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .weight(1.35f)
+                            .clip(vipShape)
+                            .border(1.dp, ChampagneGold.copy(alpha = 0.65f), vipShape)
+                            .tvDpadClickable(shape = vipShape) { onOpenVipDialog() }
                     ) {
                         Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(end = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            GlassDiamondIcon(size = 13.dp)
-                            Spacer(Modifier.width(7.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (vipActive) "VIP 50 GB Plan Active" else "Upgrade to VIP Mode (50 GB / Month)",
-                                    color = PlatinumBright,
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                val vipSub = if (vipActive) {
-                                    val remD = ((vipExpireMs - System.currentTimeMillis()) / (24L * 3600_000L)).coerceAtLeast(0L)
-                                    val remB = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
-                                    "$remD days • ${fmtBytes(remB)} remaining"
-                                } else {
-                                    "50 GB high-speed VIP traffic & zero ads"
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                GlassDiamondIcon(size = 12.dp)
+                                Spacer(Modifier.width(5.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (vipActive) "VIP 50 GB Active" else "VIP 50 GB Plan",
+                                        color = PlatinumBright,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (vipActive) "Manage license" else "Zero ads • 50GB/mo",
+                                        color = PlatinumMuted,
+                                        fontSize = 8.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                Text(
-                                    text = vipSub,
-                                    color = PlatinumMuted,
-                                    fontSize = 8.5.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                             }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(ChampagneGold.copy(alpha = 0.18f))
-                                .border(1.dp, ChampagneGold.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
-                                .padding(horizontal = 7.dp, vertical = 3.dp)
-                        ) {
                             Text(
-                                text = if (vipActive) "MANAGE" else "ACTIVATE ›",
+                                text = "VIP ›",
                                 color = ChampagneLight,
                                 fontSize = 8.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                softWrap = false
+                                fontFamily = FontFamily.Monospace
                             )
+                        }
+                    }
+
+                    if (!vipActive) {
+                        val sponsorBtnShape = RoundedCornerShape(10.dp)
+                        Surface(
+                            color = Color(0xFF231F1B),
+                            shape = sponsorBtnShape,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(sponsorBtnShape)
+                                .border(1.dp, ChampagneGold.copy(alpha = 0.65f), sponsorBtnShape)
+                                .tvDpadClickable(shape = sponsorBtnShape) { onWatchSponsorAd() }
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "🎁 +500 MB Quota",
+                                    color = ChampagneLight,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "Sponsor Bonus (+2h)",
+                                    color = PlatinumMuted,
+                                    fontSize = 8.sp,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }

@@ -66,52 +66,149 @@ internal data class CountryGeoInfo(
     val countryName: String,
     val cityName: String,
     val latitude: Float,
-    val longitude: Float
+    val longitude: Float,
+    val globeZoom: Float = 2.65f
 )
 
 internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
-    return when (codeTag.orEmpty()) {
-        "DED-NL" -> CountryGeoInfo(
+    val normalized = codeTag.orEmpty().uppercase(Locale.US).trim()
+    return when {
+        normalized == "DED-NL" || normalized == "PUB-NL" || normalized == "NL" -> CountryGeoInfo(
             isoCode = "NL",
             countryName = "NETHERLANDS",
             cityName = "Amsterdam",
-            latitude = 52.25f,
-            longitude = 5.30f
+            latitude = 52.22f,
+            longitude = 5.30f,
+            globeZoom = 4.50f
         )
-        "DED-PL" -> CountryGeoInfo(
+        normalized == "GHOST" -> CountryGeoInfo(
+            isoCode = "NL",
+            countryName = "NETHERLANDS • GHOST",
+            cityName = "Amsterdam Relay",
+            latitude = 52.22f,
+            longitude = 5.30f,
+            globeZoom = 4.50f
+        )
+        normalized == "DED-PL" || normalized == "PUB-PL" || normalized == "PL" -> CountryGeoInfo(
             isoCode = "PL",
             countryName = "POLAND",
             cityName = "Warsaw",
             latitude = 52.15f,
-            longitude = 19.40f
+            longitude = 19.30f,
+            globeZoom = 2.75f
         )
-        "VPS-1" -> CountryGeoInfo(
+        normalized == "VPS-1" || normalized == "CF-1" || normalized == "CF-2" || normalized == "BPB" ||
+            normalized == "PUB-DE" || normalized == "DE" -> CountryGeoInfo(
             isoCode = "DE",
             countryName = "GERMANY",
             cityName = "Frankfurt",
-            latitude = 51.10f,
-            longitude = 10.40f
+            latitude = 51.15f,
+            longitude = 10.40f,
+            globeZoom = 2.55f
         )
-        "GHOST" -> CountryGeoInfo(
-            isoCode = "NL",
-            countryName = "NETHERLANDS • GHOST",
-            cityName = "Stealth Relay",
-            latitude = 52.25f,
-            longitude = 5.30f
-        )
-        "CF-1", "CF-2", "BPB" -> CountryGeoInfo(
-            isoCode = "DE",
-            countryName = "GERMANY",
-            cityName = "Frankfurt",
-            latitude = 51.10f,
-            longitude = 10.40f
-        )
-        else -> CountryGeoInfo(
+        normalized == "PUB-FR" || normalized == "FR" -> CountryGeoInfo(
             isoCode = "FR",
             countryName = "FRANCE",
             cityName = "Paris",
             latitude = 46.60f,
-            longitude = 2.40f
+            longitude = 2.40f,
+            globeZoom = 2.40f
+        )
+        normalized == "PUB-GB" || normalized == "PUB-UK" || normalized == "GB" || normalized == "UK" -> CountryGeoInfo(
+            isoCode = "GB",
+            countryName = "UNITED KINGDOM",
+            cityName = "London",
+            latitude = 53.80f,
+            longitude = -2.20f,
+            globeZoom = 2.45f
+        )
+        normalized == "PUB-FI" || normalized == "FI" -> CountryGeoInfo(
+            isoCode = "FI",
+            countryName = "FINLAND",
+            cityName = "Helsinki",
+            latitude = 63.80f,
+            longitude = 26.00f,
+            globeZoom = 2.15f
+        )
+        normalized == "PUB-SE" || normalized == "SE" -> CountryGeoInfo(
+            isoCode = "SE",
+            countryName = "SWEDEN",
+            cityName = "Stockholm",
+            latitude = 62.00f,
+            longitude = 15.50f,
+            globeZoom = 2.05f
+        )
+        normalized == "PUB-TR" || normalized == "TR" -> CountryGeoInfo(
+            isoCode = "TR",
+            countryName = "TURKEY",
+            cityName = "Istanbul",
+            latitude = 39.10f,
+            longitude = 35.20f,
+            globeZoom = 2.25f
+        )
+        normalized == "PUB-CH" || normalized == "CH" -> CountryGeoInfo(
+            isoCode = "CH",
+            countryName = "SWITZERLAND",
+            cityName = "Zurich",
+            latitude = 46.82f,
+            longitude = 8.23f,
+            globeZoom = 4.60f
+        )
+        normalized == "PUB-AT" || normalized == "AT" -> CountryGeoInfo(
+            isoCode = "AT",
+            countryName = "AUSTRIA",
+            cityName = "Vienna",
+            latitude = 47.60f,
+            longitude = 14.10f,
+            globeZoom = 3.60f
+        )
+        normalized == "PUB-IT" || normalized == "IT" -> CountryGeoInfo(
+            isoCode = "IT",
+            countryName = "ITALY",
+            cityName = "Milan",
+            latitude = 42.80f,
+            longitude = 12.60f,
+            globeZoom = 2.30f
+        )
+        normalized == "PUB-ES" || normalized == "ES" -> CountryGeoInfo(
+            isoCode = "ES",
+            countryName = "SPAIN",
+            cityName = "Madrid",
+            latitude = 40.30f,
+            longitude = -3.70f,
+            globeZoom = 2.40f
+        )
+        normalized == "PUB-US" || normalized == "US" -> CountryGeoInfo(
+            isoCode = "US",
+            countryName = "UNITED STATES",
+            cityName = "New York",
+            latitude = 39.50f,
+            longitude = -98.35f,
+            globeZoom = 1.55f
+        )
+        normalized == "PUB-CA" || normalized == "CA" -> CountryGeoInfo(
+            isoCode = "CA",
+            countryName = "CANADA",
+            cityName = "Toronto",
+            latitude = 55.00f,
+            longitude = -96.00f,
+            globeZoom = 1.45f
+        )
+        normalized == "PUB-AE" || normalized == "AE" -> CountryGeoInfo(
+            isoCode = "AE",
+            countryName = "UAE",
+            cityName = "Dubai",
+            latitude = 24.30f,
+            longitude = 54.30f,
+            globeZoom = 3.60f
+        )
+        else -> CountryGeoInfo(
+            isoCode = "NL",
+            countryName = "NETHERLANDS",
+            cityName = "Amsterdam",
+            latitude = 52.22f,
+            longitude = 5.30f,
+            globeZoom = 4.50f
         )
     }
 }
@@ -181,8 +278,9 @@ internal object Strings {
 
 internal fun detectServerOriginTag(guid: String): String {
     return try {
-        val cfg = MmkvManager.decodeServerConfig(guid) ?: return "PUB"
-        val combined = "${cfg.host.orEmpty()} ${cfg.sni.orEmpty()} ${cfg.server.orEmpty()} ${cfg.remarks}".lowercase(Locale.US)
+        val cfg = MmkvManager.decodeServerConfig(guid) ?: return "PUB-NL"
+        val rawRemarks = cfg.remarks.orEmpty()
+        val combined = "${cfg.host.orEmpty()} ${cfg.sni.orEmpty()} ${cfg.server.orEmpty()} $rawRemarks".lowercase(Locale.US)
         val nlHost = PennyServerScanner.DED_NL_HOST.lowercase(Locale.US)
         val plHost = PennyServerScanner.DED_PL_HOST.lowercase(Locale.US)
         val vps1 = PennyServerScanner.VPS1_HOST.lowercase(Locale.US)
@@ -197,10 +295,28 @@ internal fun detectServerOriginTag(guid: String): String {
             combined.contains(bpb2) || combined.contains("own-cf2") || combined.contains("cf-2") -> "CF-2"
             combined.contains(".pages.dev") || combined.contains("own-bpb") || combined.contains("bpb") -> "BPB"
             combined.contains(".workers.dev") || combined.contains("own-cf") -> "CF-1"
-            else -> "PUB"
+            combined.contains("pub-nl") || rawRemarks.contains("🇳🇱") || combined.contains("netherland") || combined.contains("holland") || combined.contains("amsterdam") || combined.contains(".nl") -> "PUB-NL"
+            combined.contains("pub-de") || rawRemarks.contains("🇩🇪") || combined.contains("german") || combined.contains("frankfurt") || combined.contains("berlin") || combined.contains("hetzner") || combined.contains(".de") -> "PUB-DE"
+            combined.contains("pub-pl") || rawRemarks.contains("🇵🇱") || combined.contains("poland") || combined.contains("warsaw") || combined.contains(".pl") -> "PUB-PL"
+            combined.contains("pub-fr") || rawRemarks.contains("🇫🇷") || combined.contains("france") || combined.contains("paris") || combined.contains(".fr") -> "PUB-FR"
+            combined.contains("pub-gb") || rawRemarks.contains("🇬🇧") || combined.contains("united kingdom") || combined.contains("london") || combined.contains("britain") || combined.contains(".uk") -> "PUB-GB"
+            combined.contains("pub-fi") || rawRemarks.contains("🇫🇮") || combined.contains("finland") || combined.contains("helsinki") || combined.contains(".fi") -> "PUB-FI"
+            combined.contains("pub-se") || rawRemarks.contains("🇸🇪") || combined.contains("sweden") || combined.contains("stockholm") || combined.contains(".se") -> "PUB-SE"
+            combined.contains("pub-tr") || rawRemarks.contains("🇹🇷") || combined.contains("turkey") || combined.contains("istanbul") || combined.contains(".tr") -> "PUB-TR"
+            combined.contains("pub-ch") || rawRemarks.contains("🇨🇭") || combined.contains("switzer") || combined.contains("zurich") || combined.contains(".ch") -> "PUB-CH"
+            combined.contains("pub-at") || rawRemarks.contains("🇦🇹") || combined.contains("austria") || combined.contains("vienna") || combined.contains(".at") -> "PUB-AT"
+            combined.contains("pub-it") || rawRemarks.contains("🇮🇹") || combined.contains("italy") || combined.contains("milan") || combined.contains(".it") -> "PUB-IT"
+            combined.contains("pub-es") || rawRemarks.contains("🇪🇸") || combined.contains("spain") || combined.contains("madrid") || combined.contains(".es") -> "PUB-ES"
+            combined.contains("pub-us") || rawRemarks.contains("🇺🇸") || combined.contains("united states") || combined.contains("usa") || combined.contains("new york") || combined.contains("washington") -> "PUB-US"
+            combined.contains("pub-ca") || rawRemarks.contains("🇨🇦") || combined.contains("canada") || combined.contains("toronto") -> "PUB-CA"
+            combined.contains("pub-ae") || rawRemarks.contains("🇦🇪") || combined.contains("dubai") || combined.contains("emirates") || combined.contains("uae") -> "PUB-AE"
+            else -> {
+                val fallbackCountries = arrayOf("PUB-NL", "PUB-DE", "PUB-PL", "PUB-FR", "PUB-GB", "PUB-FI", "PUB-SE")
+                fallbackCountries[kotlin.math.abs(guid.hashCode()) % fallbackCountries.size]
+            }
         }
     } catch (_: Exception) {
-        "PUB"
+        "PUB-NL"
     }
 }
 
@@ -227,7 +343,7 @@ internal fun assignLabels(
 ): List<PennyServer> {
     val uniqueList = list.distinctBy { it.guid }
     val tagged = uniqueList.map { s ->
-        val origin = detectServerOriginTag(s.guid)
+        val origin = s.codeTag.takeIf { it.isNotBlank() && it != "PUB" } ?: detectServerOriginTag(s.guid)
         val realVerified = (MmkvManager.decodeServerAffiliationInfo(s.guid)?.testDelayMillis ?: 0L) > 0L
         Triple(s, origin, realVerified)
     }
@@ -288,7 +404,7 @@ internal fun assignLabels(
                     "CF-1" -> "PennyVPN OWN-CF1"
                     "CF-2" -> "PennyVPN OWN-CF2"
                     "BPB" -> "PennyVPN OWN-BPB"
-                    else -> "PennyVPN PUBLIC"
+                    else -> "PennyVPN $origin"
                 }
                 if (cfg.remarks != targetRemark) {
                     cfg.remarks = targetRemark
@@ -304,8 +420,23 @@ internal fun assignLabels(
             "DED-PL" -> "Poland VIP • #${index + 1}"
             "GHOST" -> "Ghost Chat • #${index + 1}"
             "VPS-1" -> "Germany VIP • #${index + 1}"
-            "CF-1", "CF-2", "BPB" -> "Europe Edge • #${index + 1}"
-            else -> "Public Node • #${index + 1}"
+            "CF-1", "CF-2", "BPB" -> "Germany Edge • #${index + 1}"
+            "PUB-NL" -> "Netherlands Node • #${index + 1}"
+            "PUB-DE" -> "Germany Node • #${index + 1}"
+            "PUB-PL" -> "Poland Node • #${index + 1}"
+            "PUB-FR" -> "France Node • #${index + 1}"
+            "PUB-GB" -> "UK Node • #${index + 1}"
+            "PUB-FI" -> "Finland Node • #${index + 1}"
+            "PUB-SE" -> "Sweden Node • #${index + 1}"
+            "PUB-TR" -> "Turkey Node • #${index + 1}"
+            "PUB-CH" -> "Switzerland Node • #${index + 1}"
+            "PUB-AT" -> "Austria Node • #${index + 1}"
+            "PUB-IT" -> "Italy Node • #${index + 1}"
+            "PUB-ES" -> "Spain Node • #${index + 1}"
+            "PUB-US" -> "USA Node • #${index + 1}"
+            "PUB-CA" -> "Canada Node • #${index + 1}"
+            "PUB-AE" -> "UAE Node • #${index + 1}"
+            else -> "Netherlands Node • #${index + 1}"
         }
         s.copy(
             codeTag = origin,
@@ -463,9 +594,11 @@ internal object RealWorldGeoAtlas {
         "NG|13.70,13.61;12.38,14.20;12.15,14.62;11.53,14.58;10.87,13.70;6.53,11.40;6.46,11.11;7.06,10.61;7.00,10.14;6.01,9.06;4.56,8.29;4.72,7.08;4.39,6.92;4.72,6.77;4.37,6.86;4.28,6.17;4.65,5.59;5.47,5.55;5.53,5.20;5.61,5.46;6.35,4.43;6.41,3.49;6.60,3.72;6.37,2.71;9.05,2.77;10.44,3.78;11.40,3.49;12.53,3.65;13.65,4.42;13.87,5.49;13.66,6.30;13.01,6.94;13.34,7.83;12.81,9.62;13.33,10.48;13.09,12.46",
         "NE|13.70,13.61;13.09,12.46;13.33,10.48;12.81,9.62;13.34,7.83;13.01,6.94;13.66,6.30;13.73,4.66;12.53,3.65;11.70,3.60;12.38,2.81;12.22,2.37;11.90,2.39;12.70,2.10;12.64,1.56;13.04,0.99;13.36,1.20;14.50,0.16;14.96,0.23;15.27,1.30;15.36,3.50;16.58,4.18;19.14,4.23;19.48,5.84;20.87,7.48;23.52,11.97;23.18,13.48;22.62,14.22;23.00,14.98;21.52,15.18;20.35,15.96;16.91,15.47;14.38,13.45",
         "NI|14.99,-83.16;14.83,-83.41;14.34,-83.19;12.41,-83.51;12.71,-83.59;12.50,-83.75;10.84,-83.66;10.98,-85.00;14.73,-85.00",
-        "NL|50.75,5.99;50.76,5.75;50.84,5.64;50.95,5.75;51.15,5.80;51.29,5.48;51.28,5.21;51.47,5.03;51.40,4.85;51.49,4.76;51.42,4.63;51.47,4.50;51.43,4.38;51.36,4.37;51.44,4.01;51.45,3.59;51.54,3.45;51.60,3.74;51.46,4.14;51.47,4.27;51.60,4.00;51.61,4.18;51.81,3.95;51.99,4.08;52.31,4.48;52.94,4.77;52.91,4.89;52.96,5.06;53.10,5.36;53.27,5.53;53.38,5.87;53.44,6.82;53.33,6.97;53.28,7.20;53.00,7.19;52.65,7.03;52.63,6.75;52.53,6.69;52.46,6.75;52.42,7.00;52.27,7.02;52.08,6.72;51.98,6.80;51.91,6.74;51.82,6.36;51.88,6.17;51.80,5.95;51.45,6.20;51.22,6.08;51.15,6.13;51.03,5.86;50.90,6.05",
+        "NL|50.75,5.99;50.76,5.75;50.84,5.64;50.95,5.75;51.15,5.80;51.29,5.48;51.28,5.21;51.47,5.03;51.40,4.85;51.49,4.76;51.42,4.63;51.47,4.50;51.43,4.38;51.36,4.37;51.44,4.01;51.45,3.59;51.54,3.45;51.60,3.74;51.46,4.14;51.47,4.27;51.60,4.00;51.61,4.18;51.81,3.95;51.99,4.08;52.31,4.48;52.94,4.77;52.93,5.04;52.72,5.28;52.45,5.05;52.36,5.12;52.31,5.38;52.53,5.42;52.58,5.82;52.84,5.68;52.88,5.41;53.10,5.36;53.27,5.53;53.38,5.87;53.44,6.82;53.33,6.97;53.28,7.20;53.00,7.19;52.65,7.03;52.63,6.75;52.53,6.69;52.46,6.75;52.42,7.00;52.27,7.02;52.08,6.72;51.98,6.80;51.91,6.74;51.82,6.36;51.88,6.17;51.80,5.95;51.45,6.20;51.22,6.08;51.15,6.13;51.03,5.86;50.90,6.05",
         "NL|51.39,4.23;51.31,4.17;51.21,3.90;51.29,3.58;51.25,3.43;51.38,3.35",
         "NL|51.74,3.95;51.65,4.08;51.63,3.95;51.71,3.70",
+        "NL|53.02,4.72;53.17,4.86;53.14,4.91;53.00,4.79",
+        "NL|53.35,5.19;53.44,5.52;53.40,5.54;53.33,5.22",
         "NP|27.87,88.11;26.43,88.05;26.36,87.29;26.77,85.19;27.49,84.09;27.52,82.73;28.87,80.05;29.96,80.61;30.36,81.85;27.91,85.99",
         "NA|-17.64,23.38;-17.52,24.73;-17.79,25.26;-18.45,23.65;-18.00,23.22;-18.32,20.97;-22.00,20.97;-22.00,19.98;-28.45,19.98;-28.94,19.16;-28.87,18.10;-28.70,17.45;-28.03,17.06;-28.62,16.45;-27.27,15.29;-24.20,14.50;-22.45,14.46;-18.00,11.78;-17.25,11.74;-16.97,13.10;-17.41,14.02;-17.40,18.40;-17.80,18.96;-18.02,20.75",
         "MZ|-22.40,31.29;-21.30,32.43;-19.98,32.99;-18.94,32.70;-18.36,32.99;-16.71,32.95;-15.98,30.41;-14.99,30.23;-14.01,33.20;-14.57,33.64;-14.42,34.38;-15.14,34.56;-15.89,34.25;-17.12,35.27;-16.56,35.17;-16.06,35.76;-14.89,35.89;-13.36,34.56;-12.16,34.36;-11.62,34.62;-11.71,37.37;-10.46,40.46;-12.98,40.44;-14.72,40.84;-15.47,40.56;-16.44,39.84;-17.57,37.51;-18.77,36.40;-19.81,34.95;-19.70,34.65;-22.40,35.32;-22.30,35.54;-24.43,35.25;-25.49,32.96;-26.00,32.59;-26.08,32.95;-26.85,32.89;-26.84,32.11;-24.46,31.99",

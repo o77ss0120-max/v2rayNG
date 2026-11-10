@@ -727,7 +727,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     val o = arr.getJSONObject(i)
                     val g = o.getString("g")
                     if (MmkvManager.decodeServerConfig(g) != null) {
-                        out.add(PennyServer(g, "", o.optLong("m"), "", false))
+                        out.add(PennyServer(g, o.optString("c", ""), o.optLong("m"), "", false))
                     }
                 }
                 bestList.clear()
@@ -745,7 +745,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     val o = arr.getJSONObject(i)
                     val g = o.getString("g")
                     if (MmkvManager.decodeServerConfig(g) != null) {
-                        out.add(PennyServer(g, "", o.optLong("m"), "", true))
+                        out.add(PennyServer(g, o.optString("c", ""), o.optLong("m"), "", true))
                     }
                 }
                 vipBestList.clear()
@@ -763,7 +763,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     val o = arr.getJSONObject(i)
                     val g = o.getString("g")
                     if (MmkvManager.decodeServerConfig(g) != null) {
-                        out.add(PennyServer(g, "", o.optLong("m"), "", true))
+                        out.add(PennyServer(g, o.optString("c", ""), o.optLong("m"), "", true))
                     }
                 }
                 ghostBestList.clear()
@@ -971,14 +971,26 @@ class MainActivity : HelperBaseComponentActivity() {
                 ?: currentList.firstOrNull { it.guid == lastConnectedGuid }
                 ?: currentList.firstOrNull()
 
-        val currentCountryGeo = remember(current?.codeTag, serviceTierMode) {
-            getCountryGeoInfo(
-                current?.codeTag ?: when (serviceTierMode) {
+        val activeConnectedGuid = if (isRunning) {
+            uiState.selectedGuid?.takeIf { it.isNotBlank() } ?: lastConnectedGuid
+        } else {
+            current?.guid ?: lastConnectedGuid
+        }
+
+        val currentCountryGeo = remember(current?.codeTag, activeConnectedGuid, serviceTierMode, isRunning) {
+            val tagFromCurrent = current?.codeTag?.takeIf { it.isNotBlank() && it != "PUB" }
+            val tagFromGuid = activeConnectedGuid?.takeIf { it.isNotBlank() }
+                ?.let { detectServerOriginTag(it) }
+                ?.takeIf { it.isNotBlank() && it != "PUB" }
+            val effectiveTag = tagFromCurrent
+                ?: tagFromGuid
+                ?: current?.codeTag?.takeIf { it.isNotBlank() }
+                ?: when (serviceTierMode) {
                     ServiceTierMode.GHOST -> "GHOST"
                     ServiceTierMode.DEDICATED -> "DED-NL"
-                    ServiceTierMode.PUBLIC -> "PUB"
+                    ServiceTierMode.PUBLIC -> "PUB-NL"
                 }
-            )
+            getCountryGeoInfo(effectiveTag)
         }
 
         val isConnectedMode = mode == UiMode.CONNECTED
@@ -2351,9 +2363,13 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun disconnect() {
+        workJob?.cancel()
         userWantsConnected = false
+        phase = Phase.IDLE
+        scanProgress = 0f
         prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
-        LauncherManager.stopService(this)
+        runCatching { PennySpeedLimiter.stop() }
+        runCatching { LauncherManager.stopService(this) }
         statusMessage = "Disconnected"
         connectStartMs = 0L
         plog("Disconnected by user")
@@ -2691,7 +2707,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
                     val originTag = detectServerOriginTag(g)
-                    // پاک‌سازی کامل نام سرور تا هیچ اطلاعاتی از کانفیگ اصلی لو نرود
+                    // پاک‌سازی کامل نام سرور با حفظ کد کشور تا نقشه کشور مقصد روی کره زمین دقیق نمایش داده شود
                     cfg.remarks = when (originTag) {
                         "DED-NL" -> "PennyVPN DED-NL"
                         "DED-PL" -> "PennyVPN DED-PL"
@@ -2700,7 +2716,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         "CF-1" -> "PennyVPN OWN-CF1"
                         "CF-2" -> "PennyVPN OWN-CF2"
                         "BPB" -> "PennyVPN OWN-BPB"
-                        else -> "PennyVPN PUBLIC"
+                        else -> "PennyVPN $originTag"
                     }
                     MmkvManager.encodeServerConfig(g, cfg)
                 }
@@ -2837,7 +2853,7 @@ class MainActivity : HelperBaseComponentActivity() {
         val lbSeed = if (loadBalanceEnabled) kotlin.math.abs(deviceId.hashCode()) else 0
         val entries = assignLabels(
             combinedCandidates.map { (g, d) ->
-                PennyServer(g, "", d, "", currentMode != ServiceTierMode.PUBLIC)
+                PennyServer(g, detectServerOriginTag(g), d, "", currentMode != ServiceTierMode.PUBLIC)
             },
             isVipList = currentMode != ServiceTierMode.PUBLIC,
             loadBalanceSeed = lbSeed

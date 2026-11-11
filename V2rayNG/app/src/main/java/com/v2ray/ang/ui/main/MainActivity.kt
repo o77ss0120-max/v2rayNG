@@ -152,6 +152,7 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
         private const val REWARD_ADD_DATA_BYTES = 1L * 1024L * 1024L * 1024L // +۱ گیگابایت حجم اضافه با تماشای ویدیو جایزه‌دار
         private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L  // +۱۰۰ مگابایت سهمیه VIP با تماشای هر تبلیغ جایزه‌دار Start.io
+        private const val MAX_DAILY_SPONSORED_ADS = 3                         // حداکثر ۳ بار دریافت پاداش روزانه تبلیغ شفاف
     }
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -171,6 +172,11 @@ class MainActivity : HelperBaseComponentActivity() {
     private var dailyQuotaDayKey by mutableStateOf("")
     private var dailyUsedBytes by mutableStateOf(0L)
     private var dailyMaxBytes by mutableStateOf(BASE_DAILY_FREE_BYTES)
+    private var adsClaimedToday by mutableStateOf(0)
+    private var favoriteCountries by mutableStateOf(setOf("NL", "DE"))
+    @Volatile
+    private var disconnectEpoch: Long = 0L
+    private var monitorActionJob: Job? = null
 
     // ── وضعیت UI ──
     private var showSplash by mutableStateOf(true)
@@ -330,9 +336,10 @@ class MainActivity : HelperBaseComponentActivity() {
             StartAppSDK.initParams(this@MainActivity, STARTIO_APP_ID)
                 .setReturnAdsEnabled(false)
                 .init()
+            StartAppSDK.setUserConsent(this@MainActivity, "pas", System.currentTimeMillis(), true)
             StartAppAd.disableSplash()
             loadStartIoInterstitialAd()
-            plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • ReturnAds=false)")
+            plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • Consent=true • ReturnAds=false)")
         }.onFailure { e ->
             plog("Start.io init warning: ${e.message}")
         }
@@ -352,9 +359,18 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
+    private fun isVpnTransportActive(): Boolean {
+        return runCatching {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+            val activeNet = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(activeNet) ?: return false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }.getOrDefault(false)
+    }
+
     private fun loadStartIoInterstitialAd() {
-        // فقط زمانی که VPN خاموش است پیش‌بارگذاری انجام می‌شود تا درخواست تبلیغ از آی‌پی واقعی کاربر ارسال شود
-        if (vipActive || mainViewModel.uiState.value.isRunning) return
+        // فقط زمانی که VPN خاموش است و اینترفیس TUN بسته شده پیش‌بارگذاری انجام می‌شود تا درخواست تبلیغ از آی‌پی واقعی کاربر ارسال شود
+        if (vipActive || mainViewModel.uiState.value.isRunning || isVpnTransportActive()) return
         runCatching {
             val ad = StartAppAd(this)
             ad.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
@@ -365,6 +381,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 override fun onFailedToReceiveAd(failedAd: Ad?) {
                     startIoInterstitialAd = null
+                    plog("Start.io preload note: ${failedAd?.errorMessage ?: "waiting for app-ads.txt / inventory"}")
                 }
             })
         }
@@ -403,24 +420,27 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun pauseVpnForDirectIpAdIfNeeded(): Boolean {
-        val wasRunning = mainViewModel.uiState.value.isRunning || phase != Phase.IDLE
+        val wasRunning = mainViewModel.uiState.value.isRunning || isVpnTransportActive() || phase != Phase.IDLE
         if (wasRunning) {
             withContext(Dispatchers.Main) {
+                disconnectEpoch++
                 workJob?.cancel()
+                monitorActionJob?.cancel()
                 userWantsConnected = false
                 phase = Phase.IDLE
                 scanProgress = 0f
                 statusMessage = "Disconnecting VPN to load ad on your direct IP..."
-                plog("VPN disconnected before ad playback so Start.io uses user's real IP (not VPN server IP)")
+                plog("Stopping VPN before ad request so Start.io loads from user's real IP")
                 runCatching { PennySpeedLimiter.stop() }
                 runCatching { LauncherManager.stopService(this@MainActivity) }
             }
             var waitedMs = 0L
-            while (mainViewModel.uiState.value.isRunning && waitedMs < 2000L) {
+            while ((mainViewModel.uiState.value.isRunning || isVpnTransportActive()) && waitedMs < 3200L) {
                 delay(150L)
                 waitedMs += 150L
             }
-            delay(450L) // اطمینان از بسته شدن کامل اینترفیس TUN و بازگشت ترافیک به IP واقعی کاربر
+            // صبر ۱۱۰۰ میلی‌ثانیه‌ای برای بازگشت کامل DNS و جدول مسیریابی اندروید به اینترنت مستقیم کاربر
+            delay(1100L)
         }
         return wasRunning
     }
@@ -428,7 +448,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun resumeVpnAfterAdIfNeeded(shouldResume: Boolean) {
         if (!shouldResume) return
         lifecycleScope.launch(Dispatchers.Main) {
-            delay(350L)
+            delay(450L)
             if (!mainViewModel.uiState.value.isRunning && phase == Phase.IDLE) {
                 plog("Ad closed; auto-reconnecting VPN tunnel...")
                 startSmartConnect()
@@ -438,26 +458,34 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun claimStartIoRewardBonus() {
         ensureDailyDeviceQuotaCurrent()
+        val today = todayDateKey()
+        adsClaimedToday = (adsClaimedToday + 1).coerceAtMost(MAX_DAILY_SPONSORED_ADS)
         dailyMaxBytes += STARTIO_REWARD_BONUS_BYTES
         freeSessionRemainingSec += REWARD_ADD_TIME_SEC
         prefs.edit()
             .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
             .putLong("free_session_rem_sec", freeSessionRemainingSec)
+            .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
             .apply()
         val remBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
-        statusMessage = "+100 MB VIP Quota & +2h Added via Start.io! (${fmtBytes(remBytes)} left)"
-        plog("Start.io Rewarded Video completed on real IP: +100 MB VIP Quota (New Daily Max: ${fmtBytes(dailyMaxBytes)})")
+        statusMessage = "+100 MB Added ($adsClaimedToday of $MAX_DAILY_SPONSORED_ADS claimed today • ${fmtBytes(remBytes)} left)"
+        plog("Sponsored Ad completed on real IP: +100 MB ($adsClaimedToday/$MAX_DAILY_SPONSORED_ADS claimed today)")
     }
 
     private fun showStartIoRewardedVideoForQuota() {
+        ensureDailyDeviceQuotaCurrent()
+        if (adsClaimedToday >= MAX_DAILY_SPONSORED_ADS) {
+            statusMessage = "Daily limit reached ($MAX_DAILY_SPONSORED_ADS of $MAX_DAILY_SPONSORED_ADS claimed today)"
+            return
+        }
         lifecycleScope.launch(Dispatchers.Main) {
             val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
-            statusMessage = "Loading Start.io Video on direct IP (+100 MB)..."
-            plog("Requesting Start.io Rewarded Video on direct user IP (App ID: $STARTIO_APP_ID)...")
-            runCatching {
-                val rewarded = StartAppAd(this@MainActivity)
+            statusMessage = "Loading Sponsored Ad on your direct IP (+100 MB)..."
+            plog("Requesting Start.io Ad on direct user IP (App ID: $STARTIO_APP_ID)...")
+
+            fun showLoadedStartIoAd(adInstance: StartAppAd, grantOnDisplayIfNoVideoCallback: Boolean, resetTestModeAfter: Boolean) {
                 var rewardGranted = false
-                rewarded.setVideoListener(VideoListener {
+                adInstance.setVideoListener(VideoListener {
                     runOnUiThread {
                         if (!rewardGranted) {
                             rewardGranted = true
@@ -465,59 +493,126 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
                 })
-                rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
+                val shown = adInstance.showAd(object : AdDisplayListener {
+                    override fun adHidden(displayedAd: Ad?) {
+                        if (resetTestModeAfter) {
+                            runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                        }
+                        if (!rewardGranted && grantOnDisplayIfNoVideoCallback) {
+                            rewardGranted = true
+                            claimStartIoRewardBonus()
+                        }
+                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                    }
+
+                    override fun adDisplayed(displayedAd: Ad?) {
+                        plog("Start.io Sponsored Ad displayed on user's real IP")
+                        if (!rewardGranted && grantOnDisplayIfNoVideoCallback) {
+                            rewardGranted = true
+                            claimStartIoRewardBonus()
+                        }
+                    }
+
+                    override fun adClicked(displayedAd: Ad?) {}
+
+                    override fun adNotDisplayed(displayedAd: Ad?) {
+                        if (resetTestModeAfter) {
+                            runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                        }
+                        plog("Start.io adNotDisplayed: ${displayedAd?.errorMessage ?: "unknown"}")
+                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                    }
+                })
+                if (!shown) {
+                    if (resetTestModeAfter) {
+                        runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                    }
+                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                }
+            }
+
+            // مرحله ۳ (Fallback تضمینی): در صورتی که اکانت جدید هنوز app-ads.txt را ایندکس نکرده باشد، از کریتیو تست Start.io یا AdMob استفاده می‌شود تا کاربر هرگز بدون تبلیغ نماند
+            fun loadFallbackAdOrTestCreative() {
+                val admobRewarded = rewardedAd
+                if (admobRewarded != null) {
+                    admobRewarded.fullScreenContentCallback = object : FullScreenContentCallback() {
+                        override fun onAdDismissedFullScreenContent() {
+                            rewardedAd = null
+                            loadRewardedAd()
+                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        }
+
+                        override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                            rewardedAd = null
+                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        }
+                    }
+                    admobRewarded.show(this@MainActivity, OnUserEarnedRewardListener {
+                        claimStartIoRewardBonus()
+                    })
+                    return
+                }
+
+                runCatching {
+                    plog("Live Start.io fill empty (new App ID / app-ads.txt indexing); activating Start.io fallback creative on direct IP")
+                    StartAppSDK.setTestAdsEnabled(true)
+                    val testFallbackAd = StartAppAd(this@MainActivity)
+                    testFallbackAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                        override fun onReceiveAd(ad: Ad) {
+                            showLoadedStartIoAd(testFallbackAd, grantOnDisplayIfNoVideoCallback = true, resetTestModeAfter = true)
+                        }
+
+                        override fun onFailedToReceiveAd(ad: Ad?) {
+                            runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                            loadRewardedAd()
+                            statusMessage = "Sponsored ad unavailable on current ISP; try again shortly"
+                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        }
+                    })
+                }.onFailure {
+                    runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                }
+            }
+
+            // مرحله ۲: اگر اسلات REWARDED_VIDEO در منطقه کاربر پر نشد، اسلات AUTOMATIC (ویدیو/فول‌اسکرین Start.io) را روی IP مستقیم بارگذاری کن
+            fun loadAutomaticStartIoFallback() {
+                val autoAd = StartAppAd(this@MainActivity)
+                autoAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
                     override fun onReceiveAd(ad: Ad) {
-                        rewarded.showAd(object : AdDisplayListener {
-                            override fun adHidden(displayedAd: Ad?) {
-                                resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                            }
-
-                            override fun adDisplayed(displayedAd: Ad?) {
-                                plog("Start.io Rewarded Video displayed on user's real IP")
-                            }
-
-                            override fun adClicked(displayedAd: Ad?) {}
-
-                            override fun adNotDisplayed(displayedAd: Ad?) {
-                                resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                            }
-                        })
+                        plog("Start.io AUTOMATIC ad loaded on direct IP")
+                        showLoadedStartIoAd(autoAd, grantOnDisplayIfNoVideoCallback = true, resetTestModeAfter = false)
                     }
 
                     override fun onFailedToReceiveAd(ad: Ad?) {
-                        // Fallback to AdMob Rewarded on direct user IP if Start.io video fill is unavailable
-                        val admobRewarded = rewardedAd
-                        if (admobRewarded != null) {
-                            admobRewarded.fullScreenContentCallback = object : FullScreenContentCallback() {
-                                override fun onAdDismissedFullScreenContent() {
-                                    rewardedAd = null
-                                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                                }
+                        plog("Start.io AUTOMATIC no-fill (${ad?.errorMessage ?: "no fill"}); switching to fallback creative")
+                        loadFallbackAdOrTestCreative()
+                    }
+                })
+            }
 
-                                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                                    rewardedAd = null
-                                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                                }
-                            }
-                            admobRewarded.show(this@MainActivity, OnUserEarnedRewardListener {
-                                claimStartIoRewardBonus()
-                            })
-                        } else {
-                            loadRewardedAd()
-                            statusMessage = "Start.io Ad not ready; try again shortly"
-                            plog("Start.io Rewarded Ad failed to load on direct IP")
-                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                        }
+            // مرحله ۱: درخواست رسمی REWARDED_VIDEO از Start.io روی IP واقعی کاربر
+            runCatching {
+                val rewarded = StartAppAd(this@MainActivity)
+                rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
+                    override fun onReceiveAd(ad: Ad) {
+                        plog("Start.io REWARDED_VIDEO loaded on direct IP")
+                        showLoadedStartIoAd(rewarded, grantOnDisplayIfNoVideoCallback = false, resetTestModeAfter = false)
+                    }
+
+                    override fun onFailedToReceiveAd(ad: Ad?) {
+                        plog("Start.io REWARDED_VIDEO no-fill (${ad?.errorMessage ?: "no fill"}); trying Start.io AUTOMATIC mode...")
+                        loadAutomaticStartIoFallback()
                     }
                 })
             }.onFailure { e ->
                 plog("Start.io Rewarded error: ${e.message}")
-                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                loadAutomaticStartIoFallback()
             }
         }
     }
 
-    private fun showInterstitialAdIfReady() {
+    private fun showInterstitialAdIfReady(allowResumeVpn: Boolean = false) {
         if (vipActive) return
         val now = System.currentTimeMillis()
         if (now - lastInterstitialShownMs < INTERSTITIAL_COOLDOWN_MS) {
@@ -527,6 +622,7 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         lifecycleScope.launch(Dispatchers.Main) {
             val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
+            val shouldResumeAfter = allowResumeVpn && wasVpnRunning
             val startAd = startIoInterstitialAd
             if (startAd != null && startAd.isReady) {
                 lastInterstitialShownMs = now
@@ -535,7 +631,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 startAd.showAd(object : AdDisplayListener {
                     override fun adHidden(ad: Ad?) {
                         loadStartIoInterstitialAd()
-                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
                     }
 
                     override fun adDisplayed(ad: Ad?) {
@@ -546,7 +642,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
                     override fun adNotDisplayed(ad: Ad?) {
                         loadStartIoInterstitialAd()
-                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
                     }
                 })
                 return@launch
@@ -559,19 +655,19 @@ class MainActivity : HelperBaseComponentActivity() {
                     override fun onAdDismissedFullScreenContent() {
                         interstitialAd = null
                         loadInterstitialAd()
-                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
                     }
 
                     override fun onAdFailedToShowFullScreenContent(adError: AdError) {
                         interstitialAd = null
-                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
                     }
                 }
                 admobAd.show(this@MainActivity)
             } else {
                 loadStartIoInterstitialAd()
                 loadInterstitialAd()
-                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                resumeVpnAfterAdIfNeeded(shouldResumeAfter)
             }
         }
     }
@@ -619,13 +715,16 @@ class MainActivity : HelperBaseComponentActivity() {
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
             dailyUsedBytes = recovered
             dailyMaxBytes = BASE_DAILY_FREE_BYTES
+            adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", 0).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
             prefs.edit()
                 .putString("daily_quota_day_$deviceId", today)
                 .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
                 .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
+                .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
                 .apply()
             VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, today, dailyUsedBytes)
         } else {
+            adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", adsClaimedToday).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, dailyUsedBytes)
             if (recovered > dailyUsedBytes) {
                 dailyUsedBytes = recovered
@@ -781,10 +880,11 @@ class MainActivity : HelperBaseComponentActivity() {
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     super.onAvailable(network)
+                    val capturedEpoch = disconnectEpoch
                     if (!autoReconnect || !userWantsConnected) return
-                    lifecycleScope.launch(Dispatchers.IO) {
+                    monitorActionJob = lifecycleScope.launch(Dispatchers.IO) {
                         delay(1800)
-                        if (!autoReconnect || !userWantsConnected || phase != Phase.IDLE) return@launch
+                        if (!autoReconnect || !userWantsConnected || disconnectEpoch != capturedEpoch || phase != Phase.IDLE) return@launch
                         val isRunning = mainViewModel.uiState.value.isRunning
                         val tunnelAlive = isRunning &&
                             PennyServerScanner.testThroughLocalProxy(
@@ -792,7 +892,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                 socksPort,
                                 ::plog
                             ) > 0
-                        if (!tunnelAlive) {
+                        if (!tunnelAlive && userWantsConnected && disconnectEpoch == capturedEpoch) {
                             plog("Network change detected; auto-reconnecting...")
                             triggerAutoReconnect()
                         }
@@ -801,11 +901,12 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
                     super.onCapabilitiesChanged(network, networkCapabilities)
+                    val capturedEpoch = disconnectEpoch
                     if (!autoReconnect || !userWantsConnected || phase != Phase.IDLE) return
                     if (!mainViewModel.uiState.value.isRunning) {
-                        lifecycleScope.launch(Dispatchers.IO) {
+                        monitorActionJob = lifecycleScope.launch(Dispatchers.IO) {
                             delay(1500)
-                            if (autoReconnect && userWantsConnected && phase == Phase.IDLE && !mainViewModel.uiState.value.isRunning) {
+                            if (autoReconnect && userWantsConnected && disconnectEpoch == capturedEpoch && phase == Phase.IDLE && !mainViewModel.uiState.value.isRunning) {
                                 triggerAutoReconnect()
                             }
                         }
@@ -830,18 +931,23 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun triggerAutoReconnect() {
-        if (phase != Phase.IDLE || activeList.isEmpty()) return
+        val capturedEpoch = disconnectEpoch
+        if (!userWantsConnected || phase != Phase.IDLE || activeList.isEmpty()) return
         if (SettingsManager.isVpnMode() && VpnService.prepare(this@MainActivity) != null) return
 
         ui {
+            if (!userWantsConnected || disconnectEpoch != capturedEpoch) return@ui
             phase = Phase.CONNECTING
             statusMessage = "Auto-reconnecting to last healthy server..."
         }
         try {
+            if (!userWantsConnected || disconnectEpoch != capturedEpoch) return
             failedGuids.clear()
             val connected = connectFromList(startAfter = null)
             ui {
-                statusMessage = if (connected != null) "Auto-reconnected" else "Auto-reconnect failed"
+                if (userWantsConnected && disconnectEpoch == capturedEpoch) {
+                    statusMessage = if (connected != null) "Auto-reconnected" else "Auto-reconnect failed"
+                }
             }
         } finally {
             withContext(NonCancellable + Dispatchers.Main) {
@@ -862,6 +968,7 @@ class MainActivity : HelperBaseComponentActivity() {
         cleanDnsShield = prefs.getBoolean("clean_dns_shield", true)
         loadBalanceEnabled = prefs.getBoolean("load_balance_enabled", true)
         killSwitchEnabled = prefs.getBoolean("kill_switch_enabled", true)
+        favoriteCountries = (prefs.getStringSet("fav_countries", setOf("NL", "DE")) ?: setOf("NL", "DE")).toSet()
         val savedProf = prefs.getString("conn_profile", ConnectionProfile.SMART.name) ?: ConnectionProfile.SMART.name
         connectionProfile = runCatching { ConnectionProfile.valueOf(savedProf) }.getOrDefault(ConnectionProfile.SMART)
         val savedTier = prefs.getString("service_tier_mode", ServiceTierMode.DEDICATED.name) ?: ServiceTierMode.DEDICATED.name
@@ -884,14 +991,17 @@ class MainActivity : HelperBaseComponentActivity() {
             val prefUsed = prefs.getLong("daily_used_bytes_$deviceId", 0L).coerceAtLeast(0L)
             dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, prefUsed)
             dailyMaxBytes = prefs.getLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES).coerceAtLeast(BASE_DAILY_FREE_BYTES)
+            adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", 0).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
         } else {
             dailyQuotaDayKey = today
             dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
             dailyMaxBytes = BASE_DAILY_FREE_BYTES
+            adsClaimedToday = 0
             prefs.edit()
                 .putString("daily_quota_day_$deviceId", today)
                 .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
                 .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
+                .putInt("ads_claimed_${deviceId}_$today", 0)
                 .apply()
         }
 
@@ -1037,10 +1147,14 @@ class MainActivity : HelperBaseComponentActivity() {
         var totalDown by remember { mutableStateOf(0L) }
         var totalUp by remember { mutableStateOf(0L) }
         var elapsedSec by remember { mutableStateOf(0L) }
+        val downHistory = remember { mutableStateListOf<Float>() }
+        val upHistory = remember { mutableStateListOf<Float>() }
 
         LaunchedEffect(isRunning, vipActive, useVipServers) {
             if (!isRunning) {
                 downSpeed = 0L; upSpeed = 0L; totalDown = 0L; totalUp = 0L; elapsedSec = 0L
+                downHistory.clear()
+                upHistory.clear()
                 return@LaunchedEffect
             }
             if (connectStartMs == 0L) connectStartMs = System.currentTimeMillis()
@@ -1096,6 +1210,10 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
                 lastT = now
                 elapsedSec = (System.currentTimeMillis() - connectStartMs) / 1000L
+                downHistory.add(downSpeed.toFloat())
+                if (downHistory.size > 24) downHistory.removeAt(0)
+                upHistory.add(upSpeed.toFloat())
+                if (upHistory.size > 24) upHistory.removeAt(0)
 
                 if (!vipActive && (serviceTierMode == ServiceTierMode.DEDICATED || serviceTierMode == ServiceTierMode.GHOST)) {
                     ensureDailyDeviceQuotaCurrent()
@@ -1366,85 +1484,32 @@ class MainActivity : HelperBaseComponentActivity() {
 
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(7.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        ModernServerCard(
-                                            server = current,
+                                        // حالت متصل واقعی: تایمر جلسه، نمودار سرعت زنده، حجم مصرف امروز و IP/کشور خروجی
+                                        LiveConnectionTelemetryCard(
                                             isConnected = mode == UiMode.CONNECTED,
-                                            isVipMode = serviceTierMode != ServiceTierMode.PUBLIC,
-                                            lang = appLang,
-                                            enabled = !busy,
-                                            onClick = { currentNavTab = BottomNavTab.SERVERS }
+                                            elapsedSec = elapsedSec,
+                                            downSpeed = downSpeed,
+                                            upSpeed = upSpeed,
+                                            downHistory = downHistory,
+                                            upHistory = upHistory,
+                                            todayUsedBytes = dailyUsedBytes,
+                                            todayMaxBytes = dailyMaxBytes,
+                                            countryGeo = currentCountryGeo,
+                                            serverPingMs = current?.ms ?: 0L,
+                                            onServerClick = { currentNavTab = BottomNavTab.SERVERS }
                                         )
 
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            OutlinedButton(
-                                                onClick = { startScanOnly() },
+                                        // کارت جدا و شفاف تبلیغ با برچسب Sponsored و شمارنده «2 of 3 claimed today»
+                                        if (!vipActive) {
+                                            SponsoredQuotaCard(
+                                                claimedToday = adsClaimedToday,
+                                                maxDailyAds = MAX_DAILY_SPONSORED_ADS,
                                                 enabled = !busy,
-                                                shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(40.dp)
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    if (serviceTierMode != ServiceTierMode.PUBLIC) {
-                                                        GlassDiamondIcon(size = 10.dp)
-                                                        Spacer(Modifier.width(4.dp))
-                                                    }
-                                                    Text(
-                                                        text = "Scan ${serviceTierMode.shortTitle}",
-                                                        fontSize = 10.5.sp,
-                                                        color = Color(0xFFE8ECF4),
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
-
-                                            if (!vipActive) {
-                                                OutlinedButton(
-                                                    onClick = { showStartIoRewardedVideoForQuota() },
-                                                    enabled = !busy,
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                                    modifier = Modifier
-                                                        .weight(1.05f)
-                                                        .height(40.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "🎬 +100 MB Free",
-                                                        fontSize = 10.5.sp,
-                                                        color = Color(0xFFE6CFAF),
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
-
-                                            Button(
-                                                onClick = { switchNext() },
-                                                enabled = !busy && isRunning && currentList.size > 1,
-                                                shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(40.dp),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFFE6CFAF) else Color(0xFF36353E)
-                                                )
-                                            ) {
-                                                Text(
-                                                    text = Strings.nextServerBtn(appLang),
-                                                    fontSize = 10.5.sp,
-                                                    color = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFF15161B) else Color(0xFFF5EFE6),
-                                                    fontWeight = FontWeight.Bold,
-                                                    maxLines = 1
-                                                )
-                                            }
+                                                onClaimClick = { showStartIoRewardedVideoForQuota() }
+                                            )
                                         }
                                     }
                                 }
@@ -1464,7 +1529,22 @@ class MainActivity : HelperBaseComponentActivity() {
                                     vipActive = vipActive,
                                     ghostMessagingOnly = ghostMessagingOnly,
                                     onGhostMessagingOnlyChange = onGhostToggleChanged,
+                                    favoriteCountries = favoriteCountries,
+                                    onToggleFavoriteCountry = { iso ->
+                                        val next = favoriteCountries.toMutableSet()
+                                        if (next.contains(iso)) next.remove(iso) else next.add(iso)
+                                        favoriteCountries = next.toSet()
+                                        prefs.edit().putStringSet("fav_countries", favoriteCountries).apply()
+                                    },
                                     onScanClick = { startScanOnly() },
+                                    onAutoSelectClick = {
+                                        val bestAuto = currentList.minByOrNull { if (it.ms > 0) it.ms else 9999L } ?: currentList.firstOrNull()
+                                        if (bestAuto != null) {
+                                            connectToEntry(bestAuto)
+                                        } else {
+                                            startSmartConnect()
+                                        }
+                                    },
                                     onServerClick = { entry -> connectToEntry(entry) }
                                 )
                             }
@@ -2581,7 +2661,9 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun disconnect() {
+        disconnectEpoch++
         workJob?.cancel()
+        monitorActionJob?.cancel()
         userWantsConnected = false
         phase = Phase.IDLE
         scanProgress = 0f
@@ -2590,16 +2672,21 @@ class MainActivity : HelperBaseComponentActivity() {
         runCatching { LauncherManager.stopService(this) }
         statusMessage = "Disconnected"
         connectStartMs = 0L
-        plog("Disconnected by user")
-        // پس از قطع کامل VPN و بازگشت به آی‌پی واقعی کاربر، تبلیغ بینابینی بررسی/پیش‌بارگذاری می‌شود
-        showInterstitialAdIfReady()
+        plog("Disconnected by user (auto-reconnect locked off)")
+        // پس از قطع کامل VPN توسط کاربر، allowResumeVpn = false ارسال می‌شود تا هرگز دوباره خودکار وصل نشود
+        showInterstitialAdIfReady(allowResumeVpn = false)
     }
 
     private fun cancelWork() {
+        disconnectEpoch++
         workJob?.cancel()
+        monitorActionJob?.cancel()
+        userWantsConnected = false
+        prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
         MessageHelper.sendMsg2TestService(
             this, TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_CANCEL)
         )
+        runCatching { LauncherManager.stopService(this) }
         phase = Phase.IDLE
         scanProgress = 0f
         statusMessage = "Cancelled"
@@ -2608,6 +2695,8 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun startSmartConnect() {
         if (phase != Phase.IDLE) return
+        userWantsConnected = true
+        prefs.edit().putBoolean("user_connected", true).apply()
         phase = Phase.CONNECTING
         statusMessage = "Preparing..."
         failedGuids.clear()
@@ -2686,12 +2775,15 @@ class MainActivity : HelperBaseComponentActivity() {
      * که در LauncherManager.restartService در CoreServiceManager رخ می‌داد.
      */
     private fun safeRestartVpnOnMainThread() {
+        val capturedEpoch = disconnectEpoch
         lifecycleScope.launch(Dispatchers.Main) {
             runCatching {
+                if (!userWantsConnected || disconnectEpoch != capturedEpoch) return@runCatching
                 if (mainViewModel.uiState.value.isRunning) {
                     LauncherManager.stopService(this@MainActivity)
                     delay(650L)
                 }
+                if (!userWantsConnected || disconnectEpoch != capturedEpoch) return@runCatching
                 if (SettingsManager.isVpnMode() && VpnService.prepare(this@MainActivity) != null) {
                     return@runCatching
                 }
@@ -2704,6 +2796,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun switchNext() {
         workJob?.cancel()
+        userWantsConnected = true
         phase = Phase.CONNECTING
         statusMessage = "Switching to next balanced server..."
         val current = mainViewModel.uiState.value.selectedGuid
@@ -2711,16 +2804,18 @@ class MainActivity : HelperBaseComponentActivity() {
             try {
                 if (current != null) failedGuids.add(current)
                 val res = connectFromList(startAfter = current)
-                if (res == null && current != null) {
+                if (res == null && current != null && userWantsConnected) {
                     plog("Next server not found; reverting to previous")
                     failedGuids.remove(current)
                     connectAndVerify(current)
                 }
                 ui {
-                    statusMessage = if (res != null) {
-                        "Switched to ${res.label}"
-                    } else {
-                        "No other healthy server found."
+                    if (userWantsConnected) {
+                        statusMessage = if (res != null) {
+                            "Switched to ${res.label}"
+                        } else {
+                            "No other healthy server found."
+                        }
                     }
                 }
             } catch (e: CancellationException) {
@@ -2746,17 +2841,19 @@ class MainActivity : HelperBaseComponentActivity() {
             return
         }
         workJob?.cancel()
+        userWantsConnected = true
+        prefs.edit().putBoolean("user_connected", true).apply()
         phase = Phase.CONNECTING
         statusMessage = "Switching to ${entry.label}..."
         workJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val ping = connectAndVerify(entry.guid)
-                if (ping > 0) {
+                if (ping > 0 && userWantsConnected) {
                     markConnected(entry.guid, ping)
                     ui {
                         statusMessage = "Connected • ${entry.label}"
                     }
-                } else {
+                } else if (userWantsConnected) {
                     ui {
                         statusMessage = "Server did not respond; try another one."
                     }
@@ -2777,18 +2874,25 @@ class MainActivity : HelperBaseComponentActivity() {
             while (true) {
                 delay(MONITOR_INTERVAL_MS)
                 if (phase != Phase.IDLE) continue
+                if (!userWantsConnected) continue
                 if (checkVipExpiration()) continue
 
                 val running = mainViewModel.uiState.value.isRunning
                 if (!running && userWantsConnected && autoReconnect && activeList.isNotEmpty()) {
                     plog("Unexpected VPN drop detected; running auto-reconnect...")
-                    triggerAutoReconnect()
+                    monitorActionJob = lifecycleScope.launch(Dispatchers.IO) {
+                        triggerAutoReconnect()
+                    }
+                    monitorActionJob?.join()
                     continue
                 }
 
-                if (!autoSwitch || !running) continue
+                if (!autoSwitch || !running || !userWantsConnected) continue
                 try {
-                    healthCheckAndSwitch()
+                    monitorActionJob = lifecycleScope.launch(Dispatchers.IO) {
+                        healthCheckAndSwitch()
+                    }
+                    monitorActionJob?.join()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -2801,6 +2905,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private var lastHealthCheckRxBytes: Long = 0L
 
     private suspend fun healthCheckAndSwitch() {
+        val capturedEpoch = disconnectEpoch
+        if (!userWantsConnected) return
         // حداقل ۳۵ ثانیه پس از اتصال جدید به تونل فرصت پایداری بدهیم و اگر ترافیک زنده در جریان است قطع نکنیم
         if (connectStartMs > 0L && System.currentTimeMillis() - connectStartMs < 35_000L) return
         val currentRx = TrafficStats.getUidRxBytes(Process.myUid())
@@ -2812,6 +2918,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         var ok = false
         for (i in 0 until 3) {
+            if (!userWantsConnected || disconnectEpoch != capturedEpoch) return
             if (PennyServerScanner.testThroughLocalProxy(
                     PennyServerScanner.TEST_URLS[i % PennyServerScanner.TEST_URLS.size],
                     socksPort,
@@ -2823,7 +2930,7 @@ class MainActivity : HelperBaseComponentActivity() {
             }
             delay(2500)
         }
-        if (ok) return
+        if (ok || !userWantsConnected || disconnectEpoch != capturedEpoch) return
 
         val current = mainViewModel.uiState.value.selectedGuid
         if (current != null) {
@@ -2834,19 +2941,25 @@ class MainActivity : HelperBaseComponentActivity() {
                     if (cfg.status) CoreNativeManager.measureOutboundDelay(cfg.content, SettingsManager.getDelayTestUrl()) else -1L
                 }.getOrDefault(-1L)
             }
-            if (nativePing > 0L) return
+            if (nativePing > 0L || !userWantsConnected || disconnectEpoch != capturedEpoch) return
         }
 
+        if (!userWantsConnected || disconnectEpoch != capturedEpoch) return
         plog("Active tunnel unresponsive; auto-switching...")
         if (current != null) failedGuids.add(current)
         ui {
-            phase = Phase.CONNECTING
-            statusMessage = "Connection dropped; auto-switching..."
+            if (userWantsConnected && disconnectEpoch == capturedEpoch) {
+                phase = Phase.CONNECTING
+                statusMessage = "Connection dropped; auto-switching..."
+            }
         }
         try {
+            if (!userWantsConnected || disconnectEpoch != capturedEpoch) return
             val r = connectFromList(startAfter = current)
             ui {
-                statusMessage = if (r != null) "Switched to healthier server" else "No healthy server found; please scan"
+                if (userWantsConnected && disconnectEpoch == capturedEpoch) {
+                    statusMessage = if (r != null) "Switched to healthier server" else "No healthy server found; please scan"
+                }
             }
         } finally {
             withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
@@ -3136,6 +3249,10 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun markConnected(guid: String, verifiedPingMs: Long = -1L) {
+        if (!userWantsConnected) {
+            runCatching { LauncherManager.stopService(this@MainActivity) }
+            return
+        }
         val now = System.currentTimeMillis()
         val currentMode = serviceTierMode
         prefs.edit()
@@ -3144,6 +3261,7 @@ class MainActivity : HelperBaseComponentActivity() {
             .putBoolean("user_connected", true)
             .apply()
         ui {
+            if (!userWantsConnected) return@ui
             connectStartMs = now
             lastConnectedGuid = guid
             userWantsConnected = true
@@ -3151,7 +3269,6 @@ class MainActivity : HelperBaseComponentActivity() {
                 val targetList = activeList
                 val idx = targetList.indexOfFirst { it.guid == guid }
                 if (idx in targetList.indices) {
-                    // آپدیت درجا (In-Place) بدون پاک کردن لیست در حین رندر شدن LazyColumn برای جلوگیری از کرش Compose
                     targetList[idx] = targetList[idx].copy(ms = verifiedPingMs)
                     saveList(targetList.toList(), activeScanTime, mode = currentMode)
                 }
@@ -3161,6 +3278,8 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private suspend fun connectAndVerify(guid: String): Long {
+        val epochAtStart = disconnectEpoch
+        if (!userWantsConnected) return -1L
         if (MmkvManager.decodeServerConfig(guid) == null) {
             plog("Skipped missing server config for $guid")
             return -1L
@@ -3176,7 +3295,12 @@ class MainActivity : HelperBaseComponentActivity() {
             delay(650L)
         }
 
+        if (!userWantsConnected || disconnectEpoch != epochAtStart) {
+            return -1L
+        }
+
         withContext(Dispatchers.Main) {
+            if (!userWantsConnected || disconnectEpoch != epochAtStart) return@withContext
             runCatching {
                 MmkvManager.setSelectServer(guid)
                 mainViewModel.updateSelectedGuid(guid)
@@ -3189,6 +3313,10 @@ class MainActivity : HelperBaseComponentActivity() {
         delay(750L)
         var waited = 0
         while (!mainViewModel.uiState.value.isRunning && waited < 7500) {
+            if (!userWantsConnected || disconnectEpoch != epochAtStart) {
+                withContext(Dispatchers.Main) { runCatching { LauncherManager.stopService(this@MainActivity) } }
+                return -1L
+            }
             delay(250)
             waited += 250
         }
@@ -3200,6 +3328,10 @@ class MainActivity : HelperBaseComponentActivity() {
         var localPortReady = false
         var portWait = 0
         while (portWait < 2500) {
+            if (!userWantsConnected || disconnectEpoch != epochAtStart) {
+                withContext(Dispatchers.Main) { runCatching { LauncherManager.stopService(this@MainActivity) } }
+                return -1L
+            }
             localPortReady = withContext(Dispatchers.IO) { PennyServerScanner.isLocalPortOpen(socksPort) }
             if (localPortReady) break
             delay(250)
@@ -3211,13 +3343,20 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         delay(500)
 
-        // ملاک انتخاب سرور: فقط دانلود واقعی دیتای HTTP از طریق تانل SOCKS5 (بدون اتکا به پینگ)
         val probeUrls = PennyServerScanner.TEST_URLS.take(2)
         for (url in probeUrls) {
+            if (!userWantsConnected || disconnectEpoch != epochAtStart) {
+                withContext(Dispatchers.Main) { runCatching { LauncherManager.stopService(this@MainActivity) } }
+                return -1L
+            }
             val dlMs = withContext(Dispatchers.IO) {
                 PennyServerScanner.testThroughLocalProxy(url, socksPort, ::plog)
             }
             if (dlMs > 0L) {
+                if (!userWantsConnected || disconnectEpoch != epochAtStart) {
+                    withContext(Dispatchers.Main) { runCatching { LauncherManager.stopService(this@MainActivity) } }
+                    return -1L
+                }
                 MmkvManager.encodeServerTestDelayMillis(guid, dlMs)
                 return dlMs
             }

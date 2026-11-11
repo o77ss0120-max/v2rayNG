@@ -124,10 +124,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v2.9.6
-          name: "Penny VPN v2.9.6 (Security Audit Hardening • Strict ECDSA Signatures • R8 Minification)"
+          tag_name: v2.9.7
+          name: "Penny VPN v2.9.7 (Security Audit Hardening • Strict ECDSA Signatures • R8 Minification)"
           body: |
-            ### Penny VPN v2.9.6 — Security Hardened Release
+            ### Penny VPN v2.9.7 — Security Hardened Release
             - **Keystore & Secret Hygiene**: Removed repository `.p12` keystore; signing now exclusively uses GitHub Actions Secrets (`KEYSTORE_BASE64`).
             - **Strict ECDSA P-256 Server List Verification**: Enforced `#PENNY-SIG:` verification on remote subscription lists and removed third-party `ghproxy.net` fallback.
             - **VIP License Hardening**: Removed test/demo codes, revoked legacy public key, enforced strict online activation and JSON token expiration checks.

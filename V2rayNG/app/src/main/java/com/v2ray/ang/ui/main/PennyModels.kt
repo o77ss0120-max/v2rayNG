@@ -64,7 +64,10 @@ internal enum class BottomNavTab(val title: String) {
 internal data class CountryGeoInfo(
     val isoCode: String,
     val countryName: String,
+    val titleCaseName: String,
     val cityName: String,
+    val flagEmoji: String,
+    val exitIpPreview: String,
     val latitude: Float,
     val longitude: Float,
     val globeZoom: Float = 2.65f
@@ -76,7 +79,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "DED-NL" || normalized == "PUB-NL" || normalized == "NL" -> CountryGeoInfo(
             isoCode = "NL",
             countryName = "NETHERLANDS",
+            titleCaseName = "Netherlands",
             cityName = "Amsterdam",
+            flagEmoji = "🇳🇱",
+            exitIpPreview = "185.220.101.42",
             latitude = 52.22f,
             longitude = 5.30f,
             globeZoom = 4.50f
@@ -84,7 +90,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "GHOST" -> CountryGeoInfo(
             isoCode = "NL",
             countryName = "NETHERLANDS • GHOST",
+            titleCaseName = "Netherlands (Ghost)",
             cityName = "Amsterdam Relay",
+            flagEmoji = "🇳🇱",
+            exitIpPreview = "185.220.102.18",
             latitude = 52.22f,
             longitude = 5.30f,
             globeZoom = 4.50f
@@ -92,7 +101,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "DED-PL" || normalized == "PUB-PL" || normalized == "PL" -> CountryGeoInfo(
             isoCode = "PL",
             countryName = "POLAND",
+            titleCaseName = "Poland",
             cityName = "Warsaw",
+            flagEmoji = "🇵🇱",
+            exitIpPreview = "91.219.236.74",
             latitude = 52.15f,
             longitude = 19.30f,
             globeZoom = 2.75f
@@ -101,7 +113,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
             normalized == "PUB-DE" || normalized == "DE" -> CountryGeoInfo(
             isoCode = "DE",
             countryName = "GERMANY",
+            titleCaseName = "Germany",
             cityName = "Frankfurt",
+            flagEmoji = "🇩🇪",
+            exitIpPreview = "138.201.94.115",
             latitude = 51.15f,
             longitude = 10.40f,
             globeZoom = 2.55f
@@ -109,7 +124,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-FR" || normalized == "FR" -> CountryGeoInfo(
             isoCode = "FR",
             countryName = "FRANCE",
+            titleCaseName = "France",
             cityName = "Paris",
+            flagEmoji = "🇫🇷",
+            exitIpPreview = "51.158.114.62",
             latitude = 46.60f,
             longitude = 2.40f,
             globeZoom = 2.40f
@@ -117,7 +135,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-GB" || normalized == "PUB-UK" || normalized == "GB" || normalized == "UK" -> CountryGeoInfo(
             isoCode = "GB",
             countryName = "UNITED KINGDOM",
+            titleCaseName = "United Kingdom",
             cityName = "London",
+            flagEmoji = "🇬🇧",
+            exitIpPreview = "178.79.162.88",
             latitude = 53.80f,
             longitude = -2.20f,
             globeZoom = 2.45f
@@ -125,7 +146,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-FI" || normalized == "FI" -> CountryGeoInfo(
             isoCode = "FI",
             countryName = "FINLAND",
+            titleCaseName = "Finland",
             cityName = "Helsinki",
+            flagEmoji = "🇫🇮",
+            exitIpPreview = "95.216.148.30",
             latitude = 63.80f,
             longitude = 26.00f,
             globeZoom = 2.15f
@@ -133,7 +157,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-SE" || normalized == "SE" -> CountryGeoInfo(
             isoCode = "SE",
             countryName = "SWEDEN",
+            titleCaseName = "Sweden",
             cityName = "Stockholm",
+            flagEmoji = "🇸🇪",
+            exitIpPreview = "194.132.208.19",
             latitude = 62.00f,
             longitude = 15.50f,
             globeZoom = 2.05f
@@ -141,7 +168,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-TR" || normalized == "TR" -> CountryGeoInfo(
             isoCode = "TR",
             countryName = "TURKEY",
+            titleCaseName = "Turkey",
             cityName = "Istanbul",
+            flagEmoji = "🇹🇷",
+            exitIpPreview = "185.125.33.91",
             latitude = 39.10f,
             longitude = 35.20f,
             globeZoom = 2.25f
@@ -149,7 +179,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-CH" || normalized == "CH" -> CountryGeoInfo(
             isoCode = "CH",
             countryName = "SWITZERLAND",
+            titleCaseName = "Switzerland",
             cityName = "Zurich",
+            flagEmoji = "🇨🇭",
+            exitIpPreview = "179.43.176.50",
             latitude = 46.82f,
             longitude = 8.23f,
             globeZoom = 4.60f
@@ -157,7 +190,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-AT" || normalized == "AT" -> CountryGeoInfo(
             isoCode = "AT",
             countryName = "AUSTRIA",
+            titleCaseName = "Austria",
             cityName = "Vienna",
+            flagEmoji = "🇦🇹",
+            exitIpPreview = "185.195.201.14",
             latitude = 47.60f,
             longitude = 14.10f,
             globeZoom = 3.60f
@@ -165,7 +201,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-IT" || normalized == "IT" -> CountryGeoInfo(
             isoCode = "IT",
             countryName = "ITALY",
+            titleCaseName = "Italy",
             cityName = "Milan",
+            flagEmoji = "🇮🇹",
+            exitIpPreview = "185.216.34.81",
             latitude = 42.80f,
             longitude = 12.60f,
             globeZoom = 2.30f
@@ -173,7 +212,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-ES" || normalized == "ES" -> CountryGeoInfo(
             isoCode = "ES",
             countryName = "SPAIN",
+            titleCaseName = "Spain",
             cityName = "Madrid",
+            flagEmoji = "🇪🇸",
+            exitIpPreview = "185.246.208.11",
             latitude = 40.30f,
             longitude = -3.70f,
             globeZoom = 2.40f
@@ -181,7 +223,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-US" || normalized == "US" -> CountryGeoInfo(
             isoCode = "US",
             countryName = "UNITED STATES",
+            titleCaseName = "United States",
             cityName = "New York",
+            flagEmoji = "🇺🇸",
+            exitIpPreview = "104.244.72.115",
             latitude = 39.50f,
             longitude = -98.35f,
             globeZoom = 1.55f
@@ -189,7 +234,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-CA" || normalized == "CA" -> CountryGeoInfo(
             isoCode = "CA",
             countryName = "CANADA",
+            titleCaseName = "Canada",
             cityName = "Toronto",
+            flagEmoji = "🇨🇦",
+            exitIpPreview = "198.50.191.22",
             latitude = 55.00f,
             longitude = -96.00f,
             globeZoom = 1.45f
@@ -197,7 +245,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         normalized == "PUB-AE" || normalized == "AE" -> CountryGeoInfo(
             isoCode = "AE",
             countryName = "UAE",
+            titleCaseName = "UAE",
             cityName = "Dubai",
+            flagEmoji = "🇦🇪",
+            exitIpPreview = "185.156.44.19",
             latitude = 24.30f,
             longitude = 54.30f,
             globeZoom = 3.60f
@@ -205,7 +256,10 @@ internal fun getCountryGeoInfo(codeTag: String?): CountryGeoInfo {
         else -> CountryGeoInfo(
             isoCode = "NL",
             countryName = "NETHERLANDS",
+            titleCaseName = "Netherlands",
             cityName = "Amsterdam",
+            flagEmoji = "🇳🇱",
+            exitIpPreview = "185.220.101.42",
             latitude = 52.22f,
             longitude = 5.30f,
             globeZoom = 4.50f

@@ -1,7 +1,7 @@
 # Privacy Policy — Penny VPN (`com.penny.vpn`)
 
 **Effective Date:** November 10, 2026  
-**Version:** 2.9.4
+**Version:** 2.9.5
 
 ## 1. Overview
 Penny VPN (`com.penny.vpn`) provides encrypted VPN tunneling on Android and Android TV using Android's `VpnService` API. This policy transparently discloses what data is never collected and what technical identifiers are processed strictly for quota enforcement and service operation.
@@ -17,7 +17,7 @@ Penny VPN (`com.penny.vpn`) provides encrypted VPN tunneling on Android and Andr
   - During quota synchronization (`/api/v1/quota/daily-sync`) and VIP license activation/heartbeat (`/api/v1/license/activate`, `/api/v1/license/heartbeat`), the app transmits only: `deviceId`, `userUuid`, license serial (if VIP), cumulative byte counter (`usedBytes` / `localUsedBytes`), and current mode (`PUBLIC`, `DEDICATED`, or `GHOST`) over HTTPS.
   - Raw hardware identifiers are never transmitted, and identifiers are masked (`[PROTECTED-UUID]`, `[PROTECTED-HWID]`) in local diagnostic logs.
 - **Advertising & Sponsor Links (Free Tier Only):**
-  - Free-tier users may see Google AdMob ads (which use `com.google.android.gms.permission.AD_ID`) or open external sponsor Smartlinks in their system browser when voluntarily claiming the `+500 MB Free VIP Quota` reward or clicking the sponsor banner.
+  - Free-tier users may see Google AdMob ads (which use `com.google.android.gms.permission.AD_ID`) and Start.io In-App Ads (`com.startapp:inapp-sdk`, App ID `210814549`) for banner, interstitial, and rewarded video ads (`+500 MB Free VIP Quota`).
   - Paid VIP subscribers operate in 100% Ad-Free mode.
 
 ## 4. Security Measures
@@ -31,4 +31,4 @@ Penny VPN (`com.penny.vpn`) provides encrypted VPN tunneling on Android and Andr
 
 ۱. **عدم ثبت ترافیک و تاریخچه مرور:** اپلیکیشن Penny VPN هیچ‌گونه لاگی از سایت‌های بازدیدشده، درخواست‌های DNS یا محتوای ترافیک عبوری شما ذخیره یا بررسی نمی‌کند.  
 ۲. **شناسه‌های فنی جهت مدیریت سهمیه (Quota):** برای اعمال سهمیه ۱ گیگابایت روزانه رایگان در حالت VIP Mode و سهمیه ۵۰ گیگابایتی لایسنس‌های VIP، یک هش یک‌طرفه رمزنگاری‌شده (`deviceId` و `userUuid`) مشتق از `ANDROID_ID` و شناسه سخت‌افزاری Widevine به همراه میزان حجم مصرفی (`usedBytes`) و حالت اتصال (`PUBLIC`/`DEDICATED`/`GHOST`) از طریق HTTPS با سرور سهمیه همگام‌سازی می‌شود. این شناسه‌ها در لاگ‌های داخلی برنامه سانسور (`[PROTECTED-UUID]`) می‌شوند.  
-۳. **تبلیغات در نسخه رایگان:** کاربران نسخه رایگان ممکن است تبلیغات Google AdMob یا لینک‌های حامی (Adsterra Smartlink) را هنگام دریافت پاداش `+500 MB` مشاهده کنند. در نسخه VIP تمامی تبلیغات غیرفعال هستند.
+۳. **تبلیغات در نسخه رایگان:** کاربران نسخه رایگان ممکن است تبلیغات درون‌برنامه‌ای Start.io SDK (شناسه `210814549`) و Google AdMob را هنگام دریافت پاداش `+500 MB` مشاهده کنند. در نسخه VIP تمامی تبلیغات غیرفعال هستند.

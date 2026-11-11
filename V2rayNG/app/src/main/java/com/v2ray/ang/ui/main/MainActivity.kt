@@ -64,13 +64,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
+import com.startapp.sdk.adsbase.Ad
+import com.startapp.sdk.adsbase.StartAppAd
+import com.startapp.sdk.adsbase.StartAppSDK
+import com.startapp.sdk.adsbase.adlisteners.AdEventListener
+import com.startapp.sdk.adsbase.adlisteners.VideoListener
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
@@ -141,16 +143,14 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
-        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت برای هر دیوایس + اسمارت‌لینک‌های Adsterra ──
+        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت برای هر دیوایس + تبلیغات Start.io SDK ──
+        const val STARTIO_APP_ID = "210814549"
         private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
         private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای تبلیغ حامی
         private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
         private const val REWARD_ADD_DATA_BYTES = 1L * 1024L * 1024L * 1024L // +۱ گیگابایت حجم اضافه با تماشای ویدیو جایزه‌دار
-        private const val ADSTERRA_BONUS_BYTES = 500L * 1024L * 1024L        // +۵۰۰ مگابایت سهمیه VIP با هر بازدید از اسمارت‌لینک Adsterra
-
-        const val ADSTERRA_SMARTLINK_1 = "https://auctionr.org/4/4b7d1c5fc290cc8849101d434c8aebfa"
-        const val ADSTERRA_SMARTLINK_2 = "https://asiafilm.org/4/c6987696def6ca8348e1e070af486bbb"
+        private const val STARTIO_REWARD_BONUS_BYTES = 500L * 1024L * 1024L  // +۵۰۰ مگابایت سهمیه VIP با تماشای تبلیغ جایزه‌دار Start.io
     }
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -159,15 +159,13 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val socksPort: Int get() = SettingsManager.getSocksPort()
 
-    // ── وضعیت AdMob، Adsterra Smartlinks و سهمیه روزانه ۱ گیگ به ازای هر دیوایس ──
+    // ── وضعیت Start.io SDK، AdMob و سهمیه روزانه ۱ گیگ به ازای هر دیوایس ──
+    private var startIoInterstitialAd: StartAppAd? = null
     private var interstitialAd: InterstitialAd? = null
     private var isAdLoading = false
     private var lastInterstitialShownMs by mutableStateOf(0L)
     private var rewardedAd: RewardedAd? = null
     private var isRewardedLoading = false
-    private var showAdsterraDialog by mutableStateOf(false)
-    private var activeAdsterraUrl by mutableStateOf(ADSTERRA_SMARTLINK_1)
-    private var adsterraRotationIndex by mutableStateOf(0)
     private var freeSessionRemainingSec by mutableStateOf(BASE_FREE_SESSION_SEC)
     private var dailyQuotaDayKey by mutableStateOf("")
     private var dailyUsedBytes by mutableStateOf(0L)
@@ -324,9 +322,20 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    // ═════════════════════════ AdMob (مدل Time-Boxed + کول‌داون ۱۰ دقیقه‌ای) ═════════════════════════
+    // ═════════════════════════ Start.io SDK (App ID: 210814549) + AdMob ═════════════════════════
 
     private fun initAdMob() {
+        runCatching {
+            StartAppSDK.initParams(this@MainActivity, STARTIO_APP_ID)
+                .setReturnAdsEnabled(false)
+                .init()
+            StartAppAd.disableSplash()
+            loadStartIoInterstitialAd()
+            plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • ReturnAds=false)")
+        }.onFailure { e ->
+            plog("Start.io init warning: ${e.message}")
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 MobileAds.initialize(this@MainActivity) {
@@ -339,6 +348,23 @@ class MainActivity : HelperBaseComponentActivity() {
             } catch (e: Exception) {
                 plog("AdMob init warning: ${e.message}")
             }
+        }
+    }
+
+    private fun loadStartIoInterstitialAd() {
+        if (vipActive) return
+        runCatching {
+            val ad = StartAppAd(this)
+            ad.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                override fun onReceiveAd(receivedAd: Ad) {
+                    startIoInterstitialAd = ad
+                    plog("Start.io Interstitial preloaded and ready")
+                }
+
+                override fun onFailedToReceiveAd(failedAd: Ad?) {
+                    startIoInterstitialAd = null
+                }
+            })
         }
     }
 
@@ -374,39 +400,51 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
-    private fun nextAdsterraSmartlink(): String {
-        val nextIdx = (adsterraRotationIndex + 1) % 2
-        adsterraRotationIndex = nextIdx
-        prefs.edit().putInt("adsterra_rot_idx", nextIdx).apply()
-        val chosen = if (nextIdx == 0) ADSTERRA_SMARTLINK_1 else ADSTERRA_SMARTLINK_2
-        activeAdsterraUrl = chosen
-        return chosen
-    }
-
-    private fun openAdsterraSmartlinkReward() {
-        val url = nextAdsterraSmartlink()
-        activeAdsterraUrl = url
-        showAdsterraDialog = true
-        plog("Opened Adsterra Sponsor Smartlink #${adsterraRotationIndex + 1} for +500 MB VIP Quota")
-    }
-
-    private fun claimAdsterraBonusQuota(openInBrowser: Boolean = false) {
+    private fun claimStartIoRewardBonus() {
         ensureDailyDeviceQuotaCurrent()
-        dailyMaxBytes += ADSTERRA_BONUS_BYTES
+        dailyMaxBytes += STARTIO_REWARD_BONUS_BYTES
         freeSessionRemainingSec += REWARD_ADD_TIME_SEC
         prefs.edit()
             .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
             .putLong("free_session_rem_sec", freeSessionRemainingSec)
             .apply()
         val remBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
-        statusMessage = "+500 MB VIP Quota & +2h Added! (${fmtBytes(remBytes)} left)"
-        plog("Adsterra Sponsor Reward claimed: +500 MB VIP Quota (New Daily Max: ${fmtBytes(dailyMaxBytes)})")
-        if (openInBrowser) {
-            runCatching {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(activeAdsterraUrl)))
-            }
+        statusMessage = "+500 MB VIP Quota & +2h Added via Start.io! (${fmtBytes(remBytes)} left)"
+        plog("Start.io Rewarded Video completed: +500 MB VIP Quota (New Daily Max: ${fmtBytes(dailyMaxBytes)})")
+    }
+
+    private fun showStartIoRewardedVideoForQuota() {
+        statusMessage = "Loading Start.io Rewarded Video (+500 MB)..."
+        plog("Requesting Start.io Rewarded Video (App ID: $STARTIO_APP_ID)...")
+        runCatching {
+            val rewarded = StartAppAd(this)
+            rewarded.setVideoListener(VideoListener {
+                runOnUiThread {
+                    claimStartIoRewardBonus()
+                }
+            })
+            rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
+                override fun onReceiveAd(ad: Ad) {
+                    rewarded.showAd()
+                }
+
+                override fun onFailedToReceiveAd(ad: Ad?) {
+                    // Fallback to AdMob Rewarded if Start.io video fill is unavailable
+                    val admobRewarded = rewardedAd
+                    if (admobRewarded != null) {
+                        admobRewarded.show(this@MainActivity, OnUserEarnedRewardListener {
+                            claimStartIoRewardBonus()
+                        })
+                    } else {
+                        loadRewardedAd()
+                        statusMessage = "Start.io Rewarded Ad not available right now; try again shortly"
+                        plog("Start.io Rewarded Ad failed to load")
+                    }
+                }
+            })
+        }.onFailure { e ->
+            plog("Start.io Rewarded error: ${e.message}")
         }
-        showAdsterraDialog = false
     }
 
     private fun showInterstitialAdIfReady() {
@@ -417,16 +455,22 @@ class MainActivity : HelperBaseComponentActivity() {
             plog("Interstitial skipped by 10m Frequency Cap (${waitSec}s remaining)")
             return
         }
-        val ad = interstitialAd
-        if (ad != null) {
+        val startAd = startIoInterstitialAd
+        if (startAd != null && startAd.isReady) {
             lastInterstitialShownMs = now
             prefs.edit().putLong("last_interstitial_ms", now).apply()
-            ad.show(this)
+            startAd.showAd()
+            startIoInterstitialAd = null
+            loadStartIoInterstitialAd()
+            return
+        }
+        val admobAd = interstitialAd
+        if (admobAd != null) {
+            lastInterstitialShownMs = now
+            prefs.edit().putLong("last_interstitial_ms", now).apply()
+            admobAd.show(this)
         } else {
-            lastInterstitialShownMs = now
-            prefs.edit().putLong("last_interstitial_ms", now).apply()
-            activeAdsterraUrl = nextAdsterraSmartlink()
-            showAdsterraDialog = true
+            loadStartIoInterstitialAd()
             loadInterstitialAd()
         }
     }
@@ -730,8 +774,6 @@ class MainActivity : HelperBaseComponentActivity() {
         connectStartMs = prefs.getLong("connect_time", 0L)
         lastConnectedGuid = prefs.getString("last_guid", null)
         lastInterstitialShownMs = prefs.getLong("last_interstitial_ms", 0L)
-        adsterraRotationIndex = prefs.getInt("adsterra_rot_idx", 0)
-        activeAdsterraUrl = if (adsterraRotationIndex % 2 == 0) ADSTERRA_SMARTLINK_1 else ADSTERRA_SMARTLINK_2
         freeSessionRemainingSec = prefs.getLong("free_session_rem_sec", BASE_FREE_SESSION_SEC).coerceAtLeast(60L)
 
         val today = todayDateKey()
@@ -1336,7 +1378,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                     ghostMessagingOnly = ghostMessagingOnly,
                                     adUnitId = ADMOB_BANNER_UNIT_ID,
                                     showAds = !vipActive,
-                                    onSponsorClick = { openAdsterraSmartlinkReward() },
+                                    onSponsorClick = { showStartIoRewardedVideoForQuota() },
                                     onAutoTuneClick = {
                                         val tuned = PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
                                         statusMessage = "ISP Auto-Tuned: $tuned"
@@ -1411,7 +1453,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                     },
                                     onCopyUuid = { copyUuidToClipboard() },
                                     onOpenVipDialog = { showVipDialog = true },
-                                    onWatchSponsorAd = { openAdsterraSmartlinkReward() },
+                                    onWatchSponsorAd = { showStartIoRewardedVideoForQuota() },
                                     onOpenLogs = { showLog = true },
                                     onOpenUpdate = { showUpdateDialog = true }
                                 )
@@ -1441,148 +1483,10 @@ class MainActivity : HelperBaseComponentActivity() {
             if (showMenu) ModernMenuDialog(isVipMode)
             if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning, isVipMode)
             if (showVipDialog) VipSubscriptionDialog()
-            if (showAdsterraDialog) AdsterraSponsorDialog()
             if (showUpdateDialog) UpdateCenterDialog()
             if (showLog) LogDialog()
         }
     }
-
-    @Composable
-    private fun AdsterraSponsorDialog() {
-        var countdownSec by remember(activeAdsterraUrl) { mutableStateOf(6) }
-        val sponsorHost = remember(activeAdsterraUrl) {
-            if (activeAdsterraUrl.contains("auctionr.org")) "auctionr.org (Smartlink #1)"
-            else "asiafilm.org (Smartlink #2)"
-        }
-
-        LaunchedEffect(activeAdsterraUrl) {
-            while (countdownSec > 0) {
-                delay(1000L)
-                countdownSec--
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = {
-                if (countdownSec <= 0) {
-                    showAdsterraDialog = false
-                }
-            },
-            containerColor = Color(0xFF17181E),
-            confirmButton = {
-                Button(
-                    onClick = { claimAdsterraBonusQuota(openInBrowser = false) },
-                    enabled = countdownSec <= 0,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE6CFAF),
-                        disabledContainerColor = Color(0xFF2B2D36)
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        text = if (countdownSec > 0) "Wait ${countdownSec}s for +500 MB..." else "🎁 Claim +500 MB & Close",
-                        color = if (countdownSec > 0) Color(0xFF9EA2AE) else Color(0xFF14151A),
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-            },
-            dismissButton = {
-                OutlinedButton(
-                    onClick = { claimAdsterraBonusQuota(openInBrowser = true) },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        text = "Open in Browser (+500 MB)",
-                        color = Color(0xFFE6CFAF),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "🎁 Penny VPN Sponsor Bonus",
-                            color = Color(0xFFF2F4F8),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "Sponsor: $sponsorHost • +500 MB VIP Quota",
-                            color = Color(0xFFE6CFAF),
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Surface(
-                        color = Color(0xFF25262E),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showAdsterraDialog = false }
-                    ) {
-                        Text(
-                            text = "✕",
-                            color = Color(0xFFD0D4DF),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(270.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF101116))
-                            .border(1.dp, Color(0xFF343642), RoundedCornerShape(12.dp))
-                    ) {
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.loadsImagesAutomatically = true
-                                    webViewClient = object : WebViewClient() {
-                                        override fun shouldOverrideUrlLoading(
-                                            view: WebView?,
-                                            url: String?
-                                        ): Boolean {
-                                            return false
-                                        }
-                                    }
-                                    loadUrl(activeAdsterraUrl)
-                                }
-                            },
-                            update = { webView ->
-                                if (webView.url != activeAdsterraUrl) {
-                                    webView.loadUrl(activeAdsterraUrl)
-                                }
-                            }
-                        )
-                    }
-                    Text(
-                        text = "Supporting our sponsor keeps Penny VPN servers fast & free. Claim +500 MB daily VIP Mode traffic + 2h session time.",
-                        color = Color(0xFFA0A4B0),
-                        fontSize = 10.sp
-                    )
-                }
-            }
-        )
     }
 
     @Composable

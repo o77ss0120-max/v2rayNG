@@ -1,4 +1,4 @@
-# Penny VPN (v2.9.4)
+# Penny VPN (v2.9.5)
 
 **Connect When Others Can't** — Smart Anti-Censorship VPN Client for Android & Android TV (`com.penny.vpn`)
 

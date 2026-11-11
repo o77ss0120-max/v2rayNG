@@ -1412,7 +1412,7 @@ internal object PennyServerScanner {
         val releaseNotes: String
     )
 
-    const val APP_VERSION_NAME = "2.9.4"
+    const val APP_VERSION_NAME = "2.9.5"
     const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
 

@@ -13,8 +13,8 @@ android {
         applicationId = "com.penny.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 794
-        versionName = "2.9.4"
+        versionCode = 795
+        versionName = "2.9.5"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -193,6 +193,7 @@ dependencies {
 
     implementation(libs.androidx.activity.compose)
     implementation("com.google.android.gms:play-services-ads:23.6.0")
+    implementation("com.startapp:inapp-sdk:5.4.0")
     implementation("com.google.guava:guava:33.3.1-android")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)

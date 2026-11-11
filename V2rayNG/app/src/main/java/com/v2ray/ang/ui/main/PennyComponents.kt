@@ -63,6 +63,7 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
 import com.google.android.gms.ads.LoadAdError
+import com.startapp.sdk.ads.banner.Banner
 import com.v2ray.ang.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -751,49 +752,64 @@ internal fun ServiceQualityUptimeCard(
                         .border(1.dp, ChampagneGold.copy(alpha = 0.55f), sponsorShape)
                         .tvDpadClickable(shape = sponsorShape) { onSponsorClick() }
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 9.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(ChampagneGold.copy(alpha = 0.22f))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(ChampagneGold.copy(alpha = 0.22f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "START.IO",
+                                        color = ChampagneLight,
+                                        fontSize = 7.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                                 Text(
-                                    text = "AD",
-                                    color = ChampagneLight,
-                                    fontSize = 7.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace
+                                    text = "Rewarded Video • Watch for +500 MB VIP Quota",
+                                    color = PlatinumBright,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             Text(
-                                text = "Sponsor • Tap for +500 MB Free VIP Quota",
-                                color = PlatinumBright,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
+                                text = "+500 MB ›",
+                                color = ChampagneGold,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
-                        Text(
-                            text = "+500 MB ›",
-                            color = ChampagneGold,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                            softWrap = false
+
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(6.dp)),
+                            factory = { ctx ->
+                                Banner(ctx)
+                            }
                         )
                     }
                 }
@@ -2775,7 +2791,7 @@ internal fun ProfileTabPage(
             }
         }
 
-        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode + دکمه جایزه +500MB Adsterra و ارتقا به VIP 50GB
+        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode + دکمه جایزه +500MB Start.io و ارتقا به VIP 50GB
         Surface(
             color = ObsidianCard,
             shape = RoundedCornerShape(14.dp),

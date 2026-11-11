@@ -71,6 +71,7 @@ import androidx.lifecycle.lifecycleScope
 import com.startapp.sdk.adsbase.Ad
 import com.startapp.sdk.adsbase.StartAppAd
 import com.startapp.sdk.adsbase.StartAppSDK
+import com.startapp.sdk.adsbase.adlisteners.AdDisplayListener
 import com.startapp.sdk.adsbase.adlisteners.AdEventListener
 import com.startapp.sdk.adsbase.adlisteners.VideoListener
 import com.google.android.gms.ads.AdError
@@ -150,7 +151,7 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای تبلیغ حامی
         private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
         private const val REWARD_ADD_DATA_BYTES = 1L * 1024L * 1024L * 1024L // +۱ گیگابایت حجم اضافه با تماشای ویدیو جایزه‌دار
-        private const val STARTIO_REWARD_BONUS_BYTES = 500L * 1024L * 1024L  // +۵۰۰ مگابایت سهمیه VIP با تماشای تبلیغ جایزه‌دار Start.io
+        private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L  // +۱۰۰ مگابایت سهمیه VIP با تماشای هر تبلیغ جایزه‌دار Start.io
     }
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -352,13 +353,14 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun loadStartIoInterstitialAd() {
-        if (vipActive) return
+        // فقط زمانی که VPN خاموش است پیش‌بارگذاری انجام می‌شود تا درخواست تبلیغ از آی‌پی واقعی کاربر ارسال شود
+        if (vipActive || mainViewModel.uiState.value.isRunning) return
         runCatching {
             val ad = StartAppAd(this)
             ad.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
                 override fun onReceiveAd(receivedAd: Ad) {
                     startIoInterstitialAd = ad
-                    plog("Start.io Interstitial preloaded and ready")
+                    plog("Start.io Interstitial preloaded on direct user IP")
                 }
 
                 override fun onFailedToReceiveAd(failedAd: Ad?) {
@@ -369,7 +371,7 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun loadInterstitialAd() {
-        if (vipActive || isAdLoading || interstitialAd != null) return
+        if (vipActive || isAdLoading || interstitialAd != null || mainViewModel.uiState.value.isRunning) return
         isAdLoading = true
         val adRequest = AdRequest.Builder().build()
         InterstitialAd.load(
@@ -400,6 +402,40 @@ class MainActivity : HelperBaseComponentActivity() {
         )
     }
 
+    private suspend fun pauseVpnForDirectIpAdIfNeeded(): Boolean {
+        val wasRunning = mainViewModel.uiState.value.isRunning || phase != Phase.IDLE
+        if (wasRunning) {
+            withContext(Dispatchers.Main) {
+                workJob?.cancel()
+                userWantsConnected = false
+                phase = Phase.IDLE
+                scanProgress = 0f
+                statusMessage = "Disconnecting VPN to load ad on your direct IP..."
+                plog("VPN disconnected before ad playback so Start.io uses user's real IP (not VPN server IP)")
+                runCatching { PennySpeedLimiter.stop() }
+                runCatching { LauncherManager.stopService(this@MainActivity) }
+            }
+            var waitedMs = 0L
+            while (mainViewModel.uiState.value.isRunning && waitedMs < 2000L) {
+                delay(150L)
+                waitedMs += 150L
+            }
+            delay(450L) // اطمینان از بسته شدن کامل اینترفیس TUN و بازگشت ترافیک به IP واقعی کاربر
+        }
+        return wasRunning
+    }
+
+    private fun resumeVpnAfterAdIfNeeded(shouldResume: Boolean) {
+        if (!shouldResume) return
+        lifecycleScope.launch(Dispatchers.Main) {
+            delay(350L)
+            if (!mainViewModel.uiState.value.isRunning && phase == Phase.IDLE) {
+                plog("Ad closed; auto-reconnecting VPN tunnel...")
+                startSmartConnect()
+            }
+        }
+    }
+
     private fun claimStartIoRewardBonus() {
         ensureDailyDeviceQuotaCurrent()
         dailyMaxBytes += STARTIO_REWARD_BONUS_BYTES
@@ -409,41 +445,75 @@ class MainActivity : HelperBaseComponentActivity() {
             .putLong("free_session_rem_sec", freeSessionRemainingSec)
             .apply()
         val remBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
-        statusMessage = "+500 MB VIP Quota & +2h Added via Start.io! (${fmtBytes(remBytes)} left)"
-        plog("Start.io Rewarded Video completed: +500 MB VIP Quota (New Daily Max: ${fmtBytes(dailyMaxBytes)})")
+        statusMessage = "+100 MB VIP Quota & +2h Added via Start.io! (${fmtBytes(remBytes)} left)"
+        plog("Start.io Rewarded Video completed on real IP: +100 MB VIP Quota (New Daily Max: ${fmtBytes(dailyMaxBytes)})")
     }
 
     private fun showStartIoRewardedVideoForQuota() {
-        statusMessage = "Loading Start.io Rewarded Video (+500 MB)..."
-        plog("Requesting Start.io Rewarded Video (App ID: $STARTIO_APP_ID)...")
-        runCatching {
-            val rewarded = StartAppAd(this)
-            rewarded.setVideoListener(VideoListener {
-                runOnUiThread {
-                    claimStartIoRewardBonus()
-                }
-            })
-            rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
-                override fun onReceiveAd(ad: Ad) {
-                    rewarded.showAd()
-                }
-
-                override fun onFailedToReceiveAd(ad: Ad?) {
-                    // Fallback to AdMob Rewarded if Start.io video fill is unavailable
-                    val admobRewarded = rewardedAd
-                    if (admobRewarded != null) {
-                        admobRewarded.show(this@MainActivity, OnUserEarnedRewardListener {
+        lifecycleScope.launch(Dispatchers.Main) {
+            val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
+            statusMessage = "Loading Start.io Video on direct IP (+100 MB)..."
+            plog("Requesting Start.io Rewarded Video on direct user IP (App ID: $STARTIO_APP_ID)...")
+            runCatching {
+                val rewarded = StartAppAd(this@MainActivity)
+                var rewardGranted = false
+                rewarded.setVideoListener(VideoListener {
+                    runOnUiThread {
+                        if (!rewardGranted) {
+                            rewardGranted = true
                             claimStartIoRewardBonus()
-                        })
-                    } else {
-                        loadRewardedAd()
-                        statusMessage = "Start.io Rewarded Ad not available right now; try again shortly"
-                        plog("Start.io Rewarded Ad failed to load")
+                        }
                     }
-                }
-            })
-        }.onFailure { e ->
-            plog("Start.io Rewarded error: ${e.message}")
+                })
+                rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
+                    override fun onReceiveAd(ad: Ad) {
+                        rewarded.showAd(object : AdDisplayListener {
+                            override fun adHidden(displayedAd: Ad?) {
+                                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                            }
+
+                            override fun adDisplayed(displayedAd: Ad?) {
+                                plog("Start.io Rewarded Video displayed on user's real IP")
+                            }
+
+                            override fun adClicked(displayedAd: Ad?) {}
+
+                            override fun adNotDisplayed(displayedAd: Ad?) {
+                                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                            }
+                        })
+                    }
+
+                    override fun onFailedToReceiveAd(ad: Ad?) {
+                        // Fallback to AdMob Rewarded on direct user IP if Start.io video fill is unavailable
+                        val admobRewarded = rewardedAd
+                        if (admobRewarded != null) {
+                            admobRewarded.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                override fun onAdDismissedFullScreenContent() {
+                                    rewardedAd = null
+                                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                                }
+
+                                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                                    rewardedAd = null
+                                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                                }
+                            }
+                            admobRewarded.show(this@MainActivity, OnUserEarnedRewardListener {
+                                claimStartIoRewardBonus()
+                            })
+                        } else {
+                            loadRewardedAd()
+                            statusMessage = "Start.io Ad not ready; try again shortly"
+                            plog("Start.io Rewarded Ad failed to load on direct IP")
+                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        }
+                    }
+                })
+            }.onFailure { e ->
+                plog("Start.io Rewarded error: ${e.message}")
+                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+            }
         }
     }
 
@@ -455,23 +525,54 @@ class MainActivity : HelperBaseComponentActivity() {
             plog("Interstitial skipped by 10m Frequency Cap (${waitSec}s remaining)")
             return
         }
-        val startAd = startIoInterstitialAd
-        if (startAd != null && startAd.isReady) {
-            lastInterstitialShownMs = now
-            prefs.edit().putLong("last_interstitial_ms", now).apply()
-            startAd.showAd()
-            startIoInterstitialAd = null
-            loadStartIoInterstitialAd()
-            return
-        }
-        val admobAd = interstitialAd
-        if (admobAd != null) {
-            lastInterstitialShownMs = now
-            prefs.edit().putLong("last_interstitial_ms", now).apply()
-            admobAd.show(this)
-        } else {
-            loadStartIoInterstitialAd()
-            loadInterstitialAd()
+        lifecycleScope.launch(Dispatchers.Main) {
+            val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
+            val startAd = startIoInterstitialAd
+            if (startAd != null && startAd.isReady) {
+                lastInterstitialShownMs = now
+                prefs.edit().putLong("last_interstitial_ms", now).apply()
+                startIoInterstitialAd = null
+                startAd.showAd(object : AdDisplayListener {
+                    override fun adHidden(ad: Ad?) {
+                        loadStartIoInterstitialAd()
+                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                    }
+
+                    override fun adDisplayed(ad: Ad?) {
+                        plog("Start.io Interstitial displayed on user's real IP")
+                    }
+
+                    override fun adClicked(ad: Ad?) {}
+
+                    override fun adNotDisplayed(ad: Ad?) {
+                        loadStartIoInterstitialAd()
+                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                    }
+                })
+                return@launch
+            }
+            val admobAd = interstitialAd
+            if (admobAd != null) {
+                lastInterstitialShownMs = now
+                prefs.edit().putLong("last_interstitial_ms", now).apply()
+                admobAd.fullScreenContentCallback = object : FullScreenContentCallback() {
+                    override fun onAdDismissedFullScreenContent() {
+                        interstitialAd = null
+                        loadInterstitialAd()
+                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                    }
+
+                    override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                        interstitialAd = null
+                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                    }
+                }
+                admobAd.show(this@MainActivity)
+            } else {
+                loadStartIoInterstitialAd()
+                loadInterstitialAd()
+                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+            }
         }
     }
 
@@ -1279,26 +1380,46 @@ class MainActivity : HelperBaseComponentActivity() {
 
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             OutlinedButton(
                                                 onClick = { startScanOnly() },
                                                 enabled = !busy,
                                                 shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(40.dp)
                                             ) {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     if (serviceTierMode != ServiceTierMode.PUBLIC) {
-                                                        GlassDiamondIcon(size = 11.dp)
-                                                        Spacer(Modifier.width(5.dp))
+                                                        GlassDiamondIcon(size = 10.dp)
+                                                        Spacer(Modifier.width(4.dp))
                                                     }
                                                     Text(
                                                         text = "Scan ${serviceTierMode.shortTitle}",
-                                                        fontSize = 11.5.sp,
+                                                        fontSize = 10.5.sp,
                                                         color = Color(0xFFE8ECF4),
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+
+                                            if (!vipActive) {
+                                                OutlinedButton(
+                                                    onClick = { showStartIoRewardedVideoForQuota() },
+                                                    enabled = !busy,
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                    modifier = Modifier
+                                                        .weight(1.05f)
+                                                        .height(40.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "🎬 +100 MB Free",
+                                                        fontSize = 10.5.sp,
+                                                        color = Color(0xFFE6CFAF),
+                                                        fontWeight = FontWeight.ExtraBold,
                                                         maxLines = 1
                                                     )
                                                 }
@@ -1308,7 +1429,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                                 onClick = { switchNext() },
                                                 enabled = !busy && isRunning && currentList.size > 1,
                                                 shape = RoundedCornerShape(12.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(40.dp),
@@ -1318,7 +1439,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                             ) {
                                                 Text(
                                                     text = Strings.nextServerBtn(appLang),
-                                                    fontSize = 11.5.sp,
+                                                    fontSize = 10.5.sp,
                                                     color = if (serviceTierMode != ServiceTierMode.PUBLIC) Color(0xFF15161B) else Color(0xFFF5EFE6),
                                                     fontWeight = FontWeight.Bold,
                                                     maxLines = 1
@@ -1486,7 +1607,6 @@ class MainActivity : HelperBaseComponentActivity() {
             if (showUpdateDialog) UpdateCenterDialog()
             if (showLog) LogDialog()
         }
-    }
     }
 
     @Composable
@@ -2471,6 +2591,8 @@ class MainActivity : HelperBaseComponentActivity() {
         statusMessage = "Disconnected"
         connectStartMs = 0L
         plog("Disconnected by user")
+        // پس از قطع کامل VPN و بازگشت به آی‌پی واقعی کاربر، تبلیغ بینابینی بررسی/پیش‌بارگذاری می‌شود
+        showInterstitialAdIfReady()
     }
 
     private fun cancelWork() {
@@ -2513,7 +2635,6 @@ class MainActivity : HelperBaseComponentActivity() {
                             freeSessionRemainingSec = BASE_FREE_SESSION_SEC
                             prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
                         }
-                        showInterstitialAdIfReady()
                         "Connected"
                     } else {
                         "No working server found. Check App Logs."
@@ -2633,7 +2754,6 @@ class MainActivity : HelperBaseComponentActivity() {
                 if (ping > 0) {
                     markConnected(entry.guid, ping)
                     ui {
-                        showInterstitialAdIfReady()
                         statusMessage = "Connected • ${entry.label}"
                     }
                 } else {

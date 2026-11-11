@@ -783,7 +783,7 @@ internal fun ServiceQualityUptimeCard(
                                     )
                                 }
                                 Text(
-                                    text = "Rewarded Video • Watch for +500 MB VIP Quota",
+                                    text = "Rewarded Video • Watch on Direct IP for +100 MB",
                                     color = PlatinumBright,
                                     fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold,
@@ -792,7 +792,7 @@ internal fun ServiceQualityUptimeCard(
                                 )
                             }
                             Text(
-                                text = "+500 MB ›",
+                                text = "+100 MB ›",
                                 color = ChampagneGold,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -802,15 +802,18 @@ internal fun ServiceQualityUptimeCard(
                             )
                         }
 
-                        AndroidView(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .clip(RoundedCornerShape(6.dp)),
-                            factory = { ctx ->
-                                Banner(ctx)
-                            }
-                        )
+                        // بنر Start.io فقط در حالت قطع بودن VPN بارگذاری می‌شود تا از آی‌پی واقعی خود کاربر (نه سرور VPN) پخش شود
+                        if (!isConnected) {
+                            AndroidView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                factory = { ctx ->
+                                    Banner(ctx)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -2791,7 +2794,7 @@ internal fun ProfileTabPage(
             }
         }
 
-        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode + دکمه جایزه +500MB Start.io و ارتقا به VIP 50GB
+        // 1) کارت فشرده شناسه سخت‌افزاری + سهمیه روزانه VIP Mode + دکمه جایزه +100MB Start.io و ارتقا به VIP 50GB
         Surface(
             color = ObsidianCard,
             shape = RoundedCornerShape(14.dp),
@@ -2837,7 +2840,7 @@ internal fun ProfileTabPage(
                                     .tvDpadClickable(shape = bonusShape) { onWatchSponsorAd() }
                             ) {
                                 Text(
-                                    text = "+500 MB Free",
+                                    text = "+100 MB Free",
                                     color = ChampagneLight,
                                     fontSize = 8.5.sp,
                                     fontWeight = FontWeight.ExtraBold,

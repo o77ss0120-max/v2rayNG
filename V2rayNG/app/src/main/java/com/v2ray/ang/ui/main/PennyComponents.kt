@@ -2478,14 +2478,7 @@ internal fun ServersTabPage(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                PingSignalBars(pingMs = bestPingAll)
-                                Text(
-                                    text = "${bestPingAll}ms",
-                                    color = ChampagneGold,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                                PingSignalBars(ms = bestPingAll)
                             }
                         }
                     }
@@ -2600,14 +2593,7 @@ internal fun ServersTabPage(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    PingSignalBars(pingMs = bestMs)
-                                    Text(
-                                        text = "${bestMs}ms",
-                                        color = PlatinumBright,
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
+                                    PingSignalBars(ms = bestMs)
                                     Surface(
                                         color = Color(0xFF252834),
                                         shape = RoundedCornerShape(7.dp),
@@ -2687,14 +2673,7 @@ internal fun ServersTabPage(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
-                                                PingSignalBars(pingMs = nodeMs)
-                                                Text(
-                                                    text = "${nodeMs}ms",
-                                                    color = PlatinumSilver,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
+                                                PingSignalBars(ms = nodeMs)
                                             }
                                         }
                                     }

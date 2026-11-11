@@ -1489,26 +1489,26 @@ class MainActivity : HelperBaseComponentActivity() {
                                     ) {
                                         // حالت متصل واقعی: تایمر جلسه، نمودار سرعت زنده، حجم مصرف امروز و IP/کشور خروجی
                                         LiveConnectionTelemetryCard(
-                                            isConnected = mode == UiMode.CONNECTED,
+                                            mode = mode,
                                             elapsedSec = elapsedSec,
                                             downSpeed = downSpeed,
                                             upSpeed = upSpeed,
                                             downHistory = downHistory,
                                             upHistory = upHistory,
-                                            todayUsedBytes = dailyUsedBytes,
-                                            todayMaxBytes = dailyMaxBytes,
+                                            dailyUsedBytes = dailyUsedBytes,
+                                            dailyMaxBytes = dailyMaxBytes,
                                             countryGeo = currentCountryGeo,
-                                            serverPingMs = current?.ms ?: 0L,
-                                            onServerClick = { currentNavTab = BottomNavTab.SERVERS }
+                                            server = current,
+                                            onServerSwitchClick = { currentNavTab = BottomNavTab.SERVERS }
                                         )
 
                                         // کارت جدا و شفاف تبلیغ با برچسب Sponsored و شمارنده «2 of 3 claimed today»
                                         if (!vipActive) {
                                             SponsoredQuotaCard(
-                                                claimedToday = adsClaimedToday,
+                                                adsClaimedToday = adsClaimedToday,
                                                 maxDailyAds = MAX_DAILY_SPONSORED_ADS,
-                                                enabled = !busy,
-                                                onClaimClick = { showStartIoRewardedVideoForQuota() }
+                                                isConnected = mode == UiMode.CONNECTED,
+                                                onWatchSponsorAd = { showStartIoRewardedVideoForQuota() }
                                             )
                                         }
                                     }

@@ -1,12 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Penny VPN — Secure Cloudflare Worker (VLESS-over-WS + Server-Side License & 50GB Quota API)
-// تغییرات امنیتی اعمال‌شده:
+// Penny VPN — Secure Cloudflare Worker (VLESS-over-WS + Server-Side License & Quota API)
+// تغییرات امنیتی اعمال‌شده (v2.9.4):
 // 1. هیچ UUID ثابتی در کد هاردکد نشده است؛ مقدار UUID باید در Variables & Secrets کلودفلر تنظیم شود.
-// 2. تمام دامنه‌های fallback شخص ثالث به‌طور کامل حذف شدند؛ ProxyIP پیش‌فرض غیرفعال است و فقط در صورت
-//    تنظیم متغیر محیطی اختیاری PROXYIP توسط خود شما فعال می‌شود.
-// 3. گزارش گمراه‌کننده uptime: 99.99% از خروجی سلامت حذف شد.
-// 4. شامل API سرورمحور بررسی لایسنس ECDSA P-256 و شمارش حجم ۵۰ گیگ (/api/v1/license/activate و /api/v1/license/heartbeat)
-//    با استفاده از Cloudflare KV (با نام متغیر PENNY_KV).
+// 2. تمام دامنه‌های fallback شخص ثالث حذف شده‌اند؛ ProxyIP پیش‌فرض غیرفعال است.
+// 3. بررسی لایسنس ECDSA P-256 و شمارش حجم ۵۰ گیگ (/api/v1/license/activate و /api/v1/license/heartbeat)
+//    و همگام‌سازی سهمیه روزانه (/api/v1/quota/daily-sync) با الزام اتصال PENNY_KV (Fail-Closed).
+// 4. مسدودسازی IPهای خصوصی/لوپ‌بک در VLESS جهت جلوگیری از SSRF و حذف نشت جزئیات خطای داخلی.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { connect } from 'cloudflare:sockets';
@@ -15,22 +14,26 @@ import { connect } from 'cloudflare:sockets';
 const ROTATED_PUBLIC_KEY_B64 =
   'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEf1YXmwm/4ojudflyQNF470nc0kSAIdSM+K5OUIWqHHhxNCusYcvAygnbn9OFs6CGEpxTRB7AK6xfyyStgOE11Q==';
 
+const DAILY_FREE_DEDICATED_MAX_BYTES = 1024 * 1024 * 1024; // 1 GB per day
+
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env, _ctx) {
     try {
       const url = new URL(request.url);
 
-      // ۱. هندل کردن درخواست‌های API بررسی لایسنس و شمارش حجم ۵۰ گیگ روی سرور
+      // ۱. هندل کردن درخواست‌های API بررسی لایسنس و شمارش حجم ۵۰ گیگ و سهمیه روزانه روی سرور
       if (url.pathname === '/api/v1/license/activate' && request.method === 'POST') {
         return await handleLicenseActivate(request, env);
       }
       if (url.pathname === '/api/v1/license/heartbeat' && request.method === 'POST') {
         return await handleLicenseHeartbeat(request, env);
       }
+      if (url.pathname === '/api/v1/quota/daily-sync' && request.method === 'POST') {
+        return await handleDailyQuotaSync(request, env);
+      }
 
       // ۲. دریافت UUID از متغیر محیطی کلودفلر (هیچ UUID ثابتی در کد وجود ندارد)
       const userID = (env.UUID || '').trim();
-      // ProxyIP به‌صورت پیش‌فرض کاملاً غیرفعال است؛ فقط اگر خودتان متغیر PROXYIP را در کلودفلر ست کنید استفاده می‌شود
       const proxyIP = (env.PROXYIP || '').trim();
 
       const upgradeHeader = request.headers.get('Upgrade');
@@ -83,12 +86,15 @@ export default {
       }
 
       if (!userID) {
-        return new Response('UUID secret not configured in Worker settings', { status: 503 });
+        return new Response('Service Unavailable', { status: 503 });
       }
 
       return await vlessOverWSHandler(request, userID, proxyIP);
-    } catch (err) {
-      return new Response(err.toString(), { status: 500 });
+    } catch (_err) {
+      return new Response(JSON.stringify({ ok: false, error: 'Internal Server Error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json;charset=utf-8' },
+      });
     }
   },
 };
@@ -96,7 +102,6 @@ export default {
 // ───────────────────────── بررسی لایسنس و شمارش حجم ۵۰ گیگ روی سرور (Cloudflare KV) ─────────────────────────
 
 function derSigToP1363(derBytes) {
-  // تبدیل امضای ASN.1 DER به فرمت خام 64 بایتی (r || s) برای WebCrypto ECDSA
   if (derBytes[0] !== 0x30) return derBytes;
   let offset = 2;
   if (derBytes[1] & 0x80) offset += derBytes[1] & 0x7f;
@@ -162,6 +167,13 @@ async function verifyEcdsaToken(rawCode) {
 }
 
 async function handleLicenseActivate(request, env) {
+  if (!env.PENNY_KV) {
+    return Response.json(
+      { ok: false, active: false, message: 'Server KV storage (PENNY_KV) is not configured' },
+      { status: 503 }
+    );
+  }
+
   const body = await request.json().catch(() => ({}));
   const code = String(body.code || '').trim();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
@@ -190,23 +202,21 @@ async function handleLicenseActivate(request, env) {
   const kvKey = `lic:${verified.serial}`;
 
   let record = null;
-  if (env.PENNY_KV) {
-    const existing = await env.PENNY_KV.get(kvKey, 'json');
-    if (existing) {
-      if (existing.deviceId !== deviceId) {
-        return Response.json(
-          { ok: false, message: 'This license is already bound to another device.' },
-          { status: 403 }
-        );
-      }
-      if (now >= existing.expiresAtMs || existing.usedBytes >= existing.maxBytes) {
-        return Response.json(
-          { ok: false, message: 'This license has already expired or exhausted its 50 GB quota.' },
-          { status: 403 }
-        );
-      }
-      record = existing;
+  const existing = await env.PENNY_KV.get(kvKey, 'json');
+  if (existing) {
+    if (existing.deviceId !== deviceId) {
+      return Response.json(
+        { ok: false, message: 'This license is already bound to another device.' },
+        { status: 403 }
+      );
     }
+    if (now >= existing.expiresAtMs || existing.usedBytes >= existing.maxBytes) {
+      return Response.json(
+        { ok: false, message: 'This license has already expired or exhausted its 50 GB quota.' },
+        { status: 403 }
+      );
+    }
+    record = existing;
   }
 
   if (!record) {
@@ -224,9 +234,7 @@ async function handleLicenseActivate(request, env) {
       maxBytes,
       usedBytes: 0,
     };
-    if (env.PENNY_KV) {
-      await env.PENNY_KV.put(kvKey, JSON.stringify(record));
-    }
+    await env.PENNY_KV.put(kvKey, JSON.stringify(record));
   }
 
   return Response.json({
@@ -242,29 +250,23 @@ async function handleLicenseActivate(request, env) {
 }
 
 async function handleLicenseHeartbeat(request, env) {
+  if (!env.PENNY_KV) {
+    return Response.json(
+      { ok: false, active: false, message: 'Server KV storage (PENNY_KV) is not configured' },
+      { status: 503 }
+    );
+  }
+
   const body = await request.json().catch(() => ({}));
   const serial = String(body.serial || '').trim().toUpperCase();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
-  const deltaBytes = Math.max(0, Number(body.deltaBytes || 0));
+  const deltaBytes = Math.min(5 * 1024 * 1024 * 1024, Math.max(0, Number(body.deltaBytes || 0)));
 
   if (!serial || !deviceId) {
     return Response.json({ ok: false, active: false, message: 'Missing serial or deviceId' }, { status: 400 });
   }
 
   const kvKey = `lic:${serial}`;
-  if (!env.PENNY_KV) {
-    return Response.json({
-      ok: true,
-      active: true,
-      serial,
-      deviceId,
-      expiresAtMs: Date.now() + 30 * 86400 * 1000,
-      maxBytes: 50 * 1024 * 1024 * 1024,
-      usedBytes: deltaBytes,
-      message: 'KV not bound; stateless fallback',
-    });
-  }
-
   const record = await env.PENNY_KV.get(kvKey, 'json');
   if (!record || record.deviceId !== deviceId) {
     return Response.json({ ok: false, active: false, message: 'License not found for this device' }, { status: 403 });
@@ -285,6 +287,76 @@ async function handleLicenseHeartbeat(request, env) {
     usedBytes: record.usedBytes,
     message: active ? 'Quota synced' : 'Quota or time expired',
   });
+}
+
+async function handleDailyQuotaSync(request, env) {
+  if (!env.PENNY_KV) {
+    return Response.json(
+      { ok: false, allowed: false, error: 'Server KV storage (PENNY_KV) is not configured' },
+      { status: 503 }
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const userUuid = String(body.userUuid || '').trim().toLowerCase();
+  const deviceId = String(body.deviceId || '').trim().toUpperCase();
+  const localUsedBytes = Math.max(0, Number(body.localUsedBytes || 0));
+  const activeMode = String(body.activeMode || 'PUBLIC').trim().toUpperCase();
+
+  if (!userUuid || !deviceId) {
+    return Response.json({ ok: false, error: 'Missing userUuid or deviceId' }, { status: 400 });
+  }
+
+  const d = new Date();
+  const todayKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    d.getUTCDate()
+  ).padStart(2, '0')}`;
+  const kvKey = `daily:${userUuid}`;
+  const existing = await env.PENNY_KV.get(kvKey, 'json');
+
+  let dailyUsedBytes = localUsedBytes;
+  if (existing && existing.dayKey === todayKey) {
+    dailyUsedBytes = Math.max(Number(existing.dailyUsedBytes || 0), localUsedBytes);
+  }
+
+  const allowed = dailyUsedBytes < DAILY_FREE_DEDICATED_MAX_BYTES;
+  const updated = {
+    userUuid,
+    deviceId,
+    dayKey: todayKey,
+    dailyUsedBytes,
+    activeMode,
+    lastSeenMs: Date.now(),
+  };
+  await env.PENNY_KV.put(kvKey, JSON.stringify(updated), { expirationTtl: 172800 });
+
+  return Response.json({
+    ok: true,
+    dayKey: todayKey,
+    dailyUsedBytes,
+    maxDailyBytes: DAILY_FREE_DEDICATED_MAX_BYTES,
+    remainingBytes: Math.max(0, DAILY_FREE_DEDICATED_MAX_BYTES - dailyUsedBytes),
+    allowed,
+  });
+}
+
+function isPrivateOrBlockedHost(host) {
+  const h = String(host || '').trim().toLowerCase();
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '::1' || h === '0:0:0:0:0:0:0:1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) {
+    return true;
+  }
+  const ipv4Match = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [a, b] = [Number(ipv4Match[1]), Number(ipv4Match[2])];
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+  }
+  return false;
 }
 
 // ───────────────────────── هسته VLESS-over-WebSocket ─────────────────────────
@@ -404,20 +476,20 @@ async function handleTCPOutBound(
     return tcpSocket;
   }
 
-  // فقط در صورتی که خود ادمین متغیر PROXYIP را صراحتاً تنظیم کرده باشد، از fallback استفاده می‌شود
-  const retry = proxyIP
-    ? async function () {
-        const tcpSocket = await connectAndWrite(proxyIP, portRemote);
-        tcpSocket.closed
-          .catch((error) => {
-            console.log('retry tcpSocket closed error', error);
-          })
-          .finally(() => {
-            safeCloseWebSocket(webSocket);
-          });
-        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null, log);
-      }
-    : null;
+  const retry =
+    proxyIP && !isPrivateOrBlockedHost(proxyIP)
+      ? async function () {
+          const tcpSocket = await connectAndWrite(proxyIP, portRemote);
+          tcpSocket.closed
+            .catch((error) => {
+              console.log('retry tcpSocket closed error', error);
+            })
+            .finally(() => {
+              safeCloseWebSocket(webSocket);
+            });
+          remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null, log);
+        }
+      : null;
 
   const tcpSocket = await connectAndWrite(addressRemote, portRemote);
   remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry, log);
@@ -523,8 +595,8 @@ function processVlessHeader(vlessBuffer, userID) {
       return { hasError: true, message: `invalid addressType: ${addressType}` };
   }
 
-  if (!addressValue) {
-    return { hasError: true, message: 'addressValue is empty' };
+  if (!addressValue || isPrivateOrBlockedHost(addressValue)) {
+    return { hasError: true, message: 'target address is empty or restricted' };
   }
 
   return {

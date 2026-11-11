@@ -65,7 +65,7 @@ object PennySpeedLimiter {
         "tiktokv.com",
         "tiktok.com",
         "musical.ly",
-        "Byteoversea.com",
+        "byteoversea.com",
         "cdninstagram.com",
         "fbcdn.net",
         "instagram.com",
@@ -155,7 +155,7 @@ object PennySpeedLimiter {
             val uIn = upstream.getInputStream()
             val uOut = upstream.getOutputStream()
 
-            // بررسی هدر اولیه SOCKS5 برای مسدودسازی دامنه‌های ویدیویی و دانلود سنگین در حالت Ghost
+            // بررسی کامل هدر SOCKS5 (مقاوم در برابر تکهتکه شدن پکت‌های TCP) برای مسدودسازی دامنه‌های ویدیویی در حالت Ghost
             val firstBuf = ByteArray(512)
             val n0 = cIn.read(firstBuf)
             if (n0 <= 0) return
@@ -170,10 +170,21 @@ object PennySpeedLimiter {
                 cOut.flush()
 
                 val reqBuf = ByteArray(1024)
-                val n1 = cIn.read(reqBuf)
+                var n1 = 0
+                while (n1 < 5) {
+                    val r = cIn.read(reqBuf, n1, reqBuf.size - n1)
+                    if (r <= 0) break
+                    n1 += r
+                }
                 if (n1 <= 0) return
-                if (n1 >= 7 && reqBuf[0] == 0x05.toByte() && reqBuf[1] == 0x01.toByte() && reqBuf[3] == 0x03.toByte()) {
+                if (n1 >= 5 && reqBuf[0] == 0x05.toByte() && reqBuf[1] == 0x01.toByte() && reqBuf[3] == 0x03.toByte()) {
                     val domainLen = reqBuf[4].toInt() and 0xFF
+                    val expectedTotal = (5 + domainLen + 2).coerceAtMost(reqBuf.size)
+                    while (n1 < expectedTotal) {
+                        val r = cIn.read(reqBuf, n1, expectedTotal - n1)
+                        if (r <= 0) break
+                        n1 += r
+                    }
                     if (5 + domainLen <= n1) {
                         val domain = String(reqBuf, 5, domainLen, StandardCharsets.UTF_8)
                         if (isGhostMessagingRestricted && isHeavyMediaDomain(domain)) {
@@ -831,11 +842,8 @@ internal object PennyServerScanner {
 
     fun downloadHttpsUrl(urlStr: String, onLog: ((String) -> Unit)? = null): String {
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
-        require(
-            cleanUrl.startsWith("https://", ignoreCase = true) ||
-                cleanUrl.startsWith("http://", ignoreCase = true)
-        ) {
-            "Only HTTP/HTTPS subscription URLs are permitted"
+        require(cleanUrl.startsWith("https://", ignoreCase = true)) {
+            "Only HTTPS subscription URLs are permitted"
         }
 
         val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true) ||
@@ -1110,13 +1118,8 @@ internal object PennyServerScanner {
     fun fetchSignedListWithFallback(urlStr: String, onLog: (String) -> Unit, depth: Int = 0): String {
         if (depth > 2) return ""
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
-        val isGithubUrl = cleanUrl.contains("github.com", ignoreCase = true) ||
-            cleanUrl.contains("githubusercontent.com", ignoreCase = true)
-        val mirrors = if (isGithubUrl) {
-            listOf(cleanUrl, "https://ghproxy.net/$cleanUrl")
-        } else {
-            listOf(cleanUrl)
-        }
+        // حذف کامل پروکسی شخص ثالث ghproxy.net برای جلوگیری از حملات MITM و تزریق کانفیگ جعلی
+        val mirrors = listOf(cleanUrl)
 
         for ((i, mirror) in mirrors.withIndex()) {
             try {
@@ -1128,15 +1131,15 @@ internal object PennyServerScanner {
                             onLog("Verified ECDSA-signed server list (source ${i + 1})")
                             verifiedBody
                         } else {
-                            onLog("Signature header mismatch on source ${i + 1}; stripping header")
-                            rawContent.lineSequence().drop(1).joinToString("\n").trim()
+                            onLog("Security Alert: Invalid ECDSA signature on source ${i + 1}; rejecting tampered list!")
+                            continue
                         }
                     } else {
-                        onLog("Downloaded subscription (source ${i + 1}): ${rawContent.length} chars")
+                        onLog("Downloaded HTTPS subscription (source ${i + 1}): ${rawContent.length} chars")
                         rawContent
                     }
 
-                    // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است (مثل Gist 70 کاراکتری)، آن را دنبال کن
+                    // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است، آن را دنبال کن
                     val nonCommentLines = bodyToParse.lines()
                         .map { it.trim() }
                         .filter { it.isNotEmpty() && !it.startsWith("#") }
@@ -1409,7 +1412,7 @@ internal object PennyServerScanner {
         val releaseNotes: String
     )
 
-    const val APP_VERSION_NAME = "2.8.0"
+    const val APP_VERSION_NAME = "2.9.4"
     const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
 
@@ -1431,8 +1434,7 @@ internal object PennyServerScanner {
 
     fun checkAppUpdateOnGitHub(): AppUpdateInfo {
         val apiUrls = listOf(
-            "https://api.github.com/repos/o77ss0120-max/v2rayNG/releases/latest",
-            "https://ghproxy.net/https://api.github.com/repos/o77ss0120-max/v2rayNG/releases/latest"
+            "https://api.github.com/repos/o77ss0120-max/v2rayNG/releases/latest"
         )
         for (u in apiUrls) {
             try {
@@ -1441,7 +1443,7 @@ internal object PennyServerScanner {
                     conn.connectTimeout = 6000
                     conn.readTimeout = 6000
                     conn.setRequestProperty("Accept", "application/vnd.github+json")
-                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/2.6.2")
+                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/2.9.4")
                     if (conn.responseCode == 200) {
                         val text = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
                         val obj = JSONObject(text)

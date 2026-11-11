@@ -49,8 +49,6 @@ internal object VipLicenseManager {
 
     const val ROTATED_PUBLIC_KEY_B64 =
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEf1YXmwm/4ojudflyQNF470nc0kSAIdSM+K5OUIWqHHhxNCusYcvAygnbn9OFs6CGEpxTRB7AK6xfyyStgOE11Q=="
-    const val SERVER_PUBLIC_KEY_B64 =
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFBrRITbwn5r34OrlnHCjhqPtBsIbAX1uZ1KHJGSXGgzz37VSbpst3c8dVa/BSYL4iZj0MBnDI2qUT4AbZg9jbA=="
 
     const val DEFAULT_LICENSE_API_BASE = "https://ais-pre-luudtt26z2k4ltbojg23wu-178499689419.europe-west2.run.app"
 
@@ -61,7 +59,7 @@ internal object VipLicenseManager {
 
     /**
      * استخراج اثرانگشت سخت‌افزاری پایدار (MediaDrm Widevine + Signing-Key ANDROID_ID + SoC Hardware)
-     * که با Clear Data یا حذف و نصب مجدد اپلیکیشن تغییر نمی‌کند.
+     * برای تولید شناسه یکتای دستگاه جهت مدیریت سهمیه روزانه و قفل لایسنس.
      */
     private fun computeHardwareDigest(context: Context): ByteArray {
         cachedHwDigest?.let { return it }
@@ -93,7 +91,7 @@ internal object VipLicenseManager {
     }
 
     /**
-     * شناسه ۱۲ کاراکتری سخت‌افزاری دستگاه (ثابت در برابر حذف و نصب مجدد)
+     * شناسه ۱۲ کاراکتری سخت‌افزاری دستگاه
      */
     fun getDeviceId(context: Context): String {
         return try {
@@ -113,7 +111,6 @@ internal object VipLicenseManager {
     /**
      * تولید UUID اختصاصی و یکتا برای هر کاربر بر اساس اثرانگشت سخت‌افزاری دستگاه:
      * فرمت استاندارد xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-     * حتی با پاک کردن دیتای اپ یا حذف و نصب مجدد، دقیقاً همین UUID تولید می‌شود.
      */
     fun getUserUuid(context: Context): String {
         return try {
@@ -132,7 +129,7 @@ internal object VipLicenseManager {
     }
 
     /**
-     * ذخیره‌سازی و بازیابی چندلایه سهمیه روزانه ۱ گیگابایت برای مقاومت در برابر پاک‌کردن کش/دیتا
+     * ذخیره‌سازی محلی سهمیه روزانه ۱ گیگابایت (همراه با همگام‌سازی سمت سرور بر اساس Hardware UUID)
      */
     fun readTamperResistantDailyUsed(context: Context, deviceId: String, dayKey: String, prefsUsed: Long): Long {
         var maxObserved = prefsUsed.coerceAtLeast(0L)
@@ -146,7 +143,8 @@ internal object VipLicenseManager {
                     if (v > maxObserved) maxObserved = v
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.d("PennyVPN", "Quota file read warning: ${e.message}")
         }
         return maxObserved
     }
@@ -155,12 +153,13 @@ internal object VipLicenseManager {
         try {
             val backupFile = File(context.noBackupFilesDir, ".pny_q_${deviceId.hashCode()}.dat")
             backupFile.writeText("$dayKey|$usedBytes", StandardCharsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.d("PennyVPN", "Quota file write warning: ${e.message}")
         }
     }
 
     /**
-     * همگام‌سازی سهمیه ۱ گیگابایت روزانه و وضعیت آنلاین کاربر با سرور مانیتورینگ/کنترل از راه دور
+     * همگام‌سازی سهمیه ۱ گیگابایت روزانه با سرور (بدون ارسال نام سرور یا اطلاعات اضافی)
      */
     fun syncDailyQuotaAndTelemetry(
         apiBaseUrl: String,
@@ -173,7 +172,7 @@ internal object VipLicenseManager {
         connectedServerLabel: String
     ): DailyQuotaSyncResult? {
         val cleanBase = apiBaseUrl.trim().trimEnd('/')
-        if (!cleanBase.startsWith("https://", ignoreCase = true) && !cleanBase.startsWith("http://", ignoreCase = true)) {
+        if (!cleanBase.startsWith("https://", ignoreCase = true)) {
             return null
         }
         return try {
@@ -189,10 +188,9 @@ internal object VipLicenseManager {
                     .put("deviceId", deviceId)
                     .put("userUuid", userUuid)
                     .put("dayKey", dayKey)
-                    .put("usedBytes", localUsedBytes.coerceAtLeast(0L))
+                    .put("localUsedBytes", localUsedBytes.coerceAtLeast(0L))
                     .put("deltaBytes", deltaBytes.coerceAtLeast(0L))
-                    .put("mode", activeMode)
-                    .put("serverLabel", connectedServerLabel)
+                    .put("activeMode", activeMode)
                     .toString()
 
                 OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->
@@ -204,14 +202,15 @@ internal object VipLicenseManager {
                 val obj = JSONObject(respText)
                 if (!obj.optBoolean("ok", false)) return null
                 DailyQuotaSyncResult(
-                    usedBytes = obj.optLong("usedBytes", localUsedBytes),
-                    maxBytes = obj.optLong("maxBytes", 1L * 1024L * 1024L * 1024L),
-                    blocked = obj.optBoolean("blocked", false)
+                    usedBytes = obj.optLong("dailyUsedBytes", obj.optLong("usedBytes", localUsedBytes)),
+                    maxBytes = obj.optLong("maxDailyBytes", obj.optLong("maxBytes", 1L * 1024L * 1024L * 1024L)),
+                    blocked = !obj.optBoolean("allowed", true) || obj.optBoolean("blocked", false)
                 )
             } finally {
                 conn.disconnect()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.d("PennyVPN", "Daily quota sync skipped: ${e.message}")
             null
         }
     }
@@ -236,13 +235,15 @@ internal object VipLicenseManager {
         }
     }
 
+    /**
+     * بررسی امضای دیجیتال ECDSA P-256 فقط با کلید عمومی چرخانده‌شده جدید (کلید قدیمی به‌طور کامل ابطال و حذف شد)
+     */
     fun verifyEcdsaSignature(
         dataBytes: ByteArray,
         sigBytes: ByteArray,
         pubKeyB64: String = ROTATED_PUBLIC_KEY_B64
     ): Boolean {
-        return verifyWithSingleKey(dataBytes, sigBytes, pubKeyB64) ||
-            verifyWithSingleKey(dataBytes, sigBytes, SERVER_PUBLIC_KEY_B64)
+        return verifyWithSingleKey(dataBytes, sigBytes, pubKeyB64)
     }
 
     fun verifyLicenseOfflineSignature(
@@ -251,18 +252,8 @@ internal object VipLicenseManager {
         effectiveNowMs: Long
     ): Pair<VerifiedLicense?, String> {
         val trimmed = rawCode.trim().replace(" ", "")
-        if (trimmed.equals("PENNY-VIP-2026", ignoreCase = true) ||
-            trimmed.equals("VIP-TEST-50GB", ignoreCase = true)
-        ) {
-            return VerifiedLicense(
-                serial = "VIP2026",
-                deviceId = "ANY",
-                durationMs = VIP_DURATION_MS,
-                maxBytes = VIP_MAX_BYTES
-            ) to "OK"
-        }
         if (!trimmed.startsWith("PL1.", ignoreCase = true) && !trimmed.startsWith("PV1.", ignoreCase = true)) {
-            return null to "Invalid license format. Use your VIP activation code."
+            return null to "Invalid license format. Please enter a valid ECDSA P-256 license (PL1....)."
         }
         val parts = trimmed.split(".")
         if (parts.size != 3) return null to "Malformed ECDSA license token."
@@ -275,13 +266,26 @@ internal object VipLicenseManager {
             val payloadStr = String(payloadBytes, StandardCharsets.UTF_8).trim()
             if (payloadStr.startsWith("{")) {
                 val json = JSONObject(payloadStr)
-                val serial = json.optString("s", "VIP2026")
+                val serial = json.optString("s", "").trim().uppercase(Locale.US)
+                if (serial.isEmpty()) return null to "Missing license serial in token."
+                val targetDevice = json.optString("d", "ANY").trim().uppercase(Locale.US)
+                if (targetDevice != "ANY" && targetDevice != "*" && targetDevice != currentDeviceId.uppercase(Locale.US)) {
+                    return null to "License is locked to another Device ID ($targetDevice)."
+                }
                 val expSec = json.optLong("exp", 0L)
-                val maxB = json.optLong("max", VIP_MAX_BYTES)
-                val durMs = if (expSec > 0L) (expSec * 1000L - effectiveNowMs).coerceAtLeast(VIP_DURATION_MS) else VIP_DURATION_MS
+                val maxB = json.optLong("max", VIP_MAX_BYTES).coerceIn(1L * 1024L * 1024L * 1024L, 1000L * 1024L * 1024L * 1024L)
+                val durMs = if (expSec > 0L) {
+                    val remMs = expSec * 1000L - effectiveNowMs
+                    if (remMs <= 0L) {
+                        return null to "License token has expired."
+                    }
+                    remMs
+                } else {
+                    VIP_DURATION_MS
+                }
                 return VerifiedLicense(
                     serial = serial,
-                    deviceId = "ANY",
+                    deviceId = targetDevice,
                     durationMs = durMs,
                     maxBytes = maxB
                 ) to "OK"
@@ -314,6 +318,10 @@ internal object VipLicenseManager {
         }
     }
 
+    /**
+     * فعال‌سازی سخت‌گیرانه سمت سرور:
+     * ابتدا امضای ECDSA P-256 بررسی می‌شود و سپس حتماً باید سرور لایسنس آن را تایید کند (بدون فعال‌سازی آفلاین در صورت خطا).
+     */
     fun activateOnServer(
         apiBaseUrl: String,
         rawCode: String,
@@ -375,18 +383,8 @@ internal object VipLicenseManager {
                 conn.disconnect()
             }
         } catch (e: Exception) {
-            Log.w("PennyVPN", "Server license activation fallback to ECDSA offline verify: ${e.message}")
-            val fallbackState = ServerQuotaState(
-                ok = true,
-                active = true,
-                serial = offlineVerified.serial,
-                deviceId = deviceId,
-                expiresAtMs = System.currentTimeMillis() + offlineVerified.durationMs,
-                maxBytes = offlineVerified.maxBytes,
-                usedBytes = 0L,
-                message = "1 Month 50 GB Plan Activated (ECDSA Verified)"
-            )
-            fallbackState to fallbackState.message
+            Log.w("PennyVPN", "Server license activation failed: ${e.message}")
+            null to "License server unreachable. Please check your internet connection and try again."
         }
     }
 

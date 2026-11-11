@@ -15,6 +15,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
@@ -65,7 +66,7 @@ jobs:
           echo "${LIBV2RAY_SHA256}  V2rayNG/app/libs/libv2ray.aar" | sha256sum -c -
           ls -lh V2rayNG/app/libs/libv2ray.aar
 
-      - name: Prepare Deterministic Release Keystore
+      - name: Prepare Release Keystore from GitHub Secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -81,13 +82,22 @@ jobs:
             echo "PENNY_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
             echo "PENNY_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
           else
-            echo "Using deterministic repository keystore (V2rayNG/app/penny-release-keystore.p12) so APK updates install cleanly..."
-            cp "$GITHUB_WORKSPACE/V2rayNG/app/penny-release-keystore.p12" "$KS_FILE"
-            PASS="PennyReleaseKey2026!"
+            echo "::warning::KEYSTORE_BASE64 secret not configured. Generating ephemeral CI signing key in /tmp..."
+            EPHEMERAL_PASS="$(openssl rand -hex 16)"
+            keytool -genkeypair -v \
+              -keystore "$KS_FILE" \
+              -storetype PKCS12 \
+              -storepass "$EPHEMERAL_PASS" \
+              -keypass "$EPHEMERAL_PASS" \
+              -alias pennyvpn \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Penny VPN, OU=Security, O=PennyVPN, L=Amsterdam, S=NH, C=NL"
             echo "PENNY_KEYSTORE_FILE=$KS_FILE" >> $GITHUB_ENV
-            echo "PENNY_KEYSTORE_PASSWORD=$PASS" >> $GITHUB_ENV
+            echo "PENNY_KEYSTORE_PASSWORD=$EPHEMERAL_PASS" >> $GITHUB_ENV
             echo "PENNY_KEY_ALIAS=pennyvpn" >> $GITHUB_ENV
-            echo "PENNY_KEY_PASSWORD=$PASS" >> $GITHUB_ENV
+            echo "PENNY_KEY_PASSWORD=$EPHEMERAL_PASS" >> $GITHUB_ENV
           fi
 
       - name: Build Signed Release APK (com.penny.vpn)
@@ -114,14 +124,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: success()
         with:
-          tag_name: v2.9.0
-          name: "Penny VPN v2.9.0 (3D Real-World Country Globe • Network Doctor Tab • Zero-Scroll)"
+          tag_name: v2.9.4
+          name: "Penny VPN v2.9.4 (Security Audit Hardening • Strict ECDSA Signatures • R8 Minification)"
           body: |
-            ### Penny VPN v2.9.0 — Mobile Edition
-            - **Large 3D Earth Globe with Real-World Country Maps**: Full 3D globe Connect button displaying accurate geographical country borders (Iran, Netherlands, Poland, Germany, France, UK, Italy, Turkey, etc.), animated trajectory arc from Iran to destination country, and pulsing radar beacon.
-            - **Dedicated Network Doctor Tab (`Doctor`)**: Moved the `Service Quality` card from the Home screen to the new `Doctor` tab alongside a 2x2 real-time diagnostic matrix (`TLS Fragment Engine`, `Active Route Node`, `Encrypted DNS (DoH)`, `TrafficShaper & LAN`) and instant repair controls.
-            - **Zero Coordinates Leak**: Removed server geographic coordinates from all UI badges and lists.
-            - **Zero-Scroll UI & Unified Obsidian/Champagne-Gold Theme**: Clean, non-scrolling layout on `Home`, `Doctor`, and `Profile` tabs.
+            ### Penny VPN v2.9.4 — Security Hardened Release
+            - **Keystore & Secret Hygiene**: Removed repository `.p12` keystore; signing now exclusively uses GitHub Actions Secrets (`KEYSTORE_BASE64`).
+            - **Strict ECDSA P-256 Server List Verification**: Enforced `#PENNY-SIG:` verification on remote subscription lists and removed third-party `ghproxy.net` fallback.
+            - **VIP License Hardening**: Removed test/demo codes, revoked legacy public key, enforced strict online activation and JSON token expiration checks.
+            - **Network & Manifest Security**: Disabled global cleartext traffic (`usesCleartextTraffic="false"`), restricted loopback cleartext to `127.0.0.1`/`localhost`, and enabled R8 minification.
           files: V2rayNG/app/build/outputs/apk/playstore/release/*.apk
           draft: false
           prerelease: false

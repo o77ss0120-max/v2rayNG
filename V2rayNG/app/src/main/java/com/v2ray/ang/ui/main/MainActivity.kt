@@ -847,6 +847,8 @@ class MainActivity : HelperBaseComponentActivity() {
             .replace(PennyServerScanner.DED_NL_HOST, "[DED-NL-NODE]", ignoreCase = true)
             .replace(PennyServerScanner.DED_PL_HOST, "[DED-PL-NODE]", ignoreCase = true)
             .replace(PennyServerScanner.VPS1_HOST, "[DED-DE-NODE]", ignoreCase = true)
+            .replace(userUuid, "[PROTECTED-UUID]", ignoreCase = true)
+            .replace(deviceId, "[PROTECTED-HWID]", ignoreCase = true)
             .replace(Regex("""\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?\b"""), "[PROTECTED-IP]")
         Log.d(TAG, sanitized)
         val line = "${timeFmt.format(Date())}  $sanitized"
@@ -977,7 +979,7 @@ class MainActivity : HelperBaseComponentActivity() {
                             dailyQuotaDayKey,
                             dailyUsedBytes
                         )
-                        plog("Daily 1 GB quota (${fmtBytes(dailyMaxBytes)}) reached for UUID $userUuid; switching to Public Mode")
+                        plog("Daily 1 GB quota (${fmtBytes(dailyMaxBytes)}) reached; switching to Public Mode")
                         serviceTierMode = ServiceTierMode.PUBLIC
                         prefs.edit().putString("service_tier_mode", ServiceTierMode.PUBLIC.name).apply()
                         PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, splitTunnelLocal)

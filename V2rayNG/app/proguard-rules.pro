@@ -2,10 +2,21 @@
 -keep class go.** { *; }
 -keep class com.tencent.mmkv.** { *; }
 -keep class com.google.gson.** { *; }
+-keep class com.google.android.gms.** { *; }
 -keep class com.v2ray.ang.dto.** { *; }
+-keep class com.v2ray.ang.fmt.** { *; }
+-keep class com.v2ray.ang.handler.** { *; }
+-keep class com.v2ray.ang.service.** { *; }
+-keep class com.v2ray.ang.util.** { *; }
+-keep class com.v2ray.ang.viewmodel.** { *; }
+-keep class com.v2ray.ang.ui.** { *; }
 -keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 -dontwarn okhttp3.**
 -dontwarn okio.**
+-dontwarn javax.annotation.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**

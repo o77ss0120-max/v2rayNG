@@ -13,8 +13,8 @@ android {
         applicationId = "com.penny.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 762
-        versionName = "2.6.2"
+        versionCode = 794
+        versionName = "2.9.4"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -52,7 +52,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             val relSigning = signingConfigs.findByName("release")
             if (relSigning?.storeFile != null) {
                 signingConfig = relSigning

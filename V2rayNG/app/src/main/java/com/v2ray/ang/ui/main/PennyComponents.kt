@@ -447,8 +447,8 @@ internal fun LiveConnectionTelemetryCard(
     elapsedSec: Long,
     downSpeed: Long,
     upSpeed: Long,
-    downHistory: List<Long>,
-    upHistory: List<Long>,
+    downHistory: List<Float>,
+    upHistory: List<Float>,
     dailyUsedBytes: Long,
     dailyMaxBytes: Long,
     countryGeo: CountryGeoInfo,
@@ -548,13 +548,13 @@ internal fun LiveConnectionTelemetryCard(
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-                    val pts = if (downHistory.size >= 2) downHistory else List(20) { 0L }
-                    val upPts = if (upHistory.size >= 2) upHistory else List(20) { 0L }
+                    val pts = if (downHistory.size >= 2) downHistory else List(20) { 0f }
+                    val upPts = if (upHistory.size >= 2) upHistory else List(20) { 0f }
                     val maxVal = maxOf(
-                        pts.maxOrNull() ?: 1L,
-                        upPts.maxOrNull() ?: 1L,
-                        64L * 1024L
-                    ).toFloat()
+                        pts.maxOrNull() ?: 1f,
+                        upPts.maxOrNull() ?: 1f,
+                        64f * 1024f
+                    )
 
                     // خطوط راهنمای افقی ظریف
                     drawLine(

@@ -192,7 +192,6 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
 
     implementation(libs.androidx.activity.compose)
-    implementation("com.google.android.gms:play-services-ads:23.6.0")
     implementation("com.startapp:inapp-sdk:5.4.0")
     implementation("com.google.guava:guava:33.3.1-android")
     implementation(libs.androidx.compose.ui)

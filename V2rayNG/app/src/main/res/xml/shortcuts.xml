@@ -15,7 +15,7 @@
         <categories android:name="android.shortcut.conversation" />
     </shortcut>
     <shortcut
-        android:enabled="true"
+        android:enabled="false"
         android:icon="@drawable/ic_qu_scan_24dp"
         android:shortcutDisabledMessage="@string/menu_item_import_config_qrcode"
         android:shortcutId="shortcuts_scan"

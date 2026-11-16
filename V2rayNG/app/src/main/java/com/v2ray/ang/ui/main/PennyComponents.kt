@@ -68,10 +68,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.AdView
-import com.google.android.gms.ads.LoadAdError
 import com.startapp.sdk.ads.banner.Banner
 import com.v2ray.ang.R
 import kotlinx.coroutines.delay
@@ -2705,7 +2701,6 @@ internal fun NetworkDoctorTabPage(
     splitTunnelLocal: Boolean,
     onSplitTunnelLocalChange: (Boolean) -> Unit,
     ghostMessagingOnly: Boolean,
-    adUnitId: String,
     showAds: Boolean,
     onSponsorClick: () -> Unit = {},
     onAutoTuneClick: () -> Unit,
@@ -3151,7 +3146,7 @@ internal fun ProfileTabPage(
             )
             CompactSettingToggleRow(
                 title = "VPN Kill Switch & Leak Guard",
-                subtitle = "Blocks unencrypted packets if tunnel drops unexpectedly",
+                subtitle = "Enforces auto-reconnect guard; pair with Android 'Block without VPN'",
                 checked = killSwitchEnabled,
                 onCheckedChange = onKillSwitchChange
             )

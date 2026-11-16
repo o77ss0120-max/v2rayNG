@@ -1,11 +1,20 @@
-# Penny VPN (v2.9.5)
+# Penny VPN (v2.9.7)
 
-**Connect When Others Can't** — Smart Anti-Censorship VPN Client for Android & Android TV (`com.penny.vpn`)
+**Connect When Others Can't** — Anti-Censorship VPN Client for Android & Android TV (`com.penny.vpn`)
 
 ## Key Capabilities
-- **On-Device Cloudflare Clean IP Scanner**: Automatically tests Cloudflare Anycast subnets across ports `443`, `8443`, and `2083` using fragmented TLS handshakes.
-- **Strict ECDSA P-256 Signed Subscriptions**: Remote server lists require a valid `#PENNY-SIG:` ECDSA P-256 signature; unsigned or tampered lists are strictly rejected.
-- **Iran ISP Auto-Detector & TLS Fragment Tuner**: Detects MCI, Irancell, Rightel, and Broadband to apply optimal `tlshello` fragment chunk lengths and intervals.
-- **Network Doctor**: One-tap 4-stage network diagnostic tool that detects ISP DNS hijacking (`10.10.34.36`), tunes TLS fragmentation, selects the lowest-latency Clean IP, and enables DoH (`1.1.1.1`).
-- **Iran Direct Routing & Smart Split Tunneling**: Domestic `.ir` domains and banking apps bypass the VPN tunnel automatically.
-- **ECDSA P-256 Server-Verified VIP Plan**: Cryptographically signed `PL1.<payload>.<signature>` tokens with server-side 50 GB quota enforcement.
+- **On-Device Cloudflare Clean IP Scanner**: Tests Cloudflare Anycast subnets across TLS ports (`443`, `8443`, `2083`) using fragmented `tlshello` handshakes and strict TLS hostname verification.
+- **ECDSA P-256 & Stealth Vault Subscriptions**:
+  - Lists signed with `#PENNY-SIG:` undergo mandatory ECDSA P-256 verification and are rejected on mismatch.
+  - Built-in Dedicated Vault uses `OTTO` SHA-256-CTR obfuscation; community Public Mode lists are segregated under `PUBLIC` mode.
+  - Third-party proxy relays (`ghproxy.net`) are permanently disabled.
+- **Three Connection Modes**:
+  - `VIP Mode` (1 GB/day free quota or 50 GB VIP License)
+  - `Ghost Mode` (Emergency Messaging-Only lock: shared 42 KB/s down / 28 KB/s up limiter + heavy media domain & app isolation, safely restoring Per-App Proxy settings on exit)
+  - `Public Mode` (Unlimited community fallback nodes)
+- **Iran ISP Auto-Tuner & Network Doctor**: Carrier-specific TLS fragment presets (Irancell, Hamrah Aval/MCI, Rightel) and one-tap 4-stage diagnostics (`DNS -> Fragment -> Route -> Speed`).
+- **Iran Direct Routing & Split Tunneling**: Domestic `.ir` domains and local LAN subnets bypass the tunnel cleanly (`PREF_VPN_BYPASS_LAN = "1"`).
+- **Direct-IP Transparent Ads**: Free tier uses Start.io SDK (`+100 MB` per rewarded ad, up to `3/day`), pausing VPN briefly so requests originate from the user's real ISP IP.
+
+## Security
+See [`SECURITY.md`](./SECURITY.md) and [`PRIVACY_POLICY.md`](./PRIVACY_POLICY.md).

@@ -27,6 +27,9 @@ import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import kotlin.random.Random
@@ -95,6 +98,39 @@ object PennySpeedLimiter {
         }
     }
 
+    private class GlobalThrottleBucket(private val bytesPerSec: Long) {
+        private val nextAvailableNs = AtomicLong(0L)
+
+        fun acquire(bytes: Int) {
+            if (!isGhostMessagingRestricted || bytes <= 0 || bytesPerSec <= 0L || bytesPerSec == Long.MAX_VALUE) {
+                return
+            }
+            val durationNs = (bytes.toLong() * 1_000_000_000L) / bytesPerSec
+            while (true) {
+                val now = System.nanoTime()
+                val prev = nextAvailableNs.get()
+                val base = maxOf(now, prev)
+                val target = (base + durationNs).coerceAtMost(now + 1_200_000_000L)
+                if (nextAvailableNs.compareAndSet(prev, target)) {
+                    val waitNs = base - now
+                    if (waitNs > 1_000_000L) {
+                        val ms = waitNs / 1_000_000L
+                        val ns = (waitNs % 1_000_000L).toInt()
+                        try {
+                            Thread.sleep(ms.coerceAtMost(300L), ns)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                        }
+                    }
+                    return
+                }
+            }
+        }
+    }
+
+    private val globalDownBucket = GlobalThrottleBucket(GHOST_MAX_DOWN_BYTES_PER_SEC)
+    private val globalUpBucket = GlobalThrottleBucket(GHOST_MAX_UP_BYTES_PER_SEC)
+
     @Synchronized
     fun startIfNeeded(
         listenPort: Int,
@@ -108,16 +144,22 @@ object PennySpeedLimiter {
             stop()
             return targetPort
         }
-        if (serverSocket != null && serverSocket?.isClosed == false && activeListenPort == listenPort) {
-            return listenPort
+        if (serverSocket != null && serverSocket?.isClosed == false && activeListenPort > 0) {
+            return activeListenPort
         }
         stop()
         return try {
             val ss = java.net.ServerSocket()
             ss.reuseAddress = true
-            ss.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), listenPort), 128)
+            try {
+                ss.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), listenPort), 128)
+            } catch (_: Exception) {
+                // اگر پورت پیش‌فرض مشغول بود، روی یک پورت آزاد loopback گوش بده تا محدودیت Ghost دور زده نشود
+                ss.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 128)
+            }
+            val boundPort = ss.localPort
             serverSocket = ss
-            activeListenPort = listenPort
+            activeListenPort = boundPort
             Thread({
                 while (!ss.isClosed) {
                     try {
@@ -135,7 +177,7 @@ object PennySpeedLimiter {
                 isDaemon = true
                 start()
             }
-            listenPort
+            boundPort
         } catch (_: Exception) {
             targetPort
         }
@@ -200,12 +242,12 @@ object PennySpeedLimiter {
             }
 
             val upThread = Thread({
-                pipeThrottled(cIn, uOut, GHOST_MAX_UP_BYTES_PER_SEC)
+                pipeThrottled(cIn, uOut, globalUpBucket)
             }, "GhostUpPipe").apply {
                 isDaemon = true
                 start()
             }
-            pipeThrottled(uIn, cOut, GHOST_MAX_DOWN_BYTES_PER_SEC)
+            pipeThrottled(uIn, cOut, globalDownBucket)
             upThread.join(500)
         } catch (_: Exception) {
         } finally {
@@ -214,32 +256,14 @@ object PennySpeedLimiter {
         }
     }
 
-    private fun pipeThrottled(input: java.io.InputStream, output: OutputStream, maxBytesPerSec: Long) {
+    private fun pipeThrottled(input: java.io.InputStream, output: OutputStream, bucket: GlobalThrottleBucket) {
         val buf = ByteArray(1024)
-        var windowStartMs = System.currentTimeMillis()
-        var bytesInWindow = 0L
         while (true) {
             val n = input.read(buf)
             if (n < 0) break
+            bucket.acquire(n)
             output.write(buf, 0, n)
             output.flush()
-            if (isGhostMessagingRestricted && maxBytesPerSec in 1 until Long.MAX_VALUE) {
-                bytesInWindow += n
-                val elapsedMs = (System.currentTimeMillis() - windowStartMs).coerceAtLeast(1L)
-                val expectedMs = (bytesInWindow * 1000L) / maxBytesPerSec
-                if (expectedMs > elapsedMs) {
-                    val sleepMs = (expectedMs - elapsedMs).coerceIn(5L, 250L)
-                    try {
-                        Thread.sleep(sleepMs)
-                    } catch (_: InterruptedException) {
-                        break
-                    }
-                }
-                if (System.currentTimeMillis() - windowStartMs >= 1000L) {
-                    windowStartMs = System.currentTimeMillis()
-                    bytesInWindow = 0L
-                }
-            }
         }
     }
 
@@ -494,7 +518,7 @@ internal object PennyServerScanner {
 
     fun applyBpbCoreOptimizations(fragLength: String = "100-200", fragInterval: String = "1") {
         try {
-            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, false)
+            MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_ENABLED, true)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_LENGTH, fragLength)
             MmkvManager.encodeSettings(AppConfig.PREF_FRAGMENT_INTERVAL, fragInterval)
@@ -504,15 +528,13 @@ internal object PennyServerScanner {
             MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, "https://8.8.8.8/dns-query")
             MmkvManager.encodeSettings(AppConfig.PREF_DOMESTIC_DNS, "178.22.122.100")
             MmkvManager.encodeSettings(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY, "IPIfNonMatch")
-            MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, "1")
         } catch (_: Exception) {
         }
     }
 
     /**
      * اعمال قوانین سخت‌گیرانه Ghost Mode روی کرنل VpnService و لایه پروکسی محلی:
-     * در حالت Ghost Mode + Messaging-Only، اپلیکیشن‌های پرمصرف ویدیویی و استورها از تونل VPN حذف شده
-     * و سرعت تونل روی 42 KB/s (مخصوص پیام‌رسان‌های اضطراری) قفل می‌شود تا حجم سرورهای شخصی مصرف نشود.
+     * پیش از اعمال قوانین Ghost، تنظیمات قبلی Per-App کاربر ذخیره می‌شود و پس از خروج از Ghost بازیابی می‌گردد.
      */
     fun syncGhostModeKernelRules(
         mode: ServiceTierMode,
@@ -524,28 +546,49 @@ internal object PennyServerScanner {
             PennySpeedLimiter.isGhostMessagingRestricted = restrictActive
             MmkvManager.encodeSettings("penny_service_tier_mode", mode.name)
             MmkvManager.encodeSettings("penny_ghost_messaging_only", ghostMessagingOnly)
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (splitTunnelLocal) "1" else "2")
 
+            val ghostWasApplied = MmkvManager.decodeSettingsBool("penny_ghost_rules_applied", false)
             if (restrictActive) {
-                val blockedHeavyApps = mutableSetOf(
-                    "com.google.android.youtube",
-                    "com.google.android.youtube.tv",
-                    "com.instagram.android",
-                    "com.zhiliaoapp.musically",
-                    "com.ss.android.ugc.trill",
-                    "com.android.vending",
-                    "com.netflix.mediaclient",
-                    "tv.twitch.android.app",
-                    "com.spotify.music",
-                    "com.aparat",
-                    "ir.filimo.android",
-                    "ir.namava.mobile"
-                )
+                if (!ghostWasApplied) {
+                    val prevPerApp = MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY, false)
+                    val prevBypass = MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS, false)
+                    val prevSet = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET) ?: emptySet()
+                    MmkvManager.encodeSettings("penny_ghost_backup_per_app", prevPerApp)
+                    MmkvManager.encodeSettings("penny_ghost_backup_bypass", prevBypass)
+                    MmkvManager.encodeSettings("penny_ghost_backup_set", prevSet.toMutableSet())
+                    MmkvManager.encodeSettings("penny_ghost_rules_applied", true)
+                }
+                val baseSet = MmkvManager.decodeSettingsStringSet("penny_ghost_backup_set") ?: emptySet()
+                val blockedHeavyApps = baseSet.toMutableSet().apply {
+                    addAll(
+                        listOf(
+                            "com.google.android.youtube",
+                            "com.google.android.youtube.tv",
+                            "com.instagram.android",
+                            "com.zhiliaoapp.musically",
+                            "com.ss.android.ugc.trill",
+                            "com.android.vending",
+                            "com.netflix.mediaclient",
+                            "tv.twitch.android.app",
+                            "com.spotify.music",
+                            "com.aparat",
+                            "ir.filimo.android",
+                            "ir.namava.mobile"
+                        )
+                    )
+                }
                 MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, true)
                 MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, true)
                 MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, blockedHeavyApps)
-            } else {
-                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, splitTunnelLocal)
-                MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, true)
+            } else if (ghostWasApplied) {
+                val savedSet = MmkvManager.decodeSettingsStringSet("penny_ghost_backup_set") ?: emptySet()
+                val savedPerApp = MmkvManager.decodeSettingsBool("penny_ghost_backup_per_app", false)
+                val savedBypass = MmkvManager.decodeSettingsBool("penny_ghost_backup_bypass", false)
+                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY_SET, savedSet.toMutableSet())
+                MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, savedPerApp)
+                MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, savedBypass)
+                MmkvManager.encodeSettings("penny_ghost_rules_applied", false)
             }
         } catch (_: Exception) {
         }
@@ -558,15 +601,15 @@ internal object PennyServerScanner {
             val opLower = rawOp.lowercase()
             val (profileName, length, interval) = when {
                 opLower.contains("irancell") || opLower.contains("mtn") ->
-                    Triple("Irancell (MTN) • Fragment 100-200B / 20-50B", "100-200", "1")
+                    Triple("Irancell (MTN) • Fragment 40-80B / 1-2ms", "40-80", "1-2")
                 opLower.contains("mci") || opLower.contains("ir-tci") || opLower.contains("hamrah") ->
-                    Triple("Hamrah Aval (MCI) • Fragment 100-200B / 20-50B", "100-200", "1")
+                    Triple("Hamrah Aval (MCI) • Fragment 20-50B / 1ms", "20-50", "1")
                 opLower.contains("rightel") ->
-                    Triple("Rightel • Fragment 100-200B", "100-200", "1")
+                    Triple("Rightel • Fragment 80-150B / 1ms", "80-150", "1")
                 rawOp.isNotEmpty() ->
-                    Triple("$rawOp • Fragment 100-200B", "100-200", "1")
+                    Triple("$rawOp • Fragment 80-160B / 1ms", "80-160", "1")
                 else ->
-                    Triple("Wi-Fi / Broadband • Fragment 100-200B", "100-200", "1")
+                    Triple("Wi-Fi / Broadband • Fragment 100-200B / 1ms", "100-200", "1")
             }
             detectedIspProfile = profileName
             applyBpbCoreOptimizations(fragLength = length, fragInterval = interval)
@@ -581,23 +624,37 @@ internal object PennyServerScanner {
     suspend fun scanCleanCloudflareIps(onLog: ((String) -> Unit)? = null): List<Pair<String, Long>> =
         withContext(Dispatchers.IO) {
             val sem = Semaphore(8)
+            val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            val verifier = HttpsURLConnection.getDefaultHostnameVerifier()
+            val probeHost = "speed.cloudflare.com"
+            val probeSni = toMixedCaseSni(probeHost)
             val results = CANDIDATE_CF_ANYCAST_IPS.map { ip ->
                 async {
                     sem.withPermit {
                         var bestMs = -1L
                         for (port in listOf(443, 8443)) {
+                            var rawSock: Socket? = null
+                            var sslSock: SSLSocket? = null
                             try {
                                 val addr = InetAddress.getByName(ip)
                                 val ipStr = addr.hostAddress.orEmpty()
                                 if (ipStr.startsWith("10.10.") || addr.isLoopbackAddress) continue
                                 val t0 = System.currentTimeMillis()
-                                TlsHelloFragmentSocket(ip, port, 1800).use { sock ->
-                                    sock.soTimeout = 1800
+                                rawSock = TlsHelloFragmentSocket(ip, port, 1800).apply { soTimeout = 2000 }
+                                sslSock = (sslFactory.createSocket(rawSock, probeSni, port, true) as SSLSocket).apply {
+                                    soTimeout = 2000
+                                    startHandshake()
+                                }
+                                if (!verifier.verify(probeHost, sslSock.session)) {
+                                    continue
                                 }
                                 val rtt = (System.currentTimeMillis() - t0).coerceAtLeast(1L)
                                 if (bestMs < 0 || rtt < bestMs) bestMs = rtt
                                 break
                             } catch (_: Exception) {
+                            } finally {
+                                try { sslSock?.close() } catch (_: Exception) {}
+                                try { rawSock?.close() } catch (_: Exception) {}
                             }
                         }
                         ip to bestMs
@@ -796,6 +853,10 @@ internal object PennyServerScanner {
                 rawSocket.soTimeout = 4500
                 sslSocket = sslFactory.createSocket(rawSocket, sniHost, port, true) as SSLSocket
                 sslSocket.startHandshake()
+                val verifier = HttpsURLConnection.getDefaultHostnameVerifier()
+                if (!verifier.verify(originalHost, sslSocket.session)) {
+                    throw SSLPeerUnverifiedException("Hostname mismatch for $originalHost")
+                }
 
                 val req = buildString {
                     append("GET ").append(pathAndQuery).append(" HTTP/1.0\r\n")
@@ -1066,6 +1127,26 @@ internal object PennyServerScanner {
                                     )
                                 }
                             }
+                        } else if (proto == "shadowsocks") {
+                            val srv = settings.optJSONArray("servers")?.optJSONObject(0)
+                            val rawAddr = srv?.optString("address", "")?.takeIf { it.isNotEmpty() }
+                                ?: settings.optString("address", "")
+                            val port = srv?.optInt("port", 0)?.takeIf { it > 0 }
+                                ?: settings.optInt("port", 0)
+                            val method = srv?.optString("method", "")?.takeIf { it.isNotEmpty() }
+                                ?: settings.optString("method", "")
+                            val pwd = srv?.optString("password", "")?.takeIf { it.isNotEmpty() }
+                                ?: settings.optString("password", "")
+
+                            if (rawAddr.isEmpty() || port <= 0 || method.isEmpty() || pwd.isEmpty()) continue
+                            val credB64 = android.util.Base64.encodeToString(
+                                "$method:$pwd".toByteArray(StandardCharsets.UTF_8),
+                                android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING
+                            )
+                            val dedupKey = "ss:$credB64@$rawAddr:$port"
+                            if (seenKeys.add(dedupKey)) {
+                                extractedUris.add("ss://$credB64@$rawAddr:$port#$nodeTag")
+                            }
                         }
                     }
                 }
@@ -1109,23 +1190,45 @@ internal object PennyServerScanner {
         return if (outLines.isNotEmpty()) outLines.joinToString("\n") else trimmed
     }
 
+    private fun isSafeNestedSubscriptionUrl(urlStr: String): Boolean {
+        return try {
+            val u = URL(urlStr)
+            if (!u.protocol.equals("https", ignoreCase = true)) return false
+            val h = u.host.trim().lowercase()
+            if (h.isEmpty() || h == "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return false
+            val addr = runCatching { InetAddress.getByName(h) }.getOrNull()
+            if (addr != null && (addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isAnyLocalAddress || addr.isLinkLocalAddress)) {
+                return false
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     /**
      * دریافت لیست سرورها با پشتیبانی از:
-     * ۱. لینک‌های ساب اختصاصی BPB (Fragment و Normal) با دور زدن مسمومیت DNS (10.10.34.36) و تکهتکه کردن TLS ClientHello
-     * ۲. دنبال کردن خودکار لینک‌های اشاره‌گر (مثل Gist حاوی لینک https://... دیگر)
-     * ۳. لیست‌های امضاشده با کلید ECDSA P-256 (#PENNY-SIG:)
+     * ۱. لینک‌های ساب اختصاصی BPB با دور زدن مسمومیت DNS و تکهتکه کردن TLS ClientHello
+     * ۲. دنبال کردن کنترل‌شده لینک‌های اشاره‌گر با بررسی HTTPS و جلوگیری از SSRF
+     * ۳. بررسی اجباری امضای ECDSA P-256 برای لیست‌های دارای `#PENNY-SIG:` یا منبع امضاشده (`requireSigned`)
      */
-    fun fetchSignedListWithFallback(urlStr: String, onLog: (String) -> Unit, depth: Int = 0): String {
-        if (depth > 2) return ""
+    fun fetchSignedListWithFallback(
+        urlStr: String,
+        onLog: (String) -> Unit,
+        depth: Int = 0,
+        requireSigned: Boolean = false
+    ): String {
+        if (depth > 1) return ""
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
-        // حذف کامل پروکسی شخص ثالث ghproxy.net برای جلوگیری از حملات MITM و تزریق کانفیگ جعلی
+        val isStealthVault = cleanUrl == STEALTH_VAULT_GITHUB_URL
         val mirrors = listOf(cleanUrl)
 
         for ((i, mirror) in mirrors.withIndex()) {
             try {
                 val rawContent = downloadHttpsUrl(mirror, onLog)
                 if (rawContent.isNotEmpty()) {
-                    val bodyToParse = if (rawContent.trimStart().startsWith("#PENNY-SIG:", ignoreCase = true)) {
+                    val hasSigHeader = rawContent.trimStart().startsWith("#PENNY-SIG:", ignoreCase = true)
+                    val bodyToParse = if (hasSigHeader) {
                         val (sigOk, verifiedBody) = VipLicenseManager.verifySignedServerList(rawContent)
                         if (sigOk) {
                             onLog("Verified ECDSA-signed server list (source ${i + 1})")
@@ -1134,20 +1237,29 @@ internal object PennyServerScanner {
                             onLog("Security Alert: Invalid ECDSA signature on source ${i + 1}; rejecting tampered list!")
                             continue
                         }
+                    } else if (requireSigned && !isStealthVault) {
+                        onLog("Security Alert: Missing required #PENNY-SIG: signature on source ${i + 1}; rejected!")
+                        continue
                     } else {
                         onLog("Downloaded HTTPS subscription (source ${i + 1}): ${rawContent.length} chars")
                         rawContent
                     }
 
-                    // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است، آن را دنبال کن
+                    // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است، با محدودیت ایمنی آن را دنبال کن
                     val nonCommentLines = bodyToParse.lines()
                         .map { it.trim() }
                         .filter { it.isNotEmpty() && !it.startsWith("#") }
                     if (nonCommentLines.isNotEmpty() && nonCommentLines.all { it.startsWith("https://", ignoreCase = true) }) {
                         val nestedResults = mutableListOf<String>()
                         for (nestedUrl in nonCommentLines.take(3)) {
-                            onLog("Following nested subscription URL: $nestedUrl")
-                            val nested = fetchSignedListWithFallback(nestedUrl, onLog, depth + 1)
+                            if (!isSafeNestedSubscriptionUrl(nestedUrl)) continue
+                            onLog("Following nested HTTPS subscription: ${nestedUrl.substringBefore('?')}")
+                            val nested = fetchSignedListWithFallback(
+                                urlStr = nestedUrl,
+                                onLog = onLog,
+                                depth = depth + 1,
+                                requireSigned = requireSigned
+                            )
                             if (nested.isNotEmpty()) nestedResults.add(nested)
                         }
                         if (nestedResults.isNotEmpty()) {
@@ -1316,6 +1428,9 @@ internal object PennyServerScanner {
                 (sslFactory.createSocket(rawSocket, host, port, true) as SSLSocket).apply {
                     soTimeout = timeoutMs
                     startHandshake()
+                    if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(host, session)) {
+                        throw SSLPeerUnverifiedException("Hostname verification failed for $host")
+                    }
                 }
             } else {
                 rawSocket

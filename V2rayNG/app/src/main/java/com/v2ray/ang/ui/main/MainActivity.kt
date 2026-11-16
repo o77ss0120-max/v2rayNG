@@ -74,16 +74,6 @@ import com.startapp.sdk.adsbase.StartAppSDK
 import com.startapp.sdk.adsbase.adlisteners.AdDisplayListener
 import com.startapp.sdk.adsbase.adlisteners.AdEventListener
 import com.startapp.sdk.adsbase.adlisteners.VideoListener
-import com.google.android.gms.ads.AdError
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.FullScreenContentCallback
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.OnUserEarnedRewardListener
-import com.google.android.gms.ads.interstitial.InterstitialAd
-import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
-import com.google.android.gms.ads.rewarded.RewardedAd
-import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
@@ -116,6 +106,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 
 /**
@@ -127,14 +118,6 @@ class MainActivity : HelperBaseComponentActivity() {
 
     companion object {
         private const val TAG = "PennyVPN"
-
-        // ── شناسه‌های رسمی تست اندروید AdMob ──
-        const val ADMOB_APP_ID = "ca-app-pub-3940256099942544~3347511713"
-        private const val ADMOB_BANNER_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
-        private const val ADMOB_INTERSTITIAL_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
-        const val ADMOB_REWARDED_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
-        const val ADMOB_NATIVE_UNIT_ID = "ca-app-pub-3940256099942544/2247696110"
-        const val ADMOB_APP_OPEN_UNIT_ID = "ca-app-pub-3940256099942544/9257395921"
 
         private const val REAL_TEST_COUNT = 60
         private const val REAL_TEST_TIMEOUT_MS = 45_000L
@@ -161,17 +144,18 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private val socksPort: Int get() = SettingsManager.getSocksPort()
 
-    // ── وضعیت Start.io SDK، AdMob و سهمیه روزانه ۱ گیگ به ازای هر دیوایس ──
+    // ── وضعیت Start.io SDK و سهمیه روزانه ۱ گیگ به ازای هر دیوایس ──
     private var startIoInterstitialAd: StartAppAd? = null
-    private var interstitialAd: InterstitialAd? = null
-    private var isAdLoading = false
     private var lastInterstitialShownMs by mutableStateOf(0L)
-    private var rewardedAd: RewardedAd? = null
-    private var isRewardedLoading = false
     private var freeSessionRemainingSec by mutableStateOf(BASE_FREE_SESSION_SEC)
     private var dailyQuotaDayKey by mutableStateOf("")
     private var dailyUsedBytes by mutableStateOf(0L)
     private var dailyMaxBytes by mutableStateOf(BASE_DAILY_FREE_BYTES)
+    private var pendingDailyUnsyncedBytes by mutableStateOf(0L)
+    @Volatile
+    private var isVipSyncInFlight: Boolean = false
+    @Volatile
+    private var isDailySyncInFlight: Boolean = false
     private var adsClaimedToday by mutableStateOf(0)
     private var favoriteCountries by mutableStateOf(setOf("NL", "DE"))
     @Volatile
@@ -266,21 +250,35 @@ class MainActivity : HelperBaseComponentActivity() {
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
         loadSaved()
         checkVipExpiration()
-        syncServerQuotaInBackground(0L)
-        initAdMob()
+        syncServerQuotaInBackground(pendingUnsyncedBytes)
+        syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
+        initStartIoAds()
         startMonitor()
         registerNetworkChangeAutoReconnect()
     }
 
     override fun onStop() {
+        val now = effectiveNowMs()
         if (vipActive) {
-            val now = effectiveNowMs()
             prefs.edit()
                 .putLong("vip_used_bytes", vipUsedBytes)
+                .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
                 .putLong("vip_last_seen_ms", now)
                 .apply()
-            syncServerQuotaInBackground(pendingUnsyncedBytes)
-            pendingUnsyncedBytes = 0L
+            if (pendingUnsyncedBytes > 0L) {
+                syncServerQuotaInBackground(pendingUnsyncedBytes)
+            }
+        } else {
+            ensureDailyDeviceQuotaCurrent()
+            prefs.edit()
+                .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+                .putLong("free_session_rem_sec", freeSessionRemainingSec)
+                .apply()
+            VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, dailyQuotaDayKey, dailyUsedBytes)
+            if (pendingDailyUnsyncedBytes > 0L) {
+                syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
+            }
         }
         super.onStop()
     }
@@ -302,36 +300,45 @@ class MainActivity : HelperBaseComponentActivity() {
     // ═════════════════════════ همگام‌سازی حجم ۵۰ گیگ و اعتبار لایسنس با سرور ═════════════════════════
 
     private fun syncServerQuotaInBackground(deltaToReport: Long) {
-        if (!vipActive || vipSerial.isBlank()) return
+        if (!vipActive || vipSerial.isBlank() || isVipSyncInFlight) return
+        val clampedDelta = deltaToReport.coerceAtLeast(0L)
+        isVipSyncInFlight = true
         lifecycleScope.launch(Dispatchers.IO) {
-            val state = VipLicenseManager.syncTrafficWithServer(
-                apiBaseUrl = licenseServerUrl,
-                serial = vipSerial,
-                deviceId = deviceId,
-                deltaBytes = deltaToReport
-            ) ?: return@launch
+            try {
+                val state = VipLicenseManager.syncTrafficWithServer(
+                    apiBaseUrl = licenseServerUrl,
+                    serial = vipSerial,
+                    deviceId = deviceId,
+                    deltaBytes = clampedDelta
+                ) ?: return@launch
 
-            withContext(Dispatchers.Main) {
-                vipUsedBytes = maxOf(vipUsedBytes, state.usedBytes)
-                vipMaxBytes = state.maxBytes
-                if (state.expiresAtMs > 0L) {
-                    vipExpireMs = state.expiresAtMs
+                withContext(Dispatchers.Main) {
+                    pendingUnsyncedBytes = (pendingUnsyncedBytes - clampedDelta).coerceAtLeast(0L)
+                    vipUsedBytes = maxOf(vipUsedBytes, state.usedBytes)
+                    vipMaxBytes = state.maxBytes
+                    if (state.expiresAtMs > 0L) {
+                        vipExpireMs = state.expiresAtMs
+                    }
+                    prefs.edit()
+                        .putLong("vip_used_bytes", vipUsedBytes)
+                        .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
+                        .putLong("vip_max_bytes", vipMaxBytes)
+                        .putLong("vip_expire_ms", vipExpireMs)
+                        .apply()
+                    if (!state.active || vipUsedBytes >= vipMaxBytes) {
+                        checkVipExpiration()
+                    }
                 }
-                prefs.edit()
-                    .putLong("vip_used_bytes", vipUsedBytes)
-                    .putLong("vip_max_bytes", vipMaxBytes)
-                    .putLong("vip_expire_ms", vipExpireMs)
-                    .apply()
-                if (!state.active || vipUsedBytes >= vipMaxBytes) {
-                    checkVipExpiration()
-                }
+            } finally {
+                isVipSyncInFlight = false
             }
         }
     }
 
-    // ═════════════════════════ Start.io SDK (App ID: 210814549) + AdMob ═════════════════════════
+    // ═════════════════════════ Start.io SDK (App ID: 210814549) ═════════════════════════
 
-    private fun initAdMob() {
+    private fun initStartIoAds() {
+        if (vipActive) return
         runCatching {
             StartAppSDK.initParams(this@MainActivity, STARTIO_APP_ID)
                 .setReturnAdsEnabled(false)
@@ -342,20 +349,6 @@ class MainActivity : HelperBaseComponentActivity() {
             plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • Consent=true • ReturnAds=false)")
         }.onFailure { e ->
             plog("Start.io init warning: ${e.message}")
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                MobileAds.initialize(this@MainActivity) {
-                    plog("AdMob initialized (Banner + Interstitial + Rewarded ready)")
-                }
-                withContext(Dispatchers.Main) {
-                    loadInterstitialAd()
-                    loadRewardedAd()
-                }
-            } catch (e: Exception) {
-                plog("AdMob init warning: ${e.message}")
-            }
         }
     }
 
@@ -381,42 +374,10 @@ class MainActivity : HelperBaseComponentActivity() {
 
                 override fun onFailedToReceiveAd(failedAd: Ad?) {
                     startIoInterstitialAd = null
-                    plog("Start.io preload note: ${failedAd?.errorMessage ?: "waiting for app-ads.txt / inventory"}")
+                    plog("Start.io preload note: ${failedAd?.errorMessage ?: "waiting for inventory"}")
                 }
             })
         }
-    }
-
-    private fun loadInterstitialAd() {
-        if (vipActive || isAdLoading || interstitialAd != null || mainViewModel.uiState.value.isRunning) return
-        isAdLoading = true
-        val adRequest = AdRequest.Builder().build()
-        InterstitialAd.load(
-            this,
-            ADMOB_INTERSTITIAL_UNIT_ID,
-            adRequest,
-            object : InterstitialAdLoadCallback() {
-                override fun onAdLoaded(ad: InterstitialAd) {
-                    interstitialAd = ad
-                    isAdLoading = false
-                    ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                        override fun onAdDismissedFullScreenContent() {
-                            interstitialAd = null
-                            loadInterstitialAd()
-                        }
-
-                        override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                            interstitialAd = null
-                        }
-                    }
-                }
-
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    interstitialAd = null
-                    isAdLoading = false
-                }
-            }
-        )
     }
 
     private suspend fun pauseVpnForDirectIpAdIfNeeded(): Boolean {
@@ -458,6 +419,10 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun claimStartIoRewardBonus() {
         ensureDailyDeviceQuotaCurrent()
+        if (adsClaimedToday >= MAX_DAILY_SPONSORED_ADS) {
+            statusMessage = "Daily limit reached ($MAX_DAILY_SPONSORED_ADS of $MAX_DAILY_SPONSORED_ADS claimed today)"
+            return
+        }
         val today = todayDateKey()
         adsClaimedToday = (adsClaimedToday + 1).coerceAtMost(MAX_DAILY_SPONSORED_ADS)
         dailyMaxBytes += STARTIO_REWARD_BONUS_BYTES
@@ -473,6 +438,10 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun showStartIoRewardedVideoForQuota() {
+        if (vipActive) {
+            statusMessage = "VIP Plan active (Ad-Free)"
+            return
+        }
         ensureDailyDeviceQuotaCurrent()
         if (adsClaimedToday >= MAX_DAILY_SPONSORED_ADS) {
             statusMessage = "Daily limit reached ($MAX_DAILY_SPONSORED_ADS of $MAX_DAILY_SPONSORED_ADS claimed today)"
@@ -483,8 +452,10 @@ class MainActivity : HelperBaseComponentActivity() {
             statusMessage = "Loading Sponsored Ad on your direct IP (+100 MB)..."
             plog("Requesting Start.io Ad on direct user IP (App ID: $STARTIO_APP_ID)...")
 
-            fun showLoadedStartIoAd(adInstance: StartAppAd, grantOnDisplayIfNoVideoCallback: Boolean, resetTestModeAfter: Boolean) {
+            fun showLoadedStartIoAd(adInstance: StartAppAd, allowDurationRewardFallback: Boolean, resetTestModeAfter: Boolean) {
                 var rewardGranted = false
+                var adDisplayed = false
+                var shownAtMs = 0L
                 adInstance.setVideoListener(VideoListener {
                     runOnUiThread {
                         if (!rewardGranted) {
@@ -498,7 +469,8 @@ class MainActivity : HelperBaseComponentActivity() {
                         if (resetTestModeAfter) {
                             runCatching { StartAppSDK.setTestAdsEnabled(false) }
                         }
-                        if (!rewardGranted && grantOnDisplayIfNoVideoCallback) {
+                        val elapsed = if (shownAtMs > 0L) SystemClock.elapsedRealtime() - shownAtMs else 0L
+                        if (!rewardGranted && allowDurationRewardFallback && adDisplayed && elapsed >= 4000L) {
                             rewardGranted = true
                             claimStartIoRewardBonus()
                         }
@@ -506,11 +478,9 @@ class MainActivity : HelperBaseComponentActivity() {
                     }
 
                     override fun adDisplayed(displayedAd: Ad?) {
+                        adDisplayed = true
+                        shownAtMs = SystemClock.elapsedRealtime()
                         plog("Start.io Sponsored Ad displayed on user's real IP")
-                        if (!rewardGranted && grantOnDisplayIfNoVideoCallback) {
-                            rewardGranted = true
-                            claimStartIoRewardBonus()
-                        }
                     }
 
                     override fun adClicked(displayedAd: Ad?) {}
@@ -531,62 +501,40 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             }
 
-            // مرحله ۳ (Fallback تضمینی): در صورتی که اکانت جدید هنوز app-ads.txt را ایندکس نکرده باشد، از کریتیو تست Start.io یا AdMob استفاده می‌شود تا کاربر هرگز بدون تبلیغ نماند
-            fun loadFallbackAdOrTestCreative() {
-                val admobRewarded = rewardedAd
-                if (admobRewarded != null) {
-                    admobRewarded.fullScreenContentCallback = object : FullScreenContentCallback() {
-                        override fun onAdDismissedFullScreenContent() {
-                            rewardedAd = null
-                            loadRewardedAd()
-                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                        }
-
-                        override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                            rewardedAd = null
-                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                        }
-                    }
-                    admobRewarded.show(this@MainActivity, OnUserEarnedRewardListener {
-                        claimStartIoRewardBonus()
-                    })
-                    return
-                }
-
-                runCatching {
-                    plog("Live Start.io fill empty (new App ID / app-ads.txt indexing); activating Start.io fallback creative on direct IP")
-                    StartAppSDK.setTestAdsEnabled(true)
-                    val testFallbackAd = StartAppAd(this@MainActivity)
-                    testFallbackAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
-                        override fun onReceiveAd(ad: Ad) {
-                            showLoadedStartIoAd(testFallbackAd, grantOnDisplayIfNoVideoCallback = true, resetTestModeAfter = true)
-                        }
-
-                        override fun onFailedToReceiveAd(ad: Ad?) {
-                            runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                            loadRewardedAd()
-                            statusMessage = "Sponsored ad unavailable on current ISP; try again shortly"
-                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                        }
-                    })
-                }.onFailure {
-                    runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                }
-            }
-
-            // مرحله ۲: اگر اسلات REWARDED_VIDEO در منطقه کاربر پر نشد، اسلات AUTOMATIC (ویدیو/فول‌اسکرین Start.io) را روی IP مستقیم بارگذاری کن
+            // مرحله ۲: اگر اسلات REWARDED_VIDEO در منطقه کاربر پر نشد، اسلات AUTOMATIC Start.io روی IP مستقیم بارگذاری شود
             fun loadAutomaticStartIoFallback() {
                 val autoAd = StartAppAd(this@MainActivity)
                 autoAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
                     override fun onReceiveAd(ad: Ad) {
                         plog("Start.io AUTOMATIC ad loaded on direct IP")
-                        showLoadedStartIoAd(autoAd, grantOnDisplayIfNoVideoCallback = true, resetTestModeAfter = false)
+                        showLoadedStartIoAd(autoAd, allowDurationRewardFallback = true, resetTestModeAfter = false)
                     }
 
                     override fun onFailedToReceiveAd(ad: Ad?) {
-                        plog("Start.io AUTOMATIC no-fill (${ad?.errorMessage ?: "no fill"}); switching to fallback creative")
-                        loadFallbackAdOrTestCreative()
+                        plog("Start.io AUTOMATIC no-fill (${ad?.errorMessage ?: "no fill"})")
+                        if (com.v2ray.ang.BuildConfig.DEBUG) {
+                            runCatching {
+                                StartAppSDK.setTestAdsEnabled(true)
+                                val debugAd = StartAppAd(this@MainActivity)
+                                debugAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                                    override fun onReceiveAd(tAd: Ad) {
+                                        showLoadedStartIoAd(debugAd, allowDurationRewardFallback = true, resetTestModeAfter = true)
+                                    }
+
+                                    override fun onFailedToReceiveAd(tAd: Ad?) {
+                                        runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                                        statusMessage = "Sponsored ad unavailable right now; please try again shortly"
+                                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                                    }
+                                })
+                            }.onFailure {
+                                runCatching { StartAppSDK.setTestAdsEnabled(false) }
+                                resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                            }
+                        } else {
+                            statusMessage = "Sponsored ad unavailable on current ISP; please try again shortly"
+                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
+                        }
                     }
                 })
             }
@@ -597,7 +545,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
                     override fun onReceiveAd(ad: Ad) {
                         plog("Start.io REWARDED_VIDEO loaded on direct IP")
-                        showLoadedStartIoAd(rewarded, grantOnDisplayIfNoVideoCallback = false, resetTestModeAfter = false)
+                        showLoadedStartIoAd(rewarded, allowDurationRewardFallback = false, resetTestModeAfter = false)
                     }
 
                     override fun onFailedToReceiveAd(ad: Ad?) {
@@ -647,65 +595,15 @@ class MainActivity : HelperBaseComponentActivity() {
                 })
                 return@launch
             }
-            val admobAd = interstitialAd
-            if (admobAd != null) {
-                lastInterstitialShownMs = now
-                prefs.edit().putLong("last_interstitial_ms", now).apply()
-                admobAd.fullScreenContentCallback = object : FullScreenContentCallback() {
-                    override fun onAdDismissedFullScreenContent() {
-                        interstitialAd = null
-                        loadInterstitialAd()
-                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
-                    }
-
-                    override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                        interstitialAd = null
-                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
-                    }
-                }
-                admobAd.show(this@MainActivity)
-            } else {
-                loadStartIoInterstitialAd()
-                loadInterstitialAd()
-                resumeVpnAfterAdIfNeeded(shouldResumeAfter)
-            }
+            loadStartIoInterstitialAd()
+            resumeVpnAfterAdIfNeeded(shouldResumeAfter)
         }
     }
 
-    private fun loadRewardedAd() {
-        if (isRewardedLoading || rewardedAd != null) return
-        isRewardedLoading = true
-        val adRequest = AdRequest.Builder().build()
-        RewardedAd.load(
-            this,
-            ADMOB_REWARDED_UNIT_ID,
-            adRequest,
-            object : RewardedAdLoadCallback() {
-                override fun onAdLoaded(ad: RewardedAd) {
-                    rewardedAd = ad
-                    isRewardedLoading = false
-                    ad.fullScreenContentCallback = object : FullScreenContentCallback() {
-                        override fun onAdDismissedFullScreenContent() {
-                            rewardedAd = null
-                            loadRewardedAd()
-                        }
-
-                        override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                            rewardedAd = null
-                        }
-                    }
-                }
-
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    rewardedAd = null
-                    isRewardedLoading = false
-                }
-            }
-        )
-    }
-
     private fun todayDateKey(): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(effectiveNowMs()))
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(effectiveNowMs()))
 
     private fun ensureDailyDeviceQuotaCurrent() {
         val today = todayDateKey()
@@ -715,10 +613,12 @@ class MainActivity : HelperBaseComponentActivity() {
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
             dailyUsedBytes = recovered
             dailyMaxBytes = BASE_DAILY_FREE_BYTES
+            pendingDailyUnsyncedBytes = 0L
             adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", 0).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
             prefs.edit()
                 .putString("daily_quota_day_$deviceId", today)
                 .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                .putLong("pending_daily_unsynced_bytes_$deviceId", 0L)
                 .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
                 .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
                 .apply()
@@ -734,50 +634,53 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun syncDailyDedicatedQuotaInBackground(deltaBytes: Long) {
+        if (isDailySyncInFlight) return
+        val clampedDelta = deltaBytes.coerceAtLeast(0L)
         val today = todayDateKey()
         val curLabel = activeList.firstOrNull { it.guid == lastConnectedGuid }?.label.orEmpty()
+        isDailySyncInFlight = true
         lifecycleScope.launch(Dispatchers.IO) {
-            val res = VipLicenseManager.syncDailyQuotaAndTelemetry(
-                apiBaseUrl = licenseServerUrl,
-                deviceId = deviceId,
-                userUuid = userUuid,
-                dayKey = today,
-                localUsedBytes = dailyUsedBytes,
-                deltaBytes = deltaBytes,
-                activeMode = serviceTierMode.name,
-                connectedServerLabel = curLabel
-            ) ?: return@launch
-            withContext(Dispatchers.Main) {
-                if (res.usedBytes > dailyUsedBytes) {
-                    dailyUsedBytes = res.usedBytes
-                    prefs.edit().putLong("daily_used_bytes_$deviceId", dailyUsedBytes).apply()
+            try {
+                val res = VipLicenseManager.syncDailyQuotaAndTelemetry(
+                    apiBaseUrl = licenseServerUrl,
+                    deviceId = deviceId,
+                    userUuid = userUuid,
+                    dayKey = today,
+                    localUsedBytes = dailyUsedBytes,
+                    deltaBytes = clampedDelta,
+                    activeMode = serviceTierMode.name,
+                    connectedServerLabel = curLabel
+                ) ?: return@launch
+                withContext(Dispatchers.Main) {
+                    pendingDailyUnsyncedBytes = (pendingDailyUnsyncedBytes - clampedDelta).coerceAtLeast(0L)
+                    if (res.usedBytes > dailyUsedBytes) {
+                        dailyUsedBytes = res.usedBytes
+                    }
+                    prefs.edit()
+                        .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                        .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+                        .apply()
                     VipLicenseManager.writeTamperResistantDailyUsed(this@MainActivity, deviceId, today, dailyUsedBytes)
+
+                    if (res.blocked && !vipActive && (serviceTierMode == ServiceTierMode.DEDICATED || serviceTierMode == ServiceTierMode.GHOST)) {
+                        dailyUsedBytes = maxOf(dailyUsedBytes, dailyMaxBytes)
+                        prefs.edit()
+                            .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                            .putString("service_tier_mode", ServiceTierMode.PUBLIC.name)
+                            .apply()
+                        VipLicenseManager.writeTamperResistantDailyUsed(this@MainActivity, deviceId, today, dailyUsedBytes)
+                        serviceTierMode = ServiceTierMode.PUBLIC
+                        PennyServerScanner.syncGhostModeKernelRules(ServiceTierMode.PUBLIC, ghostMessagingOnly, splitTunnelLocal)
+                        statusMessage = "1 GB Daily Quota Reached • Switched to Public Mode"
+                        plog("Server enforced 1 GB daily quota block; switching to Public Mode")
+                        if (mainViewModel.uiState.value.isRunning) {
+                            LauncherManager.stopService(this@MainActivity)
+                        }
+                    }
                 }
+            } finally {
+                isDailySyncInFlight = false
             }
-        }
-    }
-
-    private fun addTwoHoursToSession() {
-        ensureDailyDeviceQuotaCurrent()
-        freeSessionRemainingSec += REWARD_ADD_TIME_SEC
-        prefs.edit()
-            .putLong("free_session_rem_sec", freeSessionRemainingSec)
-            .apply()
-        val remData = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
-        statusMessage = "+2h Session Time Added • ${fmtBytes(remData)} Dedicated left today"
-        plog("Rewarded Video watched: +2h session time added")
-    }
-
-    private fun showRewardedAdForAddTime() {
-        val ad = rewardedAd
-        if (ad != null) {
-            ad.show(this, OnUserEarnedRewardListener {
-                addTwoHoursToSession()
-            })
-        } else {
-            loadRewardedAd()
-            statusMessage = "Ad is loading, please try again in a few seconds"
-            plog("Rewarded ad not ready yet; requested reload")
         }
     }
 
@@ -789,10 +692,7 @@ class MainActivity : HelperBaseComponentActivity() {
         return (if (mode != ServiceTierMode.PUBLIC && custom.isNotEmpty() && !custom.contains(".pages.dev", ignoreCase = true)) {
             custom.split("\n", ",")
                 .map { it.trim() }
-                .filter {
-                    it.startsWith("https://", ignoreCase = true) ||
-                        it.startsWith("http://", ignoreCase = true)
-                } + baseList
+                .filter { it.startsWith("https://", ignoreCase = true) } + baseList
         } else {
             baseList
         }).distinct()
@@ -821,6 +721,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 "Your 1-month subscription has expired."
             }
             plog("VIP expired: timeExpired=$timeExpired, trafficExpired=$trafficExpired")
+            initStartIoAds()
             if (mainViewModel.uiState.value.isRunning) {
                 LauncherManager.stopService(this)
             }
@@ -1006,13 +907,15 @@ class MainActivity : HelperBaseComponentActivity() {
         }
 
         vipActive = prefs.getBoolean("vip_active", false)
-        PennySpeedLimiter.isVipUnrestricted = true
-        useVipServers = prefs.getBoolean("use_vip_servers", true)
+        PennySpeedLimiter.isVipUnrestricted = vipActive
+        useVipServers = prefs.getBoolean("use_vip_servers", false)
         vipCode = prefs.getString("vip_code", "") ?: ""
         vipSerial = prefs.getString("vip_serial", "") ?: ""
         vipExpireMs = prefs.getLong("vip_expire_ms", 0L)
         vipMaxBytes = prefs.getLong("vip_max_bytes", VipLicenseManager.VIP_MAX_BYTES)
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
+        pendingUnsyncedBytes = prefs.getLong("pending_unsynced_bytes", 0L).coerceAtLeast(0L)
+        pendingDailyUnsyncedBytes = prefs.getLong("pending_daily_unsynced_bytes_$deviceId", 0L).coerceAtLeast(0L)
         vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
         effectiveNowMs()
         customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_VPS_SUB_URL)
@@ -1219,8 +1122,12 @@ class MainActivity : HelperBaseComponentActivity() {
                     ensureDailyDeviceQuotaCurrent()
                     if (stepDeltaBytes > 0L) {
                         dailyUsedBytes += stepDeltaBytes
+                        pendingDailyUnsyncedBytes += stepDeltaBytes
                         if (tickCount % 5 == 0) {
-                            prefs.edit().putLong("daily_used_bytes_$deviceId", dailyUsedBytes).apply()
+                            prefs.edit()
+                                .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                                .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+                                .apply()
                             VipLicenseManager.writeTamperResistantDailyUsed(
                                 this@MainActivity,
                                 deviceId,
@@ -1228,12 +1135,15 @@ class MainActivity : HelperBaseComponentActivity() {
                                 dailyUsedBytes
                             )
                         }
-                        if (tickCount % 15 == 0) {
-                            syncDailyDedicatedQuotaInBackground(stepDeltaBytes)
+                        if (tickCount % 15 == 0 && pendingDailyUnsyncedBytes > 0L) {
+                            syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
                         }
                     }
                     if (dailyUsedBytes >= dailyMaxBytes) {
-                        prefs.edit().putLong("daily_used_bytes_$deviceId", dailyUsedBytes).apply()
+                        prefs.edit()
+                            .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                            .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+                            .apply()
                         VipLicenseManager.writeTamperResistantDailyUsed(
                             this@MainActivity,
                             deviceId,
@@ -1267,12 +1177,13 @@ class MainActivity : HelperBaseComponentActivity() {
                     vipUsedBytes += stepDeltaBytes
                     pendingUnsyncedBytes += stepDeltaBytes
                     if (tickCount % 5 == 0) {
-                        prefs.edit().putLong("vip_used_bytes", vipUsedBytes).apply()
+                        prefs.edit()
+                            .putLong("vip_used_bytes", vipUsedBytes)
+                            .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
+                            .apply()
                     }
                     if (tickCount % 15 == 0 && pendingUnsyncedBytes > 0L) {
-                        val toSync = pendingUnsyncedBytes
-                        pendingUnsyncedBytes = 0L
-                        syncServerQuotaInBackground(toSync)
+                        syncServerQuotaInBackground(pendingUnsyncedBytes)
                     }
                     checkVipExpiration()
                 }
@@ -1571,13 +1482,12 @@ class MainActivity : HelperBaseComponentActivity() {
                                     onSplitTunnelLocalChange = {
                                         splitTunnelLocal = it
                                         prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
+                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "2")
                                         PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, it)
                                         statusMessage = if (it) "Domestic (.ir) & LAN Direct Bypass Enabled" else "All Traffic Routed in Tunnel"
                                         plog("Network Doctor: Smart Split Tunneling set to $it")
                                     },
                                     ghostMessagingOnly = ghostMessagingOnly,
-                                    adUnitId = ADMOB_BANNER_UNIT_ID,
                                     showAds = !vipActive,
                                     onSponsorClick = { showStartIoRewardedVideoForQuota() },
                                     onAutoTuneClick = {
@@ -1619,7 +1529,9 @@ class MainActivity : HelperBaseComponentActivity() {
                                     onSplitTunnelChange = {
                                         splitTunnelLocal = it
                                         prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "0")
+                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "2")
+                                        PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, it)
+                                        statusMessage = if (it) "Domestic (.ir) & LAN Direct Bypass Enabled" else "All Traffic Routed in Tunnel"
                                     },
                                     cleanDnsShield = cleanDnsShield,
                                     onCleanDnsShieldChange = {
@@ -1649,8 +1561,12 @@ class MainActivity : HelperBaseComponentActivity() {
                                     killSwitchEnabled = killSwitchEnabled,
                                     onKillSwitchChange = {
                                         killSwitchEnabled = it
+                                        if (it && !autoReconnect) {
+                                            autoReconnect = true
+                                            prefs.edit().putBoolean("auto_reconnect", true).apply()
+                                        }
                                         prefs.edit().putBoolean("kill_switch_enabled", it).apply()
-                                        statusMessage = if (it) "VPN Kill Switch & Leak Guard Active" else "VPN Kill Switch Disabled"
+                                        statusMessage = if (it) "VPN Kill Switch & Auto-Reconnect Guard Active" else "VPN Kill Switch Guard Disabled"
                                     },
                                     onCopyUuid = { copyUuidToClipboard() },
                                     onOpenVipDialog = { showVipDialog = true },
@@ -2660,6 +2576,23 @@ class MainActivity : HelperBaseComponentActivity() {
         startSmartConnect()
     }
 
+    private fun flushQuotaStateNow() {
+        ensureDailyDeviceQuotaCurrent()
+        prefs.edit()
+            .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+            .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+            .putLong("free_session_rem_sec", freeSessionRemainingSec)
+            .putLong("vip_used_bytes", vipUsedBytes)
+            .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
+            .apply()
+        VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, dailyQuotaDayKey, dailyUsedBytes)
+        if (vipActive && pendingUnsyncedBytes > 0L) {
+            syncServerQuotaInBackground(pendingUnsyncedBytes)
+        } else if (!vipActive && pendingDailyUnsyncedBytes > 0L) {
+            syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
+        }
+    }
+
     private fun disconnect() {
         disconnectEpoch++
         workJob?.cancel()
@@ -2668,6 +2601,7 @@ class MainActivity : HelperBaseComponentActivity() {
         phase = Phase.IDLE
         scanProgress = 0f
         prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
+        flushQuotaStateNow()
         runCatching { PennySpeedLimiter.stop() }
         runCatching { LauncherManager.stopService(this) }
         statusMessage = "Disconnected"
@@ -2683,6 +2617,7 @@ class MainActivity : HelperBaseComponentActivity() {
         monitorActionJob?.cancel()
         userWantsConnected = false
         prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
+        flushQuotaStateNow()
         MessageHelper.sendMsg2TestService(
             this, TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_CANCEL)
         )
@@ -2878,7 +2813,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 if (checkVipExpiration()) continue
 
                 val running = mainViewModel.uiState.value.isRunning
-                if (!running && userWantsConnected && autoReconnect && activeList.isNotEmpty()) {
+                if (!running && userWantsConnected && (autoReconnect || killSwitchEnabled) && activeList.isNotEmpty()) {
                     plog("Unexpected VPN drop detected; running auto-reconnect...")
                     monitorActionJob = lifecycleScope.launch(Dispatchers.IO) {
                         triggerAutoReconnect()

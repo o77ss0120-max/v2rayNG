@@ -301,6 +301,7 @@ async function handleDailyQuotaSync(request, env) {
   const userUuid = String(body.userUuid || '').trim().toLowerCase();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
   const localUsedBytes = Math.max(0, Number(body.localUsedBytes || 0));
+  const deltaBytes = Math.min(2 * 1024 * 1024 * 1024, Math.max(0, Number(body.deltaBytes || 0)));
   const activeMode = String(body.activeMode || 'PUBLIC').trim().toUpperCase();
 
   if (!userUuid || !deviceId) {
@@ -314,10 +315,8 @@ async function handleDailyQuotaSync(request, env) {
   const kvKey = `daily:${userUuid}`;
   const existing = await env.PENNY_KV.get(kvKey, 'json');
 
-  let dailyUsedBytes = localUsedBytes;
-  if (existing && existing.dayKey === todayKey) {
-    dailyUsedBytes = Math.max(Number(existing.dailyUsedBytes || 0), localUsedBytes);
-  }
+  const prevUsed = existing && existing.dayKey === todayKey ? Number(existing.dailyUsedBytes || 0) : 0;
+  const dailyUsedBytes = Math.max(prevUsed + deltaBytes, localUsedBytes);
 
   const allowed = dailyUsedBytes < DAILY_FREE_DEDICATED_MAX_BYTES;
   const updated = {
@@ -340,21 +339,46 @@ async function handleDailyQuotaSync(request, env) {
   });
 }
 
+function isBlockedIpv4Tuple(a, b) {
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  return false;
+}
+
 function isPrivateOrBlockedHost(host) {
-  const h = String(host || '').trim().toLowerCase();
+  let h = String(host || '').trim().toLowerCase();
   if (!h) return true;
-  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
-  if (h === '::1' || h === '0:0:0:0:0:0:0:1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) {
-    return true;
+  if (h.startsWith('[') && h.endsWith(']')) {
+    h = h.slice(1, -1);
   }
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+
+  // IPv6 checks strictly for IPv6 literals (contains ':') so domains like fdroid.org are never blocked
+  if (h.includes(':')) {
+    const cleanV6 = h.replace(/^:+/, '');
+    if (
+      h === '::' ||
+      h === '::1' ||
+      h === '0:0:0:0:0:0:0:1' ||
+      h === '0:0:0:0:0:0:0:0' ||
+      h.startsWith('fc') ||
+      h.startsWith('fd') ||
+      h.startsWith('fe80:')
+    ) {
+      return true;
+    }
+    const v4Mapped = cleanV6.match(/^ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (v4Mapped) {
+      return isBlockedIpv4Tuple(Number(v4Mapped[1]), Number(v4Mapped[2]));
+    }
+  }
+
   const ipv4Match = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4Match) {
-    const [a, b] = [Number(ipv4Match[1]), Number(ipv4Match[2])];
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
+    return isBlockedIpv4Tuple(Number(ipv4Match[1]), Number(ipv4Match[2]));
   }
   return false;
 }
@@ -366,11 +390,8 @@ async function vlessOverWSHandler(request, userID, proxyIP) {
   const [client, webSocket] = Object.values(webSocketPair);
   webSocket.accept();
 
-  let address = '';
-  let portWithRandomLog = '';
-  const log = (info, event) => {
-    console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '');
-  };
+  // Zero-log privacy policy: never log destination domains, IPs, or ports
+  const log = (_info, _event) => {};
   const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
   const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
 
@@ -401,9 +422,6 @@ async function vlessOverWSHandler(request, userID, proxyIP) {
             vlessVersion = new Uint8Array([0, 0]),
             isUDP,
           } = processVlessHeader(chunk, userID);
-
-          address = addressRemote;
-          portWithRandomLog = `${portRemote}--${Math.random()} ${isUDP ? 'udp ' : 'tcp '}`;
 
           if (hasError) {
             throw new Error(message);
@@ -438,17 +456,11 @@ async function vlessOverWSHandler(request, userID, proxyIP) {
             proxyIP
           );
         },
-        close() {
-          log('readableWebSocketStream closed');
-        },
-        abort(reason) {
-          log('readableWebSocketStream aborted', JSON.stringify(reason));
-        },
+        close() {},
+        abort() {},
       })
     )
-    .catch((err) => {
-      log('readableWebSocketStream pipeTo error', err);
-    });
+    .catch(() => {});
 
   return new Response(null, {
     status: 101,
@@ -469,7 +481,6 @@ async function handleTCPOutBound(
   async function connectAndWrite(address, port) {
     const tcpSocket = connect({ hostname: address, port });
     remoteSocket.value = tcpSocket;
-    log(`connected to ${address}:${port}`);
     const writer = tcpSocket.writable.getWriter();
     await writer.write(rawClientData);
     writer.releaseLock();

@@ -1,34 +1,33 @@
 # Privacy Policy — Penny VPN (`com.penny.vpn`)
 
-**Effective Date:** November 10, 2026  
-**Version:** 2.9.5
+**Effective Date:** November 15, 2026  
+**Version:** 2.9.7
 
 ## 1. Overview
-Penny VPN (`com.penny.vpn`) provides encrypted VPN tunneling on Android and Android TV using Android's `VpnService` API. This policy transparently discloses what data is never collected and what technical identifiers are processed strictly for quota enforcement and service operation.
+Penny VPN (`com.penny.vpn`) provides encrypted VPN tunneling on Android and Android TV using Android's `VpnService` API. This policy discloses what data is never collected and what technical identifiers are processed for quota enforcement and ad attribution.
 
-## 2. Data We Do NOT Collect
-- **No Browsing or Payload Logs:** Penny VPN does not log, store, or inspect the websites you visit, DNS queries, destination IPs, or payload contents transmitted through the VPN tunnel.
-- **No Camera, Contacts, or Location Permissions:** The app does not request camera, microphone, GPS location, or contact list permissions.
+## 2. Zero Browsing Logs
+- **No Browsing or Destination Logs:** Penny VPN and its official Cloudflare Edge Worker do not log visited domains, destination IPs, ports, DNS queries, or payload traffic.
+- **No Sensitive Device Permissions:** The app does not request camera (`CAMERA`), microphone, GPS location, or contacts permissions.
 
-## 3. Data Processed for Quota Enforcement & Service Operation
-- **Android VpnService (`android.permission.BIND_VPN_SERVICE`):** Used exclusively to establish a local encrypted tunnel between your device and the selected VPN server node.
-- **Hardware-Derived Identifiers for Quota Sync (`deviceId` & `userUuid`):**
-  - To enforce the free daily VIP Mode quota (1 GB/day) and the 1-Month / 50 GB VIP License limit across app reinstalls, the app computes a one-way SHA-256 cryptographic hash (`deviceId` and deterministic `userUuid`) derived from your device's `Settings.Secure.ANDROID_ID` and MediaDrm Widevine hardware identifier.
-  - During quota synchronization (`/api/v1/quota/daily-sync`) and VIP license activation/heartbeat (`/api/v1/license/activate`, `/api/v1/license/heartbeat`), the app transmits only: `deviceId`, `userUuid`, license serial (if VIP), cumulative byte counter (`usedBytes` / `localUsedBytes`), and current mode (`PUBLIC`, `DEDICATED`, or `GHOST`) over HTTPS.
-  - Raw hardware identifiers are never transmitted, and identifiers are masked (`[PROTECTED-UUID]`, `[PROTECTED-HWID]`) in local diagnostic logs.
-- **Advertising & Sponsor Links (Free Tier Only):**
-  - Free-tier users may see Google AdMob ads (which use `com.google.android.gms.permission.AD_ID`) and Start.io In-App Ads (`com.startapp:inapp-sdk`, App ID `210814549`) for banner, interstitial, and rewarded video ads (`+500 MB Free VIP Quota`).
-  - Paid VIP subscribers operate in 100% Ad-Free mode.
+## 3. Data Processed for Service & Quota Enforcement
+- **Android VpnService (`android.permission.BIND_VPN_SERVICE`):** Establishes the encrypted tunnel between your device and the selected VPN node.
+- **Hardware-Derived Pseudonymous Quota Identifiers (`deviceId` & `userUuid`):**
+  - Computed locally via one-way SHA-256 hash over Android ID and MediaDrm Widevine ID to enforce the daily 1 GB Dedicated quota (reset at 00:00 UTC) and the 1-Month / 50 GB VIP license quota.
+  - Quota sync requests transmit only `deviceId`, `userUuid`, license serial (VIP only), cumulative byte counters (`usedBytes` / `deltaBytes`), and active tier mode (`PUBLIC`, `DEDICATED`, or `GHOST`) over HTTPS.
+- **Advertising (Free Tier Only):**
+  - Free-tier users may optionally watch rewarded video ads via **Start.io SDK** (`com.startapp:inapp-sdk`, App ID `210814549`) to unlock `+100 MB` per ad (max 3/day), which may use the Android Advertising ID (`com.google.android.gms.permission.AD_ID`).
+  - Active VIP subscribers are 100% ad-free and Start.io SDK is not initialized for VIP users.
 
-## 4. Security Measures
-- Remote subscription lists require a valid ECDSA P-256 digital signature (`#PENNY-SIG:`). Unsigned or tampered lists are rejected.
-- Third-party proxy relays (`ghproxy.net`) are disabled.
-- Global cleartext HTTP traffic is disabled (`usesCleartextTraffic="false"`), allowing loopback (`127.0.0.1`) only for the local proxy tunnel.
+## 4. Network & Cryptographic Protections
+- Global cleartext HTTP traffic is disabled (`usesCleartextTraffic="false"` and `<base-config cleartextTrafficPermitted="false">`); cleartext is strictly scoped to local loopback (`127.0.0.1` / `localhost`).
+- System CA trust anchors only (`<certificates src="system" />`).
 
 ---
 
 ## سیاست حفظ حریم خصوصی — Penny VPN (`com.penny.vpn`)
 
-۱. **عدم ثبت ترافیک و تاریخچه مرور:** اپلیکیشن Penny VPN هیچ‌گونه لاگی از سایت‌های بازدیدشده، درخواست‌های DNS یا محتوای ترافیک عبوری شما ذخیره یا بررسی نمی‌کند.  
-۲. **شناسه‌های فنی جهت مدیریت سهمیه (Quota):** برای اعمال سهمیه ۱ گیگابایت روزانه رایگان در حالت VIP Mode و سهمیه ۵۰ گیگابایتی لایسنس‌های VIP، یک هش یک‌طرفه رمزنگاری‌شده (`deviceId` و `userUuid`) مشتق از `ANDROID_ID` و شناسه سخت‌افزاری Widevine به همراه میزان حجم مصرفی (`usedBytes`) و حالت اتصال (`PUBLIC`/`DEDICATED`/`GHOST`) از طریق HTTPS با سرور سهمیه همگام‌سازی می‌شود. این شناسه‌ها در لاگ‌های داخلی برنامه سانسور (`[PROTECTED-UUID]`) می‌شوند.  
-۳. **تبلیغات در نسخه رایگان:** کاربران نسخه رایگان ممکن است تبلیغات درون‌برنامه‌ای Start.io SDK (شناسه `210814549`) و Google AdMob را هنگام دریافت پاداش `+500 MB` مشاهده کنند. در نسخه VIP تمامی تبلیغات غیرفعال هستند.
+۱. **عدم ثبت تاریخچه مرور:** اپلیکیشن Penny VPN و ورکر کلودفلر رسمی آن هیچ‌گونه لاگی از دامنه‌ها، آی‌پی مقصد، پورت یا محتوای ترافیک کاربران ثبت نمی‌کنند.  
+۲. **بدون دسترسی‌های غیرضروری:** اپلیکیشن هیچ دسترسی به دوربین، میکروفون، موقعیت مکانی یا مخاطبین ندارد.  
+۳. **مدیریت سهمیه (Quota):** جهت اعمال سهمیه ۱ گیگابایت روزانه (بازنشانی در 00:00 UTC) و بسته‌های ۵۰ گیگابایتی VIP، شناسه هش‌شده یک‌طرفه (`deviceId` و `userUuid`) به همراه شمارنده حجم مصرفی از طریق HTTPS با سرور همگام‌سازی می‌شود.  
+۴. **تبلیغات در نسخه رایگان:** کاربران نسخه رایگان می‌توانند برای دریافت `+100 MB` حجم اضافه (حداکثر ۳ بار در روز) تبلیغات جایزه‌دار **Start.io SDK** (شناسه `210814549`) را با آی‌پی مستقیم خود مشاهده کنند. در نسخه VIP هیچ تبلیغی نمایش داده نمی‌شود و SDK تبلیغاتی نیز راه‌اندازی نمی‌شود.

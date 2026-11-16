@@ -73,6 +73,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          VERSION_NAME=$(grep -m1 'versionName' V2rayNG/app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "PENNY_VERSION_NAME=${VERSION_NAME:-2.9.7}" >> $GITHUB_ENV
           KS_FILE="/tmp/penny-release-keystore.p12"
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "Using production Release Keystore from GitHub Secrets..."
@@ -81,8 +83,9 @@ jobs:
             echo "PENNY_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
             echo "PENNY_KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
             echo "PENNY_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
+            echo "HAS_PROD_KEYSTORE=true" >> $GITHUB_ENV
           else
-            echo "::warning::KEYSTORE_BASE64 secret not configured. Generating ephemeral CI signing key in /tmp..."
+            echo "::warning::KEYSTORE_BASE64 secret not configured. Generating ephemeral CI signing key for Artifact verification (Release upload skipped)."
             EPHEMERAL_PASS="$(openssl rand -hex 16)"
             keytool -genkeypair -v \
               -keystore "$KS_FILE" \
@@ -98,6 +101,7 @@ jobs:
             echo "PENNY_KEYSTORE_PASSWORD=$EPHEMERAL_PASS" >> $GITHUB_ENV
             echo "PENNY_KEY_ALIAS=pennyvpn" >> $GITHUB_ENV
             echo "PENNY_KEY_PASSWORD=$EPHEMERAL_PASS" >> $GITHUB_ENV
+            echo "HAS_PROD_KEYSTORE=false" >> $GITHUB_ENV
           fi
 
       - name: Build Signed Release APK (com.penny.vpn)
@@ -122,10 +126,10 @@ jobs:
 
       - name: Publish Signed Mobile APKs to GitHub Releases
         uses: softprops/action-gh-release@v2
-        if: success()
+        if: success() && env.HAS_PROD_KEYSTORE == 'true'
         with:
-          tag_name: v2.9.7
-          name: "Penny VPN v2.9.7 (Security Audit Hardening • Strict ECDSA Signatures • R8 Minification)"
+          tag_name: v${{ env.PENNY_VERSION_NAME }}
+          name: "Penny VPN v${{ env.PENNY_VERSION_NAME }} (Hardened Production Release)"
           body: |
             ### Penny VPN v2.9.7 — Security Hardened Release
             - **Keystore & Secret Hygiene**: Removed repository `.p12` keystore; signing now exclusively uses GitHub Actions Secrets (`KEYSTORE_BASE64`).

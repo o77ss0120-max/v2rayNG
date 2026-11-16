@@ -260,10 +260,26 @@ async function handleLicenseHeartbeat(request, env) {
   const body = await request.json().catch(() => ({}));
   const serial = String(body.serial || '').trim().toUpperCase();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
-  const deltaBytes = Math.min(5 * 1024 * 1024 * 1024, Math.max(0, Number(body.deltaBytes || 0)));
+  const code = String(body.code || '').trim();
+  const deltaBytes = Math.min(1 * 1024 * 1024 * 1024, Math.max(0, Number(body.deltaBytes || 0)));
 
-  if (!serial || !deviceId) {
-    return Response.json({ ok: false, active: false, message: 'Missing serial or deviceId' }, { status: 400 });
+  if (!serial || !deviceId || !code) {
+    return Response.json(
+      { ok: false, active: false, message: 'Missing serial, deviceId, or signed license code' },
+      { status: 400 }
+    );
+  }
+
+  const verified = await verifyEcdsaToken(code);
+  if (
+    !verified.ok ||
+    verified.serial !== serial ||
+    (verified.targetDevice !== 'ANY' && verified.targetDevice !== '*' && verified.targetDevice !== deviceId)
+  ) {
+    return Response.json(
+      { ok: false, active: false, message: 'Invalid signed license token for heartbeat' },
+      { status: 403 }
+    );
   }
 
   const kvKey = `lic:${serial}`;

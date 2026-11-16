@@ -861,7 +861,7 @@ internal object PennyServerScanner {
                 val req = buildString {
                     append("GET ").append(pathAndQuery).append(" HTTP/1.0\r\n")
                     append("Host: ").append(originalHost).append("\r\n")
-                    append("User-Agent: v2rayNG/1.9.30 PennyVPN/2.5\r\n")
+                    append("User-Agent: v2rayNG/1.9.30 PennyVPN/2.9.7\r\n")
                     append("Accept: */*\r\n")
                     append("Connection: close\r\n\r\n")
                 }

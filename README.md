@@ -18,3 +18,6 @@
 
 ## Security
 See [`SECURITY.md`](./SECURITY.md) and [`PRIVACY_POLICY.md`](./PRIVACY_POLICY.md).
+
+## License & Upstream Attribution
+Licensed under GNU GPL-3.0 (see [`LICENSE`](./LICENSE)), forked from [2dust/v2rayNG](https://github.com/2dust/v2rayNG).

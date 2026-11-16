@@ -515,7 +515,7 @@ internal fun LiveConnectionTelemetryCard(
                 ) {
                     Text(
                         text = if (isConnected) {
-                            "${countryGeo.flagEmoji} ${countryGeo.exitIpPreview} · ${countryGeo.isoCode}"
+                            "${countryGeo.flagEmoji} ${countryGeo.titleCaseName} · ${countryGeo.cityName}"
                         } else {
                             "🇮🇷 Direct ISP · ${countryGeo.flagEmoji} ${countryGeo.isoCode} Ready"
                         },

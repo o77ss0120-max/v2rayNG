@@ -133,7 +133,6 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای تبلیغ حامی
         private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
-        private const val REWARD_ADD_DATA_BYTES = 1L * 1024L * 1024L * 1024L // +۱ گیگابایت حجم اضافه با تماشای ویدیو جایزه‌دار
         private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L  // +۱۰۰ مگابایت سهمیه VIP با تماشای هر تبلیغ جایزه‌دار Start.io
         private const val MAX_DAILY_SPONSORED_ADS = 3                         // حداکثر ۳ بار دریافت پاداش روزانه تبلیغ شفاف
     }
@@ -206,6 +205,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showLog by mutableStateOf(false)
     private var showBest by mutableStateOf(false)
     private var showUpdateDialog by mutableStateOf(false)
+    private var showAdConsentDialog by mutableStateOf(false)
     private var bpbFragmentMode by mutableStateOf("NORMAL")
 
     private val logLines = mutableStateListOf<String>()
@@ -309,7 +309,8 @@ class MainActivity : HelperBaseComponentActivity() {
                     apiBaseUrl = licenseServerUrl,
                     serial = vipSerial,
                     deviceId = deviceId,
-                    deltaBytes = clampedDelta
+                    deltaBytes = clampedDelta,
+                    code = vipCode
                 ) ?: return@launch
 
                 withContext(Dispatchers.Main) {
@@ -339,14 +340,17 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun initStartIoAds() {
         if (vipActive) return
+        val hasConsent = prefs.getBoolean("startio_ads_consent", false)
         runCatching {
             StartAppSDK.initParams(this@MainActivity, STARTIO_APP_ID)
                 .setReturnAdsEnabled(false)
                 .init()
-            StartAppSDK.setUserConsent(this@MainActivity, "pas", System.currentTimeMillis(), true)
+            StartAppSDK.setUserConsent(this@MainActivity, "pas", System.currentTimeMillis(), hasConsent)
             StartAppAd.disableSplash()
-            loadStartIoInterstitialAd()
-            plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • Consent=true • ReturnAds=false)")
+            if (hasConsent) {
+                loadStartIoInterstitialAd()
+            }
+            plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • Consent=$hasConsent • ReturnAds=false)")
         }.onFailure { e ->
             plog("Start.io init warning: ${e.message}")
         }
@@ -445,6 +449,10 @@ class MainActivity : HelperBaseComponentActivity() {
         ensureDailyDeviceQuotaCurrent()
         if (adsClaimedToday >= MAX_DAILY_SPONSORED_ADS) {
             statusMessage = "Daily limit reached ($MAX_DAILY_SPONSORED_ADS of $MAX_DAILY_SPONSORED_ADS claimed today)"
+            return
+        }
+        if (!prefs.getBoolean("startio_ads_consent", false)) {
+            showAdConsentDialog = true
             return
         }
         lifecycleScope.launch(Dispatchers.Main) {
@@ -1601,8 +1609,51 @@ class MainActivity : HelperBaseComponentActivity() {
             if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning, isVipMode)
             if (showVipDialog) VipSubscriptionDialog()
             if (showUpdateDialog) UpdateCenterDialog()
+            if (showAdConsentDialog) AdConsentDialog()
             if (showLog) LogDialog()
         }
+    }
+
+    @Composable
+    private fun AdConsentDialog() {
+        AlertDialog(
+            onDismissRequest = { showAdConsentDialog = false },
+            containerColor = Color(0xFF191A20),
+            title = {
+                Text(
+                    text = "Sponsored Ad Notice (+100 MB)",
+                    color = Color(0xFFF2F4F8),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Sponsored ads are provided by Start.io and use your device Advertising ID. To verify genuine views, the VPN tunnel will pause briefly during the ad so the ad loads over your direct ISP connection, then reconnects automatically.",
+                    color = Color(0xFFB5BAC9),
+                    fontSize = 12.5.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAdConsentDialog = false
+                        prefs.edit().putBoolean("startio_ads_consent", true).apply()
+                        runCatching {
+                            StartAppSDK.setUserConsent(this@MainActivity, "pas", System.currentTimeMillis(), true)
+                        }
+                        showStartIoRewardedVideoForQuota()
+                    }
+                ) {
+                    Text("Agree & Watch Ad", color = Color(0xFFE6CFAF), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAdConsentDialog = false }) {
+                    Text("Cancel", color = Color(0xFF9EA2B0))
+                }
+            }
+        )
     }
 
     @Composable

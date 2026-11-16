@@ -18,6 +18,8 @@ import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 import java.util.Locale
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 internal data class VerifiedLicense(
     val serial: String,
@@ -82,8 +84,22 @@ internal object VipLicenseManager {
             }
         }.getOrDefault("")
 
+        var fallbackId = ""
+        if (androidId.isEmpty() && widevineHex.isEmpty()) {
+            fallbackId = runCatching {
+                val f = File(context.noBackupFilesDir, ".pny_hw_fallback")
+                if (f.exists()) {
+                    f.readText(StandardCharsets.UTF_8).trim()
+                } else {
+                    UUID.randomUUID().toString().also {
+                        f.writeText(it, StandardCharsets.UTF_8)
+                    }
+                }
+            }.getOrDefault("")
+        }
+
         val hwSpec = "${Build.BOARD}|${Build.BRAND}|${Build.DEVICE}|${Build.HARDWARE}"
-        val rawSeed = "PENNY_HW_FINGERPRINT_V3:$androidId:$widevineHex:$hwSpec"
+        val rawSeed = "PENNY_HW_FINGERPRINT_V3:$androidId:$widevineHex:$fallbackId:$hwSpec"
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(rawSeed.toByteArray(StandardCharsets.UTF_8))
         cachedHwDigest = digest
@@ -128,8 +144,20 @@ internal object VipLicenseManager {
         }
     }
 
+    private fun computeQuotaHmac(context: Context, payload: String): String {
+        return runCatching {
+            val hwDigest = computeHardwareDigest(context)
+            val keySpec = SecretKeySpec(hwDigest, "HmacSHA256")
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(keySpec)
+            mac.doFinal(payload.toByteArray(StandardCharsets.UTF_8))
+                .joinToString("") { String.format(Locale.US, "%02x", it.toInt() and 0xFF) }
+                .take(16)
+        }.getOrDefault("")
+    }
+
     /**
-     * ذخیره‌سازی محلی سهمیه روزانه ۱ گیگابایت (همراه با همگام‌سازی سمت سرور بر اساس Hardware UUID)
+     * ذخیره‌سازی محلی با برچسب یکپارچگی HMAC-SHA256 برای سهمیه روزانه ۱ گیگابایت
      */
     fun readTamperResistantDailyUsed(context: Context, deviceId: String, dayKey: String, prefsUsed: Long): Long {
         var maxObserved = prefsUsed.coerceAtLeast(0L)
@@ -138,7 +166,17 @@ internal object VipLicenseManager {
             if (backupFile.exists()) {
                 val text = backupFile.readText(StandardCharsets.UTF_8).trim()
                 val parts = text.split("|")
-                if (parts.size >= 2 && parts[0] == dayKey) {
+                if (parts.size >= 3 && parts[0] == dayKey) {
+                    val v = parts[1].toLongOrNull() ?: 0L
+                    val expectedMac = computeQuotaHmac(context, "${parts[0]}|${parts[1]}")
+                    if (expectedMac.isNotEmpty() && MessageDigest.isEqual(
+                            expectedMac.toByteArray(StandardCharsets.UTF_8),
+                            parts[2].toByteArray(StandardCharsets.UTF_8)
+                        )
+                    ) {
+                        if (v > maxObserved) maxObserved = v
+                    }
+                } else if (parts.size == 2 && parts[0] == dayKey) {
                     val v = parts[1].toLongOrNull() ?: 0L
                     if (v > maxObserved) maxObserved = v
                 }
@@ -152,7 +190,9 @@ internal object VipLicenseManager {
     fun writeTamperResistantDailyUsed(context: Context, deviceId: String, dayKey: String, usedBytes: Long) {
         try {
             val backupFile = File(context.noBackupFilesDir, ".pny_q_${deviceId.hashCode()}.dat")
-            backupFile.writeText("$dayKey|$usedBytes", StandardCharsets.UTF_8)
+            val payload = "$dayKey|$usedBytes"
+            val mac = computeQuotaHmac(context, payload)
+            backupFile.writeText("$payload|$mac", StandardCharsets.UTF_8)
         } catch (e: Exception) {
             Log.d("PennyVPN", "Quota file write warning: ${e.message}")
         }
@@ -392,7 +432,8 @@ internal object VipLicenseManager {
         apiBaseUrl: String,
         serial: String,
         deviceId: String,
-        deltaBytes: Long
+        deltaBytes: Long,
+        code: String = ""
     ): ServerQuotaState? {
         val cleanBase = apiBaseUrl.trim().trimEnd('/')
         if (!cleanBase.startsWith("https://", ignoreCase = true) || serial.isBlank()) return null
@@ -410,6 +451,7 @@ internal object VipLicenseManager {
                     .put("serial", serial)
                     .put("deviceId", deviceId)
                     .put("deltaBytes", deltaBytes.coerceAtLeast(0L))
+                    .apply { if (code.isNotBlank()) put("code", code.trim()) }
                     .toString()
 
                 OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->

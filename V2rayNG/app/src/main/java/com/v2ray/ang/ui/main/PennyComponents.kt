@@ -28,8 +28,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -362,15 +364,15 @@ internal fun SponsoredQuotaCard(
                     Text(
                         text = "Sponsored",
                         color = ChampagneGold,
-                        fontSize = 9.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace
                     )
-                    Text("·", color = PlatinumMuted, fontSize = 10.sp)
+                    Text("·", color = PlatinumMuted, fontSize = 10.5.sp)
                     Text(
                         text = "$safeClaimed of $maxDailyAds claimed today",
                         color = PlatinumSilver,
-                        fontSize = 9.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = FontFamily.Monospace,
                         maxLines = 1,
@@ -384,12 +386,12 @@ internal fun SponsoredQuotaCard(
                         .background(
                             if (allClaimed) Color(0xFF232530) else ChampagneGold
                         )
-                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = if (allClaimed) "Done Today ✓" else "Watch Ad • +100 MB",
                         color = if (allClaimed) PlatinumMuted else Color(0xFF121318),
-                        fontSize = 9.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         softWrap = false
@@ -409,7 +411,7 @@ internal fun SponsoredQuotaCard(
                         "Plays directly on your ISP IP via Start.io • Instant +100 MB VIP data"
                     },
                     color = PlatinumMuted,
-                    fontSize = 8.5.sp,
+                    fontSize = 9.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -450,6 +452,8 @@ internal fun LiveConnectionTelemetryCard(
     countryGeo: CountryGeoInfo,
     server: PennyServer?,
     onServerSwitchClick: () -> Unit,
+    activeEdgeId: String = "",
+    activeTransport: String = "",
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -498,14 +502,23 @@ internal fun LiveConnectionTelemetryCard(
                     Text(
                         text = if (isConnected) fmtDuration(elapsedSec) else "00:00:00",
                         color = PlatinumBright,
-                        fontSize = 13.sp,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace
                     )
+                    val routeHint = if (isConnected && activeTransport.isNotBlank()) {
+                        "· $activeTransport"
+                    } else if (isConnected) {
+                        "· Session"
+                    } else {
+                        "· Standby"
+                    }
                     Text(
-                        text = if (isConnected) "· Session" else "· Standby",
-                        color = PlatinumMuted,
-                        fontSize = 9.5.sp
+                        text = routeHint,
+                        color = if (isConnected && activeTransport.isNotBlank()) ChampagneGold else PlatinumMuted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -520,10 +533,11 @@ internal fun LiveConnectionTelemetryCard(
                             "🇮🇷 Direct ISP · ${countryGeo.flagEmoji} ${countryGeo.isoCode} Ready"
                         },
                         color = if (isConnected) ChampagneLight else PlatinumSilver,
-                        fontSize = 10.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (server != null && server.ms > 0) {
                         PingSignalBars(ms = server.ms)
@@ -625,7 +639,7 @@ internal fun LiveConnectionTelemetryCard(
                     Text(
                         text = "Today: ${fmtBytes(dailyUsedBytes)} / ${fmtBytes(dailyMaxBytes)}",
                         color = ChampagneGold,
-                        fontSize = 9.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -641,7 +655,7 @@ internal fun StatCell(value: String, label: String, modifier: Modifier = Modifie
         Text(
             text = value,
             color = PlatinumBright,
-            fontSize = 12.sp,
+            fontSize = 12.5.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = FontFamily.Monospace,
             maxLines = 1
@@ -649,7 +663,7 @@ internal fun StatCell(value: String, label: String, modifier: Modifier = Modifie
         Text(
             text = label,
             color = PlatinumMuted,
-            fontSize = 9.sp,
+            fontSize = 9.5.sp,
             maxLines = 1
         )
     }
@@ -722,44 +736,37 @@ internal fun ModernServerCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 13.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-                modifier = Modifier.weight(1f)
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f).padding(end = 8.dp)
             ) {
                 Text(
                     text = geo.flagEmoji,
-                    fontSize = 18.sp
+                    fontSize = 19.sp
                 )
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = if (server != null) "${geo.titleCaseName} · ${geo.cityName}" else "Auto · Fastest Country",
-                            color = PlatinumBright,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "Recommended",
-                            color = ChampagneGold,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = if (isConnected) "Active exit node · Tap to change country" else "Auto-balanced route · Tap to choose country",
-                        color = PlatinumMuted,
-                        fontSize = 9.sp,
+                        text = if (server != null) "${geo.titleCaseName} · ${geo.cityName}" else "Auto · Fastest Country",
+                        color = PlatinumBright,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (isConnected) {
+                            "★ Recommended · Active exit node · Tap to switch"
+                        } else {
+                            "★ Recommended · Auto-balanced fastest route"
+                        },
+                        color = ChampagneGold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -813,14 +820,14 @@ internal fun ConnectionProfileBar(
                         Text(
                             text = prof.label,
                             color = if (active) PlatinumBright else PlatinumMuted,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
                             maxLines = 1
                         )
                         Text(
                             text = prof.tag,
-                            color = if (active) ChampagneGold else Color(0xFF6E717C),
-                            fontSize = 8.sp,
+                            color = if (active) ChampagneGold else Color(0xFF7B7F8C),
+                            fontSize = 9.5.sp,
                             maxLines = 1
                         )
                     }
@@ -1828,12 +1835,12 @@ internal fun PowerButton(
                     UiMode.CONNECTED -> "🇮🇷 IR ➔ ${countryGeo.flagEmoji} ${countryGeo.titleCaseName.uppercase()} (${countryGeo.cityName})"
                 },
                 color = if (isConnected) ChampagneLight else PlatinumSilver,
-                fontSize = 8.5.sp,
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.ExtraBold,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 0.4.sp,
                 maxLines = 1,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.5.dp)
             )
         }
 
@@ -1978,14 +1985,14 @@ internal fun ServiceTierSelectorBar(
                             Text(
                                 text = titleLabel,
                                 color = if (isSelected) PlatinumBright else PlatinumMuted,
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
                                 maxLines = 1
                             )
                             Text(
                                 text = subBadge,
-                                color = if (isSelected) ChampagneGold else Color(0xFF727684),
-                                fontSize = 8.sp,
+                                color = if (isSelected) ChampagneGold else Color(0xFF7D8291),
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontFamily = FontFamily.Monospace,
                                 maxLines = 1
@@ -2393,10 +2400,10 @@ internal fun ServersTabPage(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-                contentPadding = PaddingValues(bottom = 8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 10.dp)
             ) {
-                // ۱) کارت Auto در بالای لیست (که نودهای #1 تا #15 را به صورت هوشمند مدیریت می‌کند)
+                // ۱) کارت Auto در بالای لیست (نودهای #1 تا #15 بدون شلوغی پشت Auto قرار می‌گیرند)
                 item(key = "auto_smart_selector") {
                     val autoShape = RoundedCornerShape(14.dp)
                     Surface(
@@ -2414,73 +2421,53 @@ internal fun ServersTabPage(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 13.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).padding(end = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(RoundedCornerShape(9.dp))
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
                                         .background(Color(0xFF282219))
-                                        .border(1.dp, ChampagneGold.copy(alpha = 0.75f), RoundedCornerShape(9.dp)),
+                                        .border(1.dp, ChampagneGold.copy(alpha = 0.75f), RoundedCornerShape(10.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = "⚡",
-                                        fontSize = 15.sp
+                                        fontSize = 16.sp
                                     )
                                 }
                                 Spacer(Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "Auto (Smart Fastest)",
-                                            color = PlatinumBright,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(5.dp))
-                                                .background(ChampagneGold.copy(alpha = 0.22f))
-                                                .border(0.6.dp, ChampagneGold.copy(alpha = 0.7f), RoundedCornerShape(5.dp))
-                                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = "Recommended",
-                                                color = ChampagneLight,
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.ExtraBold
-                                            )
-                                        }
-                                    }
-                                    Spacer(Modifier.height(2.dp))
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        text = "Automatically balances across ${servers.size} nodes (#1–#${servers.size}) • Best ${bestPingAll}ms",
-                                        color = PlatinumMuted,
-                                        fontSize = 9.sp,
+                                        text = "Auto (Smart Fastest)",
+                                        color = PlatinumBright,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "★ Recommended · #1–#${servers.size} pool · Best ${bestPingAll}ms",
+                                        color = ChampagneGold,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                PingSignalBars(ms = bestPingAll)
-                            }
+                            PingSignalBars(ms = bestPingAll)
                         }
                     }
                 }
 
-                // ۲) گروه‌بندی کشوری با پرچم («🇳🇱 Netherlands ×6 • بهترین ۱۲۲ms») و باز شدن کشویی
+                // ۲) گروه‌بندی کشوری با پرچم، ردیف‌های بزرگ‌تر و تراز بدون شکستن برچسب Recommended
                 itemsIndexed(countryGroups, key = { _, entry -> "country_${entry.key}" }) { _, entry ->
                     val iso = entry.key
                     val groupServers = entry.value
@@ -2505,7 +2492,6 @@ internal fun ServersTabPage(
                             )
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // ردیف اصلی کشور: کلیک روی کشور به بهترین سرور همان کشور وصل می‌شود و دکمه بازشونده لیست داخلی را نشان می‌دهد
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2513,14 +2499,14 @@ internal fun ServersTabPage(
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         expandedIso = if (isExpanded) null else iso
                                     }
-                                    .padding(horizontal = 11.dp, vertical = 10.dp),
+                                    .padding(horizontal = 12.dp, vertical = 13.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // ستاره علاقه‌مندی (★ / ☆)
                                 Text(
                                     text = if (isFav) "★" else "☆",
                                     color = if (isFav) ChampagneGold else PlatinumMuted,
-                                    fontSize = 16.sp,
+                                    fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier
                                         .clip(CircleShape)
@@ -2528,73 +2514,64 @@ internal fun ServersTabPage(
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             onToggleFavoriteCountry(iso)
                                         }
-                                        .padding(end = 7.dp, top = 2.dp, bottom = 2.dp)
+                                        .padding(end = 8.dp, top = 2.dp, bottom = 2.dp)
                                 )
 
                                 // پرچم کشور
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(9.dp))
                                         .background(Color(0xFF20232E))
-                                        .border(1.dp, Color(0xFF393D4E), RoundedCornerShape(8.dp)),
+                                        .border(1.dp, Color(0xFF393D4E), RoundedCornerShape(9.dp)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = sampleGeo.flagEmoji,
-                                        fontSize = 16.sp
+                                        fontSize = 18.sp
                                     )
                                 }
 
-                                Spacer(Modifier.width(9.dp))
+                                Spacer(Modifier.width(10.dp))
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "${sampleGeo.titleCaseName} ×${groupServers.size}",
-                                            color = PlatinumBright,
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (isRecommendedGroup) {
-                                            Spacer(Modifier.width(6.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(5.dp))
-                                                    .background(ChampagneGold.copy(alpha = 0.20f))
-                                                    .padding(horizontal = 5.dp, vertical = 1.dp)
-                                            ) {
-                                                Text(
-                                                    text = "Recommended",
-                                                    color = ChampagneGold,
-                                                    fontSize = 7.5.sp,
-                                                    fontWeight = FontWeight.ExtraBold
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Spacer(Modifier.height(2.dp))
+                                Column(
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Text(
-                                        text = "${sampleGeo.cityName} • بهترین ${bestMs}ms",
-                                        color = if (hasActiveNode) ChampagneLight else PlatinumMuted,
-                                        fontSize = 9.sp,
-                                        maxLines = 1
+                                        text = "${sampleGeo.titleCaseName} ×${groupServers.size}",
+                                        color = PlatinumBright,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${sampleGeo.cityName} · Best ${bestMs}ms" +
+                                            if (isRecommendedGroup) " · ★ Recommended" else "",
+                                        color = when {
+                                            hasActiveNode -> ChampagneLight
+                                            isRecommendedGroup -> ChampagneGold
+                                            else -> PlatinumMuted
+                                        },
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isRecommendedGroup) FontWeight.SemiBold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
 
-                                // میله‌های رنگی پینگ + پینگ عددی + فلش باز شدن
+                                // میله‌های رنگی پینگ + دکمه Connect + فلش باز شدن
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                                 ) {
                                     PingSignalBars(ms = bestMs)
                                     Surface(
                                         color = Color(0xFF252834),
-                                        shape = RoundedCornerShape(7.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(7.dp))
+                                            .clip(RoundedCornerShape(8.dp))
                                             .clickable(enabled = !busy) {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 val bestNode = groupServers.minByOrNull { if (it.ms > 0) it.ms else 9999L } ?: groupServers.first()
@@ -2604,15 +2581,17 @@ internal fun ServersTabPage(
                                         Text(
                                             text = if (hasActiveNode) "ACTIVE" else "Connect",
                                             color = if (hasActiveNode) ChampagneGold else ChampagneLight,
-                                            fontSize = 8.5.sp,
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                                         )
                                     }
                                     Text(
                                         text = if (isExpanded) "▴" else "▾",
                                         color = PlatinumMuted,
-                                        fontSize = 12.sp
+                                        fontSize = 13.sp
                                     )
                                 }
                             }
@@ -2623,8 +2602,8 @@ internal fun ServersTabPage(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(Color(0xFF13151C))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
                                     groupServers.forEachIndexed { nodeIdx, srv ->
                                         val isNodeSelected = isRunning && srv.guid == selectedGuid
@@ -2643,34 +2622,34 @@ internal fun ServersTabPage(
                                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                     onServerClick(srv)
                                                 }
-                                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                                                .padding(horizontal = 11.dp, vertical = 9.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(
+                                                modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
                                                 Text(
                                                     text = "${sampleGeo.flagEmoji} ${sampleGeo.titleCaseName} • Node ${nodeIdx + 1}",
                                                     color = if (isNodeSelected) ChampagneLight else PlatinumBright,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                                 if (nodeIdx == 0) {
-                                                    Spacer(Modifier.width(6.dp))
+                                                    Spacer(Modifier.width(7.dp))
                                                     Text(
                                                         text = "FASTEST",
                                                         color = ChampagneGold,
-                                                        fontSize = 7.5.sp,
+                                                        fontSize = 9.5.sp,
                                                         fontWeight = FontWeight.ExtraBold,
                                                         fontFamily = FontFamily.Monospace
                                                     )
                                                 }
                                             }
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                PingSignalBars(ms = nodeMs)
-                                            }
+                                            PingSignalBars(ms = nodeMs)
                                         }
                                     }
                                 }
@@ -2811,7 +2790,7 @@ internal fun NetworkDoctorTabPage(
                     Text(
                         text = "DNS ➔ Fragment ➔ Route ➔ Speed verified across $serverCount nodes",
                         color = PlatinumMuted,
-                        fontSize = 9.5.sp,
+                        fontSize = 10.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -2828,9 +2807,9 @@ internal fun NetworkDoctorTabPage(
                     Text(
                         text = "Core Logs",
                         color = PlatinumSilver,
-                        fontSize = 9.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
             }
@@ -2971,7 +2950,7 @@ private fun DoctorChecklistStepRow(
                 Text(
                     text = title,
                     color = PlatinumBright,
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -2979,7 +2958,7 @@ private fun DoctorChecklistStepRow(
                 Text(
                     text = detail,
                     color = PlatinumMuted,
-                    fontSize = 9.sp,
+                    fontSize = 9.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2992,7 +2971,7 @@ private fun DoctorChecklistStepRow(
                 else -> "READY"
             },
             color = badgeColor,
-            fontSize = 8.5.sp,
+            fontSize = 9.5.sp,
             fontWeight = FontWeight.ExtraBold,
             fontFamily = FontFamily.Monospace
         )
@@ -3037,8 +3016,10 @@ internal fun ProfileTabPage(
     val dailyRemBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
 
     Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // هدر تب Settings + دکمه‌های VIP و Copy ID
         Row(
@@ -3046,19 +3027,20 @@ internal fun ProfileTabPage(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
                 Text(
                     text = "Settings",
                     color = PlatinumBright,
-                    fontSize = 17.sp,
+                    fontSize = 17.5.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
                     text = "ID: ${userUuid.take(12)}... • Left: ${fmtBytes(dailyRemBytes)}",
                     color = PlatinumMuted,
-                    fontSize = 9.sp,
+                    fontSize = 9.5.sp,
                     fontFamily = FontFamily.Monospace,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -3074,7 +3056,7 @@ internal fun ProfileTabPage(
                     Text(
                         text = if (vipActive) "💎 VIP Active" else "💎 VIP 50GB",
                         color = ChampagneLight,
-                        fontSize = 8.5.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                     )
@@ -3090,7 +3072,7 @@ internal fun ProfileTabPage(
                     Text(
                         text = "Copy ID",
                         color = PlatinumSilver,
-                        fontSize = 8.5.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
                     )
@@ -3106,7 +3088,7 @@ internal fun ProfileTabPage(
                     Text(
                         text = "Update",
                         color = PlatinumSilver,
-                        fontSize = 8.5.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
                     )
@@ -3232,7 +3214,7 @@ private fun CompactSettingToggleRow(
             Text(
                 text = title,
                 color = PlatinumBright,
-                fontSize = 10.8.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -3240,7 +3222,7 @@ private fun CompactSettingToggleRow(
             Text(
                 text = subtitle,
                 color = PlatinumMuted,
-                fontSize = 8.8.sp,
+                fontSize = 9.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

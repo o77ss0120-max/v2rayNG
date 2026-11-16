@@ -250,6 +250,10 @@ class MainActivity : HelperBaseComponentActivity() {
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
         loadSaved()
         checkVipExpiration()
+        lifecycleScope.launch(Dispatchers.IO) {
+            PennyServerScanner.fetchRemoteEdgeConfig(licenseServerUrl, ::plog)
+            PennyServerScanner.selectBestGhostTransport(serviceTierMode, ::plog)
+        }
         syncServerQuotaInBackground(pendingUnsyncedBytes)
         syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
         initStartIoAds()
@@ -657,7 +661,11 @@ class MainActivity : HelperBaseComponentActivity() {
                     localUsedBytes = dailyUsedBytes,
                     deltaBytes = clampedDelta,
                     activeMode = serviceTierMode.name,
-                    connectedServerLabel = curLabel
+                    connectedServerLabel = curLabel,
+                    activeEdgeId = PennyServerScanner.activeEdgeId,
+                    activeTransport = PennyServerScanner.activeTransport,
+                    edgeLatencyMs = PennyServerScanner.activeEdgeLatencyMs,
+                    transportHealth = PennyServerScanner.activeTransportHealth
                 ) ?: return@launch
                 withContext(Dispatchers.Main) {
                     pendingDailyUnsyncedBytes = (pendingDailyUnsyncedBytes - clampedDelta).coerceAtLeast(0L)
@@ -1283,6 +1291,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     prefs.edit().putBoolean("ghost_messaging_only", true).apply()
                 }
                 PennyServerScanner.syncGhostModeKernelRules(newMode, ghostMessagingOnly, splitTunnelLocal)
+                PennyServerScanner.selectBestGhostTransport(newMode, ::plog)
                 when (newMode) {
                     ServiceTierMode.GHOST ->
                         PennyServerScanner.applyBpbCoreOptimizations(fragLength = "5-12", fragInterval = "1-2")
@@ -1418,7 +1427,9 @@ class MainActivity : HelperBaseComponentActivity() {
                                             dailyMaxBytes = dailyMaxBytes,
                                             countryGeo = currentCountryGeo,
                                             server = current,
-                                            onServerSwitchClick = { currentNavTab = BottomNavTab.SERVERS }
+                                            onServerSwitchClick = { currentNavTab = BottomNavTab.SERVERS },
+                                            activeEdgeId = PennyServerScanner.activeEdgeId,
+                                            activeTransport = PennyServerScanner.activeTransport
                                         )
 
                                         // کارت جدا و شفاف تبلیغ با برچسب Sponsored و شمارنده «2 of 3 claimed today»
@@ -2273,12 +2284,12 @@ class MainActivity : HelperBaseComponentActivity() {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 11.dp, vertical = 8.dp),
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(34.dp)
+                                                .size(36.dp)
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .background(if (isOwn) Color(0xFF2F281F) else Color(0xFF17181D))
                                                 .border(
@@ -2291,48 +2302,28 @@ class MainActivity : HelperBaseComponentActivity() {
                                             Text(
                                                 text = tagText,
                                                 color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB8BDCB),
-                                                fontSize = 9.sp,
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 fontFamily = FontFamily.Monospace
                                             )
                                         }
-                                        Spacer(Modifier.width(9.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Text(
-                                                    text = s.label,
-                                                    color = Color(0xFFF2F4F8),
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 10.5.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(
-                                                            if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.22f)
-                                                            else Color(0xFF323542)
-                                                        )
-                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                                ) {
-                                                    Text(
-                                                        text = if (isOwn) "VIP MODE" else "PUBLIC",
-                                                        color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB4B9C7),
-                                                        fontSize = 7.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontFamily = FontFamily.Monospace
-                                                    )
-                                                }
-                                            }
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             Text(
-                                                text = if (isOwn) "Balanced VIP Node ($tagText)" else "Public Community Server",
-                                                color = if (isOwn) Color(0xFFD8C7B0) else Color(0xFF8E929E),
-                                                fontSize = 8.5.sp,
-                                                maxLines = 1
+                                                text = s.label,
+                                                color = Color(0xFFF2F4F8),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = if (isOwn) "★ VIP MODE · Balanced ($tagText)" else "PUBLIC · Community Node",
+                                                color = if (isOwn) Color(0xFFE6CFAF) else Color(0xFF9EA2AE),
+                                                fontSize = 9.5.sp,
+                                                fontWeight = if (isOwn) FontWeight.SemiBold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                         Spacer(Modifier.width(6.dp))
@@ -2963,7 +2954,9 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         withContext(Dispatchers.IO) {
             runCatching { CoreNativeManager.initCoreEnv(this@MainActivity) }
+            runCatching { PennyServerScanner.fetchRemoteEdgeConfig(licenseServerUrl, ::plog) }
         }
+        PennyServerScanner.selectBestGhostTransport(currentMode, ::plog)
         when (currentMode) {
             ServiceTierMode.GHOST ->
                 PennyServerScanner.applyBpbCoreOptimizations(fragLength = "5-12", fragInterval = "1-2")
@@ -3272,6 +3265,7 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         PennySpeedLimiter.isVipUnrestricted = vipActive
         PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, splitTunnelLocal)
+        PennyServerScanner.selectBestGhostTransport(serviceTierMode, ::plog)
         val wasRunning = mainViewModel.uiState.value.isRunning
 
         if (wasRunning) {

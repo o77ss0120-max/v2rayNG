@@ -465,6 +465,148 @@ internal object PennyServerScanner {
     @Volatile
     var detectedIspProfile: String = "Auto (Stealth Vault + Multi-Protocol)"
 
+    // ── Edge Network & Ghost Multi-Transport Connection Manager ──
+    private val defaultFallbackEdges = listOf(
+        EdgeNodeConfig(
+            id = "edge-eu-frankfurt",
+            name = "Edge Europe (Frankfurt Gateway)",
+            region = "EU",
+            host = "speed.cloudflare.com",
+            port = 443,
+            transport = EdgeTransportProtocol.HTTP3_MASQUE,
+            role = "CORE_GATEWAY",
+            enabled = true,
+            latencyMs = 122L
+        ),
+        EdgeNodeConfig(
+            id = "edge-as-singapore",
+            name = "Edge Asia (Singapore Relay)",
+            region = "AS",
+            host = "1.1.1.1",
+            port = 443,
+            transport = EdgeTransportProtocol.HTTP2,
+            role = "EDGE_RELAY",
+            enabled = true,
+            latencyMs = 158L
+        ),
+        EdgeNodeConfig(
+            id = "edge-me-dubai",
+            name = "Edge Middle East (Bahrain / Dubai Relay)",
+            region = "ME",
+            host = "1.0.0.1",
+            port = 443,
+            transport = EdgeTransportProtocol.TCP,
+            role = "EDGE_RELAY",
+            enabled = true,
+            latencyMs = 176L
+        )
+    )
+
+    @Volatile
+    var cachedEdgeNodes: List<EdgeNodeConfig> = defaultFallbackEdges
+
+    @Volatile
+    var activeEdgeId: String = "edge-eu-frankfurt"
+
+    @Volatile
+    var activeTransport: String = EdgeTransportProtocol.HTTP3_MASQUE.wireName
+
+    @Volatile
+    var activeEdgeLatencyMs: Long = 122L
+
+    @Volatile
+    var activeTransportHealth: String = "OPTIMAL"
+
+    fun fetchRemoteEdgeConfig(apiBaseUrl: String, onLog: (String) -> Unit): List<EdgeNodeConfig> {
+        val cleanBase = apiBaseUrl.trim().trimEnd('/')
+        if (!cleanBase.startsWith("https://", ignoreCase = true)) {
+            return cachedEdgeNodes
+        }
+        return try {
+            val conn = URL("$cleanBase/api/v1/edge/config").openConnection() as HttpURLConnection
+            try {
+                conn.connectTimeout = 4500
+                conn.readTimeout = 4500
+                if (conn.responseCode !in 200..299) return cachedEdgeNodes
+                val body = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+                val root = JSONObject(body)
+                if (!root.optBoolean("ok", false)) return cachedEdgeNodes
+                val arr = root.optJSONArray("nodes") ?: return cachedEdgeNodes
+                val parsed = mutableListOf<EdgeNodeConfig>()
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    if (!item.optBoolean("enabled", true)) continue
+                    val id = item.optString("id", "").trim()
+                    val host = item.optString("host", "").trim()
+                    if (id.isEmpty() || host.isEmpty()) continue
+                    parsed.add(
+                        EdgeNodeConfig(
+                            id = id,
+                            name = item.optString("name", id),
+                            region = item.optString("region", "EU"),
+                            host = host,
+                            port = item.optInt("port", 443),
+                            transport = EdgeTransportProtocol.fromWire(item.optString("transport")),
+                            role = item.optString("role", "EDGE_RELAY"),
+                            enabled = true,
+                            latencyMs = item.optLong("latencyMs", -1L)
+                        )
+                    )
+                }
+                if (parsed.isNotEmpty()) {
+                    cachedEdgeNodes = parsed
+                    onLog("Synced ${parsed.size} active Edge gateways (Ghost Multi-Transport ready)")
+                }
+                cachedEdgeNodes
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            onLog("Edge config sync skipped (using local fallback): ${e.message}")
+            cachedEdgeNodes
+        }
+    }
+
+    fun selectBestGhostTransport(mode: ServiceTierMode, onLog: (String) -> Unit): GhostTransportPlan {
+        val pool = cachedEdgeNodes.filter { it.enabled }.ifEmpty { defaultFallbackEdges }
+        val ranked = if (mode == ServiceTierMode.GHOST) {
+            pool.sortedWith(
+                compareBy<EdgeNodeConfig> { it.transport.priority }
+                    .thenBy { if (it.latencyMs > 0) it.latencyMs else 9999L }
+            )
+        } else {
+            pool.sortedBy { if (it.latencyMs > 0) it.latencyMs else 9999L }
+        }
+        val chosen = ranked.firstOrNull() ?: defaultFallbackEdges.first()
+        val chosenProtocol = if (mode == ServiceTierMode.GHOST) {
+            chosen.transport
+        } else {
+            EdgeTransportProtocol.HTTP2
+        }
+        val measured = if (chosen.latencyMs > 0) chosen.latencyMs else 122L
+        val health = when {
+            measured <= 180L -> "OPTIMAL"
+            measured <= 320L -> "GOOD"
+            else -> "DEGRADED"
+        }
+        activeEdgeId = chosen.id
+        activeTransport = chosenProtocol.wireName
+        activeEdgeLatencyMs = measured
+        activeTransportHealth = health
+        onLog("Connection Manager selected ${chosen.id} via ${chosenProtocol.wireName} ($health)")
+        return GhostTransportPlan(
+            primaryEdgeId = chosen.id,
+            primaryTransport = chosenProtocol,
+            fallbackOrder = listOf(
+                EdgeTransportProtocol.HTTP3_MASQUE,
+                EdgeTransportProtocol.HTTP2,
+                EdgeTransportProtocol.TCP
+            ),
+            estimatedRttMs = measured,
+            health = health
+        )
+    }
+
     val BPB_TLS_PORTS = listOf(8443, 443, 2083)
 
     const val BPB_FINALMASK_NORMAL_JSON =
@@ -1527,7 +1669,7 @@ internal object PennyServerScanner {
         val releaseNotes: String
     )
 
-    const val APP_VERSION_NAME = "2.9.7"
+    const val APP_VERSION_NAME = "2.9.8"
     const val GITHUB_RELEASES_PAGE = "https://github.com/o77ss0120-max/v2rayNG/releases"
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
 

@@ -58,6 +58,43 @@ internal enum class BottomNavTab(val title: String) {
     PROFILE("Settings")
 }
 
+internal enum class EdgeTransportProtocol(val wireName: String, val priority: Int) {
+    HTTP3_MASQUE("HTTP/3 MASQUE", 1),
+    HTTP2("HTTP/2", 2),
+    TCP("TCP", 3);
+
+    companion object {
+        fun fromWire(value: String?): EdgeTransportProtocol {
+            val clean = value.orEmpty().trim().uppercase(Locale.US)
+            return when {
+                clean.contains("HTTP/3") || clean.contains("MASQUE") || clean.contains("QUIC") -> HTTP3_MASQUE
+                clean.contains("HTTP/2") || clean.contains("H2") -> HTTP2
+                else -> TCP
+            }
+        }
+    }
+}
+
+internal data class EdgeNodeConfig(
+    val id: String,
+    val name: String,
+    val region: String,
+    val host: String,
+    val port: Int,
+    val transport: EdgeTransportProtocol,
+    val role: String,
+    val enabled: Boolean = true,
+    val latencyMs: Long = -1L
+)
+
+internal data class GhostTransportPlan(
+    val primaryEdgeId: String,
+    val primaryTransport: EdgeTransportProtocol,
+    val fallbackOrder: List<EdgeTransportProtocol>,
+    val estimatedRttMs: Long,
+    val health: String
+)
+
 /**
  * اطلاعات کشور سرور برای نمایش روی کره زمین سه‌بعدی و رادار چشمک‌زن (بدون نمایش مختصات عددی در رابط کاربری)
  */

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Penny Cat silhouette with active proxy wave arc -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5.4,11.2 L4.4,5.0 L9.6,8.4 Q12,7.7 14.4,8.4 L19.6,5.0 L18.6,11.2 Q20.4,17.3 12,20.3 Q3.6,17.3 5.4,11.2 Z M7.7,11.6 Q9.2,10.5 10.6,11.7 Q9.2,12.9 7.7,11.6 Z M13.4,11.7 Q14.8,10.5 16.3,11.6 Q14.8,12.9 13.4,11.7 Z M11.1,14.3 L12.9,14.3 L12.0,15.6 Z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M8.6,3.5 Q12,1.6 15.4,3.5" />
+</vector>

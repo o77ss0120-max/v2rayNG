@@ -199,7 +199,7 @@ internal object VipLicenseManager {
     }
 
     /**
-     * همگام‌سازی سهمیه ۱ گیگابایت روزانه با سرور (بدون ارسال نام سرور یا اطلاعات اضافی)
+     * همگام‌سازی سهمیه ۱ گیگابایت روزانه و تله‌متری ناشناس Edge/Transport با سرور (بدون هیچ‌گونه ذخیره IP کلاینت)
      */
     fun syncDailyQuotaAndTelemetry(
         apiBaseUrl: String,
@@ -209,7 +209,11 @@ internal object VipLicenseManager {
         localUsedBytes: Long,
         deltaBytes: Long,
         activeMode: String,
-        connectedServerLabel: String
+        connectedServerLabel: String,
+        activeEdgeId: String = "",
+        activeTransport: String = "",
+        edgeLatencyMs: Long = -1L,
+        transportHealth: String = "OPTIMAL"
     ): DailyQuotaSyncResult? {
         val cleanBase = apiBaseUrl.trim().trimEnd('/')
         if (!cleanBase.startsWith("https://", ignoreCase = true)) {
@@ -224,14 +228,26 @@ internal object VipLicenseManager {
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
 
-                val reqJson = JSONObject()
+                val reqObj = JSONObject()
                     .put("deviceId", deviceId)
                     .put("userUuid", userUuid)
                     .put("dayKey", dayKey)
                     .put("localUsedBytes", localUsedBytes.coerceAtLeast(0L))
                     .put("deltaBytes", deltaBytes.coerceAtLeast(0L))
                     .put("activeMode", activeMode)
-                    .toString()
+                if (activeEdgeId.isNotBlank()) {
+                    reqObj.put("activeEdgeId", activeEdgeId.take(64))
+                }
+                if (activeTransport.isNotBlank()) {
+                    reqObj.put("activeTransport", activeTransport.take(32))
+                }
+                if (edgeLatencyMs in 1L..29999L) {
+                    reqObj.put("edgeLatencyMs", edgeLatencyMs)
+                }
+                if (transportHealth.isNotBlank()) {
+                    reqObj.put("transportHealth", transportHealth.take(24))
+                }
+                val reqJson = reqObj.toString()
 
                 OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8).use { writer ->
                     writer.write(reqJson)

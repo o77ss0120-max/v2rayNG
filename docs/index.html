@@ -6,9 +6,25 @@
   <title>Penny VPN — Official Edge Network &amp; Sponsor Portal</title>
   <meta name="description" content="Penny VPN — Connect When Others Can't. Multi-transport HTTP/3 MASQUE, HTTP/2 &amp; TLS Fragment tunnel with Zero-IP logging." />
   <script>
-    if (window.location.search.indexOf('inapp=1') !== -1) {
-      document.documentElement.classList.add('inapp-mode');
-    }
+    (function () {
+      var params = new URLSearchParams(window.location.search || '');
+      if (params.get('inapp') === '1') {
+        document.documentElement.classList.add('inapp-mode');
+      }
+      var reqUnit = params.get('unit');
+      var units = ['2462374', '2462387'];
+      if (units.indexOf(reqUnit) !== -1) {
+        window.__pennyActiveUnit = reqUnit;
+      } else {
+        var idx = 0;
+        try {
+          idx = (parseInt(localStorage.getItem('penny_aads_rot') || '0', 10) || 0) % units.length;
+          localStorage.setItem('penny_aads_rot', String((idx + 1) % units.length));
+        } catch (e) {}
+        window.__pennyActiveUnit = units[idx];
+      }
+      document.documentElement.setAttribute('data-active-unit', window.__pennyActiveUnit);
+    })();
   </script>
   <style>
     :root {
@@ -103,8 +119,13 @@
       margin-bottom: 8px;
       text-align: center;
     }
+    .sponsor-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
     .sponsor-box {
-      min-height: 230px;
+      min-height: 220px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -114,19 +135,31 @@
       padding: 8px 4px;
       overflow: hidden;
     }
-    #frame {
+    .sponsor-box--leaderboard {
+      min-height: 104px;
+      padding: 10px 4px 26px;
+      position: relative;
+    }
+    #aads-slot-2462374 #frame {
       width: 100% !important;
       display: flex;
       justify-content: center;
       align-items: center;
     }
-    #frame iframe {
+    #aads-slot-2462374 #frame iframe {
       width: 100% !important;
       max-width: 100% !important;
       min-height: 220px !important;
       border: 0 !important;
       display: block !important;
       margin: 0 auto !important;
+    }
+    .scale-468 {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transform-origin: center center;
     }
     .grid {
       display: grid;
@@ -166,9 +199,9 @@
       text-decoration: none;
     }
 
-    /* Inside Android app WebView (?inapp=1): show ONLY the live AADS ad box cleanly centered with zero scroll */
+    /* Inside Android app WebView (?inapp=1): display ONLY the active rotated ad slot cleanly centered */
     html.inapp-mode body {
-      background: #11131a;
+      background: #0f1118;
       display: flex;
       min-height: 100vh;
       align-items: center;
@@ -185,18 +218,27 @@
     }
     html.inapp-mode .sponsor-card {
       margin: 0;
-      padding: 8px;
+      padding: 6px;
       border: none;
       background: transparent;
     }
+    html.inapp-mode .sponsor-label {
+      margin-bottom: 6px;
+    }
     html.inapp-mode .sponsor-box {
-      min-height: 250px;
+      min-height: 240px;
       border: none;
       padding: 0;
-      background: #11131a;
+      background: #0f1118;
     }
-    html.inapp-mode #frame iframe {
-      min-height: 250px !important;
+    html.inapp-mode #aads-slot-2462374 #frame iframe {
+      min-height: 240px !important;
+    }
+    html.inapp-mode[data-active-unit="2462374"] #aads-slot-2462387 {
+      display: none !important;
+    }
+    html.inapp-mode[data-active-unit="2462387"] #aads-slot-2462374 {
+      display: none !important;
     }
   </style>
 </head>
@@ -216,8 +258,9 @@
     </header>
 
     <section class="card sponsor-card" aria-label="Sponsor Banner">
-      <div class="sponsor-label">Sponsored Partner · AADS Privacy Network</div>
-      <div class="sponsor-box">
+      <div class="sponsor-label" id="sponsor-label">Sponsored Partner · AADS Privacy Network</div>
+      <div class="sponsor-stack">
+        <div class="sponsor-box aads-slot" id="aads-slot-2462374">
 <!-- BEGIN AADS AD UNIT 2462374 -->
 
 <div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
@@ -226,6 +269,23 @@
         </div>
 
 <!-- END AADS AD UNIT 2462374 -->
+        </div>
+
+        <div class="sponsor-box sponsor-box--leaderboard aads-slot" id="aads-slot-2462387">
+          <div class="scale-468" id="scale-468-wrap">
+<!-- BEGIN AADS AD UNIT 2462387 -->
+
+<div id="frame" style="width: 468px;margin: auto;z-index: 99998;height: auto">
+          <iframe data-aa='2462387' src='//ad.a-ads.com/2462387/?size=468x60'
+                            style='border:0; padding:0; width:468px; height:60px; overflow:hidden;display: block;margin: auto'></iframe>
+          <div style="width: 468px;margin:auto;position: absolute;left: 0;right: 0">
+            <a target="_blank" style="display:inline-block;font-size: 13px;color: #263238;padding: 4px 10px;background: #F8F8F9;text-decoration: none; border-radius: 0 0 4px 4px;" id="frame-link" href="https://aads.com/campaigns/new/?source_id=2462387&source_type=ad_unit&partner=2462387">Advertise here</a>
+          </div>
+        </div>
+
+<!-- END AADS AD UNIT 2462387 -->
+          </div>
+        </div>
       </div>
     </section>
 
@@ -268,5 +328,48 @@
       </p>
     </footer>
   </div>
+
+  <script>
+    (function () {
+      var activeUnit = window.__pennyActiveUnit || '2462374';
+      var label = document.getElementById('sponsor-label');
+      var inApp = document.documentElement.classList.contains('inapp-mode');
+      if (label && inApp) {
+        label.textContent = 'Sponsored Partner · AADS Unit #' + activeUnit;
+      }
+
+      // Prune inactive unit in in-app mode so only the rotated banner downloads and tracks impressions cleanly
+      if (inApp) {
+        var otherId = activeUnit === '2462374' ? 'aads-slot-2462387' : 'aads-slot-2462374';
+        var otherEl = document.getElementById(otherId);
+        if (otherEl && otherEl.parentNode) {
+          otherEl.parentNode.removeChild(otherEl);
+        }
+      } else {
+        // On desktop/mobile web pages, prioritize the rotated slot at top of the stack while keeping both visible
+        var stack = document.querySelector('.sponsor-stack');
+        var activeEl = document.getElementById('aads-slot-' + activeUnit);
+        if (stack && activeEl && stack.firstElementChild !== activeEl) {
+          stack.insertBefore(activeEl, stack.firstElementChild);
+        }
+      }
+
+      // Fit 468x60 leaderboard gracefully on narrow mobile containers without clipping
+      function fitLeaderboard() {
+        var slot = document.getElementById('aads-slot-2462387');
+        var scaleWrap = document.getElementById('scale-468-wrap');
+        if (!slot || !scaleWrap) return;
+        var avail = slot.clientWidth - 8;
+        if (avail > 120 && avail < 468) {
+          var ratio = Math.max(0.55, avail / 468);
+          scaleWrap.style.transform = 'scale(' + ratio.toFixed(3) + ')';
+        } else {
+          scaleWrap.style.transform = 'none';
+        }
+      }
+      fitLeaderboard();
+      window.addEventListener('resize', fitLeaderboard);
+    })();
+  </script>
 </body>
 </html>

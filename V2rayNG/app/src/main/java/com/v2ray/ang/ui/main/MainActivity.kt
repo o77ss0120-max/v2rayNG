@@ -140,9 +140,11 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
-        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت + بنر بیت‌کوینی AADS (Unit 2462374) و Start.io ──
+        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت + چرخش بین دو واحد بیت‌کوینی AADS (2462374 & 2462387) ──
         const val STARTIO_APP_ID = "210814549"
         const val AADS_AD_UNIT_ID = "2462374"
+        const val AADS_SECONDARY_UNIT_ID = "2462387"
+        private val AADS_AD_UNITS = listOf(AADS_AD_UNIT_ID, AADS_SECONDARY_UNIT_ID)
         const val AADS_SPONSOR_PAGE_URL = "https://o77ss0120-max.github.io/v2rayNG/"
         private const val AADS_SPONSOR_WAIT_SEC = 8
         private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
@@ -224,6 +226,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showAdConsentDialog by mutableStateOf(false)
     private var showAadsSponsorDialog by mutableStateOf(false)
     private var aadsShouldResumeVpn by mutableStateOf(false)
+    private var currentAadsUnitId by mutableStateOf(AADS_AD_UNIT_ID)
     private var bpbFragmentMode by mutableStateOf("NORMAL")
     private var availableUpdate by mutableStateOf<PennyServerScanner.AppUpdateInfo?>(null)
     private var updateBannerDismissed by mutableStateOf(false)
@@ -586,6 +589,14 @@ class MainActivity : HelperBaseComponentActivity() {
         plog("Sponsored Ad completed on real IP: +100 MB ($adsClaimedToday/$MAX_DAILY_SPONSORED_ADS claimed today)")
     }
 
+    private fun nextRotatedAadsUnitId(): String {
+        val idx = (prefs.getInt("aads_unit_rot_idx", 0) % AADS_AD_UNITS.size + AADS_AD_UNITS.size) % AADS_AD_UNITS.size
+        val chosen = AADS_AD_UNITS[idx]
+        prefs.edit().putInt("aads_unit_rot_idx", (idx + 1) % AADS_AD_UNITS.size).apply()
+        currentAadsUnitId = chosen
+        return chosen
+    }
+
     private fun showStartIoRewardedVideoForQuota() {
         if (vipActive) {
             statusMessage = "VIP Plan active (Ad-Free)"
@@ -601,9 +612,10 @@ class MainActivity : HelperBaseComponentActivity() {
             return
         }
         lifecycleScope.launch(Dispatchers.Main) {
+            val chosenUnit = nextRotatedAadsUnitId()
             val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
-            statusMessage = "Loading AADS Sponsor Banner on direct connection (+100 MB)..."
-            plog("Opening AADS Bitcoin Sponsor View (Unit: $AADS_AD_UNIT_ID)")
+            statusMessage = "Loading AADS Sponsor Banner #$chosenUnit (+100 MB)..."
+            plog("Opening AADS Bitcoin Sponsor View (Rotating Unit: $chosenUnit)")
             aadsShouldResumeVpn = wasVpnRunning
             showAadsSponsorDialog = true
         }
@@ -2034,8 +2046,27 @@ class MainActivity : HelperBaseComponentActivity() {
         var reloadToken by remember { mutableStateOf(0) }
         var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-        val inlineFallbackHtml = remember {
-            """
+        val activeUnit = currentAadsUnitId
+        fun buildInlineFallbackHtml(unitId: String): String {
+            val frameSnippet = if (unitId == AADS_SECONDARY_UNIT_ID) {
+                """
+                <div id="frame" style="width:100%; max-width:468px; margin:auto; z-index:99998; height:auto;">
+                  <iframe data-aa='2462387' src='https://ad.a-ads.com/2462387/?size=468x60'
+                          style='border:0; padding:0; width:100%; max-width:468px; height:60px; overflow:hidden; display:block; margin:auto'></iframe>
+                  <div style="width:100%; margin:auto; text-align:center;">
+                    <a target="_blank" style="display:inline-block;font-size:12px;color:#263238;padding:3px 10px;background:#F8F8F9;text-decoration:none;border-radius:0 0 4px 4px;" id="frame-link" href="https://aads.com/campaigns/new/?source_id=2462387&source_type=ad_unit&partner=2462387">Advertise here</a>
+                  </div>
+                </div>
+                """.trimIndent()
+            } else {
+                """
+                <div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
+                  <iframe data-aa='2462374' src='https://acceptable.a-ads.com/2462374/?size=Adaptive'
+                          style='border:0; padding:0; width:100%; min-height:220px; height:auto; overflow:hidden; display:block; margin:auto'></iframe>
+                </div>
+                """.trimIndent()
+            }
+            return """
             <!DOCTYPE html>
             <html>
             <head>
@@ -2062,26 +2093,17 @@ class MainActivity : HelperBaseComponentActivity() {
                   margin-bottom: 10px;
                   letter-spacing: 0.4px;
                 }
-                #frame {
-                  width: 100% !important;
-                  margin: 0 auto !important;
-                }
                 #frame iframe {
-                  width: 100% !important;
-                  min-height: 220px !important;
-                  height: auto !important;
                   border: 0 !important;
                   border-radius: 10px;
                   display: block !important;
+                  margin: 0 auto !important;
                 }
               </style>
             </head>
             <body>
-              <div class="tag">Sponsored Content · AADS Privacy Network</div>
-              <div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
-                <iframe data-aa='$AADS_AD_UNIT_ID' src='https://acceptable.a-ads.com/$AADS_AD_UNIT_ID/?size=Adaptive'
-                        style='border:0; padding:0; width:100%; min-height:220px; height:auto; overflow:hidden; display:block; margin:auto'></iframe>
-              </div>
+              <div class="tag">Sponsored Content · AADS Unit #$unitId</div>
+              $frameSnippet
             </body>
             </html>
             """.trimIndent()
@@ -2141,10 +2163,10 @@ class MainActivity : HelperBaseComponentActivity() {
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "Sponsor Banner (+100 MB)",
+                                text = "Sponsor Banner • #$activeUnit (+100 MB)",
                                 color = Color(0xFFF2F4F8),
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 15.5.sp
+                                fontSize = 15.sp
                             )
                             Text(
                                 text = if (secondsLeft > 0) {
@@ -2165,10 +2187,11 @@ class MainActivity : HelperBaseComponentActivity() {
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
+                                        val nextUnit = nextRotatedAadsUnitId()
                                         pageLoaded = false
                                         usedInlineFallback = false
                                         reloadToken += 1
-                                        webViewRef?.loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1&_r=${System.currentTimeMillis()}")
+                                        webViewRef?.loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1&unit=$nextUnit&_r=${System.currentTimeMillis()}")
                                     }
                             ) {
                                 Text(
@@ -2187,7 +2210,12 @@ class MainActivity : HelperBaseComponentActivity() {
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         runCatching {
-                                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AADS_SPONSOR_PAGE_URL)))
+                                            startActivity(
+                                                Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    Uri.parse("${AADS_SPONSOR_PAGE_URL}?unit=$activeUnit")
+                                                )
+                                            )
                                         }
                                     }
                             ) {
@@ -2257,7 +2285,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                             val scheme = target.scheme?.lowercase(Locale.US) ?: ""
                                             val host = target.host?.lowercase(Locale.US) ?: ""
                                             if (scheme != "https") return true
-                                            if (host.endsWith("github.io") || host.endsWith("a-ads.com") || host.endsWith("aads.com")) {
+                                            if (host.endsWith("github.io") || host.endsWith("a-ads.com")) {
                                                 return false
                                             }
                                             runCatching {
@@ -2275,7 +2303,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                                 usedInlineFallback = true
                                                 view?.loadDataWithBaseURL(
                                                     AADS_SPONSOR_PAGE_URL,
-                                                    inlineFallbackHtml,
+                                                    buildInlineFallbackHtml(currentAadsUnitId),
                                                     "text/html",
                                                     "UTF-8",
                                                     null
@@ -2295,7 +2323,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                                 usedInlineFallback = true
                                                 view?.loadDataWithBaseURL(
                                                     AADS_SPONSOR_PAGE_URL,
-                                                    inlineFallbackHtml,
+                                                    buildInlineFallbackHtml(currentAadsUnitId),
                                                     "text/html",
                                                     "UTF-8",
                                                     null
@@ -2303,7 +2331,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                             }
                                         }
                                     }
-                                    loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1")
+                                    loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1&unit=$activeUnit")
                                     webViewRef = this
                                 }
                             },
@@ -2389,7 +2417,7 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             text = {
                 Text(
-                    text = "Sponsored banners are served through the AADS privacy sponsor portal (Unit $AADS_AD_UNIT_ID). To verify genuine impressions, the VPN tunnel will pause briefly while the sponsor banner loads over your direct connection, then reconnects automatically.",
+                    text = "Sponsored banners rotate across AADS privacy sponsor units ($AADS_AD_UNIT_ID & $AADS_SECONDARY_UNIT_ID). To verify genuine impressions, the VPN tunnel will pause briefly while the sponsor banner loads over your direct connection, then reconnects automatically.",
                     color = Color(0xFFB5BAC9),
                     fontSize = 12.5.sp
                 )

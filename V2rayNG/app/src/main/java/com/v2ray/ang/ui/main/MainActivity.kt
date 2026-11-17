@@ -15,6 +15,13 @@ import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import android.view.ViewGroup
+import android.webkit.CookieManager
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -67,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import com.startapp.sdk.adsbase.Ad
 import com.startapp.sdk.adsbase.StartAppAd
@@ -127,13 +135,16 @@ class MainActivity : HelperBaseComponentActivity() {
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
-        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت برای هر دیوایس + تبلیغات Start.io SDK ──
+        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت + بنر بیت‌کوینی AADS (Unit 2462374) و Start.io ──
         const val STARTIO_APP_ID = "210814549"
+        const val AADS_AD_UNIT_ID = "2462374"
+        const val AADS_SPONSOR_PAGE_URL = "https://o77ss0120-max.github.io/v2rayNG/"
+        private const val AADS_SPONSOR_WAIT_SEC = 6
         private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
         private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای تبلیغ حامی
         private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
-        private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L  // +۱۰۰ مگابایت سهمیه VIP با تماشای هر تبلیغ جایزه‌دار Start.io
+        private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L  // +۱۰۰ مگابایت سهمیه VIP با نمایش بنر حامی
         private const val MAX_DAILY_SPONSORED_ADS = 3                         // حداکثر ۳ بار دریافت پاداش روزانه تبلیغ شفاف
     }
 
@@ -206,6 +217,8 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showBest by mutableStateOf(false)
     private var showUpdateDialog by mutableStateOf(false)
     private var showAdConsentDialog by mutableStateOf(false)
+    private var showAadsSponsorDialog by mutableStateOf(false)
+    private var aadsShouldResumeVpn by mutableStateOf(false)
     private var bpbFragmentMode by mutableStateOf("NORMAL")
 
     private val logLines = mutableStateListOf<String>()
@@ -440,6 +453,13 @@ class MainActivity : HelperBaseComponentActivity() {
             .putLong("free_session_rem_sec", freeSessionRemainingSec)
             .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
             .apply()
+        VipLicenseManager.writeTamperResistantDailyAllowance(
+            this,
+            deviceId,
+            today,
+            dailyMaxBytes,
+            adsClaimedToday
+        )
         val remBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
         statusMessage = "+100 MB Added ($adsClaimedToday of $MAX_DAILY_SPONSORED_ADS claimed today • ${fmtBytes(remBytes)} left)"
         plog("Sponsored Ad completed on real IP: +100 MB ($adsClaimedToday/$MAX_DAILY_SPONSORED_ADS claimed today)")
@@ -459,6 +479,17 @@ class MainActivity : HelperBaseComponentActivity() {
             showAdConsentDialog = true
             return
         }
+        lifecycleScope.launch(Dispatchers.Main) {
+            val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
+            statusMessage = "Loading AADS Sponsor Banner on direct connection (+100 MB)..."
+            plog("Opening AADS Bitcoin Sponsor View (Unit: $AADS_AD_UNIT_ID)")
+            aadsShouldResumeVpn = wasVpnRunning
+            showAadsSponsorDialog = true
+        }
+    }
+
+    @Suppress("unused")
+    private fun showLegacyStartIoVideoFallback() {
         lifecycleScope.launch(Dispatchers.Main) {
             val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
             statusMessage = "Loading Sponsored Ad on your direct IP (+100 MB)..."
@@ -623,20 +654,48 @@ class MainActivity : HelperBaseComponentActivity() {
         if (storedDay != today || dailyQuotaDayKey != today) {
             dailyQuotaDayKey = today
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
+            val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
+                this,
+                deviceId,
+                today,
+                BASE_DAILY_FREE_BYTES,
+                0
+            )
             dailyUsedBytes = recovered
-            dailyMaxBytes = BASE_DAILY_FREE_BYTES
+            dailyMaxBytes = verifiedMax.coerceIn(
+                BASE_DAILY_FREE_BYTES,
+                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
+            )
             pendingDailyUnsyncedBytes = 0L
-            adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", 0).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
+            adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
             prefs.edit()
                 .putString("daily_quota_day_$deviceId", today)
                 .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
                 .putLong("pending_daily_unsynced_bytes_$deviceId", 0L)
-                .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
+                .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
                 .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
                 .apply()
             VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, today, dailyUsedBytes)
+            VipLicenseManager.writeTamperResistantDailyAllowance(
+                this,
+                deviceId,
+                today,
+                dailyMaxBytes,
+                adsClaimedToday
+            )
         } else {
-            adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", adsClaimedToday).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
+            val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
+                this,
+                deviceId,
+                today,
+                BASE_DAILY_FREE_BYTES,
+                0
+            )
+            adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
+            dailyMaxBytes = verifiedMax.coerceIn(
+                BASE_DAILY_FREE_BYTES,
+                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
+            )
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, dailyUsedBytes)
             if (recovered > dailyUsedBytes) {
                 dailyUsedBytes = recovered
@@ -708,13 +767,35 @@ class MainActivity : HelperBaseComponentActivity() {
         return (if (mode != ServiceTierMode.PUBLIC && custom.isNotEmpty() && !custom.contains(".pages.dev", ignoreCase = true)) {
             custom.split("\n", ",")
                 .map { it.trim() }
-                .filter { it.startsWith("https://", ignoreCase = true) } + baseList
+                .filter {
+                    VipLicenseManager.isTrustedHttpsEndpoint(it) &&
+                        PennyServerScanner.isSafeNestedSubscriptionUrl(it)
+                } + baseList
         } else {
             baseList
         }).distinct()
     }
 
     private fun checkVipExpiration(): Boolean {
+        if (vipActive) {
+            val (sigVerified, _) = VipLicenseManager.verifyLicenseOfflineSignature(vipCode, deviceId, 0L)
+            if (sigVerified == null || vipSerial.isBlank() || !sigVerified.serial.equals(vipSerial, ignoreCase = true)) {
+                vipActive = false
+                useVipServers = false
+                vipCode = ""
+                vipSerial = ""
+                PennySpeedLimiter.isVipUnrestricted = false
+                prefs.edit()
+                    .putBoolean("vip_active", false)
+                    .putBoolean("use_vip_servers", false)
+                    .putString("vip_code", "")
+                    .putString("vip_serial", "")
+                    .apply()
+                plog("Cleared unverified local VIP state")
+                initStartIoAds()
+                return true
+            }
+        }
         PennySpeedLimiter.isVipUnrestricted = vipActive
         if (!vipActive) return false
         val now = effectiveNowMs()
@@ -907,37 +988,93 @@ class MainActivity : HelperBaseComponentActivity() {
             dailyQuotaDayKey = today
             val prefUsed = prefs.getLong("daily_used_bytes_$deviceId", 0L).coerceAtLeast(0L)
             dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, prefUsed)
-            dailyMaxBytes = prefs.getLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES).coerceAtLeast(BASE_DAILY_FREE_BYTES)
-            adsClaimedToday = prefs.getInt("ads_claimed_${deviceId}_$today", 0).coerceIn(0, MAX_DAILY_SPONSORED_ADS)
+            val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
+                this,
+                deviceId,
+                today,
+                BASE_DAILY_FREE_BYTES,
+                0
+            )
+            dailyMaxBytes = verifiedMax.coerceIn(
+                BASE_DAILY_FREE_BYTES,
+                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
+            )
+            adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
         } else {
             dailyQuotaDayKey = today
             dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
-            dailyMaxBytes = BASE_DAILY_FREE_BYTES
-            adsClaimedToday = 0
+            val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
+                this,
+                deviceId,
+                today,
+                BASE_DAILY_FREE_BYTES,
+                0
+            )
+            dailyMaxBytes = verifiedMax.coerceIn(
+                BASE_DAILY_FREE_BYTES,
+                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
+            )
+            adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
             prefs.edit()
                 .putString("daily_quota_day_$deviceId", today)
                 .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                .putLong("daily_max_bytes_$deviceId", BASE_DAILY_FREE_BYTES)
-                .putInt("ads_claimed_${deviceId}_$today", 0)
+                .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
+                .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
                 .apply()
+            VipLicenseManager.writeTamperResistantDailyAllowance(
+                this,
+                deviceId,
+                today,
+                dailyMaxBytes,
+                adsClaimedToday
+            )
         }
 
-        vipActive = prefs.getBoolean("vip_active", false)
-        PennySpeedLimiter.isVipUnrestricted = vipActive
-        useVipServers = prefs.getBoolean("use_vip_servers", false)
+        val rawVipActive = prefs.getBoolean("vip_active", false)
         vipCode = prefs.getString("vip_code", "") ?: ""
         vipSerial = prefs.getString("vip_serial", "") ?: ""
         vipExpireMs = prefs.getLong("vip_expire_ms", 0L)
         vipMaxBytes = prefs.getLong("vip_max_bytes", VipLicenseManager.VIP_MAX_BYTES)
         vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
+        if (rawVipActive) {
+            val (verifiedLic, _) = VipLicenseManager.verifyLicenseOfflineSignature(vipCode, deviceId, 0L)
+            if (verifiedLic != null && vipSerial.isNotBlank() && verifiedLic.serial.equals(vipSerial, ignoreCase = true)) {
+                vipActive = true
+                useVipServers = prefs.getBoolean("use_vip_servers", false)
+            } else {
+                vipActive = false
+                useVipServers = false
+                vipCode = ""
+                vipSerial = ""
+                prefs.edit()
+                    .putBoolean("vip_active", false)
+                    .putBoolean("use_vip_servers", false)
+                    .putString("vip_code", "")
+                    .putString("vip_serial", "")
+                    .apply()
+                plog("Rejected tampered or unverified saved VIP flag")
+            }
+        } else {
+            vipActive = false
+            useVipServers = false
+        }
+        PennySpeedLimiter.isVipUnrestricted = vipActive
         pendingUnsyncedBytes = prefs.getLong("pending_unsynced_bytes", 0L).coerceAtLeast(0L)
         pendingDailyUnsyncedBytes = prefs.getLong("pending_daily_unsynced_bytes_$deviceId", 0L).coerceAtLeast(0L)
         vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
         effectiveNowMs()
         customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_VPS_SUB_URL)
-            ?.takeIf { it.isNotBlank() && !it.contains(".pages.dev", ignoreCase = true) }
+            ?.trim()
+            ?.takeIf {
+                it.isNotBlank() &&
+                    !it.contains(".pages.dev", ignoreCase = true) &&
+                    VipLicenseManager.isTrustedHttpsEndpoint(it) &&
+                    PennyServerScanner.isSafeNestedSubscriptionUrl(it)
+            }
             ?: PennyServerScanner.DEDICATED_VPS_SUB_URL
         licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
+            ?.trim()
+            ?.takeIf { VipLicenseManager.isTrustedHttpsEndpoint(it) }
             ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
         val lbSeed = if (loadBalanceEnabled) kotlin.math.abs(deviceId.hashCode()) else 0
@@ -1019,8 +1156,12 @@ class MainActivity : HelperBaseComponentActivity() {
             .replace(PennyServerScanner.DED_NL_HOST, "[DED-NL-NODE]", ignoreCase = true)
             .replace(PennyServerScanner.DED_PL_HOST, "[DED-PL-NODE]", ignoreCase = true)
             .replace(PennyServerScanner.VPS1_HOST, "[DED-DE-NODE]", ignoreCase = true)
+            .replace(PennyServerScanner.BPB_HOST, "[DED-CF1-NODE]", ignoreCase = true)
+            .replace(PennyServerScanner.BPB2_HOST, "[DED-CF2-NODE]", ignoreCase = true)
             .replace(userUuid, "[PROTECTED-UUID]", ignoreCase = true)
             .replace(deviceId, "[PROTECTED-HWID]", ignoreCase = true)
+            .replace(Regex("""PL1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""", RegexOption.IGNORE_CASE), "[PROTECTED-LICENSE]")
+            .replace(Regex("""(vless|vmess|trojan|ss|hysteria2)://[^\s]+""", RegexOption.IGNORE_CASE), "$1://[REDACTED]")
             .replace(Regex("""\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?\b"""), "[PROTECTED-IP]")
         Log.d(TAG, sanitized)
         val line = "${timeFmt.format(Date())}  $sanitized"
@@ -1621,8 +1762,207 @@ class MainActivity : HelperBaseComponentActivity() {
             if (showVipDialog) VipSubscriptionDialog()
             if (showUpdateDialog) UpdateCenterDialog()
             if (showAdConsentDialog) AdConsentDialog()
+            if (showAadsSponsorDialog) AadsSponsorDialog()
             if (showLog) LogDialog()
         }
+    }
+
+    @Composable
+    private fun AadsSponsorDialog() {
+        var pageLoaded by remember { mutableStateOf(false) }
+        var usedInlineFallback by remember { mutableStateOf(false) }
+        var secondsLeft by remember { mutableStateOf(AADS_SPONSOR_WAIT_SEC) }
+        var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+        val inlineFallbackHtml = remember {
+            """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <style>
+                body { margin:0; padding:16px 8px; background:#11131a; color:#f5efe6; font-family:sans-serif; text-align:center; }
+                .tag { font-size:11px; color:#a6a39e; margin-bottom:10px; letter-spacing:0.5px; }
+              </style>
+            </head>
+            <body>
+              <div class="tag">Sponsored by AADS · Bitcoin Privacy Ad Network</div>
+              <div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
+                <iframe data-aa='$AADS_AD_UNIT_ID' src='https://acceptable.a-ads.com/$AADS_AD_UNIT_ID/?size=Adaptive'
+                        style='border:0; padding:0; width:92%; min-height:110px; height:auto; overflow:hidden; display:block; margin:auto'></iframe>
+              </div>
+            </body>
+            </html>
+            """.trimIndent()
+        }
+
+        LaunchedEffect(pageLoaded) {
+            // Even if remote page stalls on slow cellular networks, start countdown after load or fallback grace period
+            if (!pageLoaded) {
+                delay(5500L)
+                pageLoaded = true
+            }
+            while (secondsLeft > 0) {
+                delay(1000L)
+                secondsLeft -= 1
+            }
+        }
+
+        DisposableEffect(Unit) {
+            onDispose {
+                runCatching { webViewRef?.destroy() }
+                webViewRef = null
+            }
+        }
+
+        fun closeDialog(claimBonus: Boolean) {
+            val shouldResume = aadsShouldResumeVpn
+            aadsShouldResumeVpn = false
+            showAadsSponsorDialog = false
+            if (claimBonus) {
+                claimStartIoRewardBonus()
+            }
+            resumeVpnAfterAdIfNeeded(shouldResume)
+        }
+
+        AlertDialog(
+            onDismissRequest = { closeDialog(claimBonus = false) },
+            containerColor = Color(0xFF191A20),
+            title = {
+                Text(
+                    text = "Sponsored Partner (+100 MB Quota)",
+                    color = Color(0xFFF2F4F8),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.5.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (secondsLeft > 0) {
+                            "Viewing privacy sponsor banner ($secondsLeft s remaining)..."
+                        } else {
+                            "Sponsor view complete! Tap Claim +100 MB below."
+                        },
+                        color = if (secondsLeft > 0) Color(0xFFB5BAC9) else Color(0xFF6EE7B7),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(210.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFF323646), RoundedCornerShape(12.dp))
+                            .background(Color(0xFF11131A))
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    layoutParams = ViewGroup.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    setBackgroundColor(android.graphics.Color.parseColor("#11131A"))
+                                    settings.apply {
+                                        javaScriptEnabled = true
+                                        domStorageEnabled = true
+                                        allowFileAccess = false
+                                        allowContentAccess = false
+                                        @Suppress("DEPRECATION")
+                                        allowFileAccessFromFileURLs = false
+                                        @Suppress("DEPRECATION")
+                                        allowUniversalAccessFromFileURLs = false
+                                        mediaPlaybackRequiresUserGesture = true
+                                    }
+                                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                    webViewClient = object : WebViewClient() {
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            pageLoaded = true
+                                        }
+
+                                        override fun shouldOverrideUrlLoading(
+                                            view: WebView?,
+                                            request: WebResourceRequest?
+                                        ): Boolean {
+                                            val target = request?.url ?: return true
+                                            val scheme = target.scheme?.lowercase(Locale.US) ?: ""
+                                            val host = target.host?.lowercase(Locale.US) ?: ""
+                                            if (scheme != "https") return true
+                                            if (host.endsWith("github.io") || host.endsWith("a-ads.com") || host.endsWith("aads.com")) {
+                                                return false
+                                            }
+                                            runCatching {
+                                                ctx.startActivity(Intent(Intent.ACTION_VIEW, target))
+                                            }
+                                            return true
+                                        }
+
+                                        override fun onReceivedError(
+                                            view: WebView?,
+                                            request: WebResourceRequest?,
+                                            error: WebResourceError?
+                                        ) {
+                                            if (request?.isForMainFrame == true && !usedInlineFallback) {
+                                                usedInlineFallback = true
+                                                view?.loadDataWithBaseURL(
+                                                    AADS_SPONSOR_PAGE_URL,
+                                                    inlineFallbackHtml,
+                                                    "text/html",
+                                                    "UTF-8",
+                                                    null
+                                                )
+                                            }
+                                        }
+
+                                        override fun onReceivedHttpError(
+                                            view: WebView?,
+                                            request: WebResourceRequest?,
+                                            errorResponse: WebResourceResponse?
+                                        ) {
+                                            if (request?.isForMainFrame == true &&
+                                                (errorResponse?.statusCode ?: 0) >= 400 &&
+                                                !usedInlineFallback
+                                            ) {
+                                                usedInlineFallback = true
+                                                view?.loadDataWithBaseURL(
+                                                    AADS_SPONSOR_PAGE_URL,
+                                                    inlineFallbackHtml,
+                                                    "text/html",
+                                                    "UTF-8",
+                                                    null
+                                                )
+                                            }
+                                        }
+                                    }
+                                    loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1")
+                                    webViewRef = this
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = secondsLeft <= 0,
+                    onClick = { closeDialog(claimBonus = true) }
+                ) {
+                    Text(
+                        text = if (secondsLeft > 0) "Wait (${secondsLeft}s)" else "Claim +100 MB",
+                        color = if (secondsLeft <= 0) Color(0xFFE6CFAF) else Color(0xFF7D818E),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { closeDialog(claimBonus = false) }) {
+                    Text("Close", color = Color(0xFF9EA2B0))
+                }
+            }
+        )
     }
 
     @Composable
@@ -1640,7 +1980,7 @@ class MainActivity : HelperBaseComponentActivity() {
             },
             text = {
                 Text(
-                    text = "Sponsored ads are provided by Start.io and use your device Advertising ID. To verify genuine views, the VPN tunnel will pause briefly during the ad so the ad loads over your direct ISP connection, then reconnects automatically.",
+                    text = "Sponsored banners are served through the AADS privacy sponsor portal (Unit $AADS_AD_UNIT_ID). To verify genuine impressions, the VPN tunnel will pause briefly while the sponsor banner loads over your direct connection, then reconnects automatically.",
                     color = Color(0xFFB5BAC9),
                     fontSize = 12.5.sp
                 )
@@ -1656,7 +1996,7 @@ class MainActivity : HelperBaseComponentActivity() {
                         showStartIoRewardedVideoForQuota()
                     }
                 ) {
-                    Text("Agree & Watch Ad", color = Color(0xFFE6CFAF), fontWeight = FontWeight.Bold)
+                    Text("Agree & View Sponsor", color = Color(0xFFE6CFAF), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -2036,8 +2376,9 @@ class MainActivity : HelperBaseComponentActivity() {
                         Button(
                             onClick = {
                                 if (isVerifying) return@Button
-                                if (subUrlInput.trim() != customVipSubUrl) {
-                                    customVipSubUrl = subUrlInput.trim()
+                                val cleanedSub = subUrlInput.trim()
+                                if (cleanedSub != customVipSubUrl && (cleanedSub.isEmpty() || (VipLicenseManager.isTrustedHttpsEndpoint(cleanedSub) && PennyServerScanner.isSafeNestedSubscriptionUrl(cleanedSub)))) {
+                                    customVipSubUrl = cleanedSub
                                     prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
                                 }
                                 isVerifying = true
@@ -2079,8 +2420,11 @@ class MainActivity : HelperBaseComponentActivity() {
                         value = subUrlInput,
                         onValueChange = {
                             subUrlInput = it
-                            customVipSubUrl = it.trim()
-                            prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
+                            val cleaned = it.trim()
+                            if (cleaned.isEmpty() || (VipLicenseManager.isTrustedHttpsEndpoint(cleaned) && PennyServerScanner.isSafeNestedSubscriptionUrl(cleaned))) {
+                                customVipSubUrl = cleaned
+                                prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
+                            }
                         },
                         label = { Text("Signed VIP Subscription URL (HTTPS + #PENNY-SIG)", fontSize = 11.sp) },
                         placeholder = { Text("https://.../vip-sub.txt", fontSize = 11.sp) },

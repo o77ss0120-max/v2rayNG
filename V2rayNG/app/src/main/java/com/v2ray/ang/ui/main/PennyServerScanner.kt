@@ -1045,8 +1045,8 @@ internal object PennyServerScanner {
 
     fun downloadHttpsUrl(urlStr: String, onLog: ((String) -> Unit)? = null): String {
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
-        require(cleanUrl.startsWith("https://", ignoreCase = true)) {
-            "Only HTTPS subscription URLs are permitted"
+        require(isSafeNestedSubscriptionUrl(cleanUrl)) {
+            "Only public HTTPS subscription URLs are permitted"
         }
 
         val isPagesDev = cleanUrl.contains(".pages.dev", ignoreCase = true) ||
@@ -1059,54 +1059,70 @@ internal object PennyServerScanner {
         }
 
         val sep = if ('?' in cleanUrl) '&' else '?'
-        val urlWithTs = "${cleanUrl}${sep}t=${System.currentTimeMillis()}"
+        var currentUrl = "${cleanUrl}${sep}t=${System.currentTimeMillis()}"
 
-        val url = URL(urlWithTs)
-        val resolvedIp = runCatching { InetAddress.getByName(url.host).hostAddress.orEmpty() }.getOrDefault("")
-        if (resolvedIp.startsWith("10.10.") || resolvedIp == "127.0.0.1" || resolvedIp == "0.0.0.0") {
-            val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
-            if (bypassed.isNotEmpty()) return bypassed
-            throw IllegalStateException("ISP DNS hijacked ($resolvedIp)")
-        }
+        for (hop in 0 until 4) {
+            require(isSafeNestedSubscriptionUrl(currentUrl)) {
+                "Blocked redirect or target to restricted network address"
+            }
+            val url = URL(currentUrl)
+            val resolvedIp = runCatching { InetAddress.getByName(url.host).hostAddress.orEmpty() }.getOrDefault("")
+            if (resolvedIp.startsWith("10.10.") || resolvedIp == "127.0.0.1" || resolvedIp == "0.0.0.0") {
+                val bypassed = downloadViaCleanIpTls(cleanUrl, onLog ?: {})
+                if (bypassed.isNotEmpty()) return bypassed
+                throw IllegalStateException("ISP DNS hijacked ($resolvedIp)")
+            }
 
-        val conn = url.openConnection() as HttpURLConnection
-        try {
-            conn.connectTimeout = 7000
-            conn.readTimeout = 7000
-            conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.6")
-            val code = conn.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
-                throw IllegalStateException("HTTP $code")
-            }
-            val contentLen = conn.contentLengthLong
-            if (contentLen > MAX_DOWNLOAD_BYTES) {
-                throw IllegalStateException("Response too large ($contentLen bytes)")
-            }
-            conn.inputStream.use { input ->
-                val out = ByteArrayOutputStream()
-                val buf = ByteArray(8192)
-                var total = 0
-                while (true) {
-                    val read = input.read(buf)
-                    if (read < 0) break
-                    total += read
-                    if (total > MAX_DOWNLOAD_BYTES) {
-                        throw IllegalStateException("Exceeded 4 MB download limit")
+            val conn = url.openConnection() as HttpURLConnection
+            try {
+                conn.connectTimeout = 7000
+                conn.readTimeout = 7000
+                conn.instanceFollowRedirects = false
+                conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.9.8")
+                val code = conn.responseCode
+                if (code in 300..399) {
+                    val loc = conn.getHeaderField("Location")?.trim().orEmpty()
+                    if (loc.isEmpty()) throw IllegalStateException("Empty redirect")
+                    val resolvedLoc = URL(url, loc).toString()
+                    if (!isSafeNestedSubscriptionUrl(resolvedLoc)) {
+                        throw SecurityException("Blocked unsafe redirect target")
                     }
-                    out.write(buf, 0, read)
+                    currentUrl = resolvedLoc
+                    continue
                 }
-                val rawBytes = out.toByteArray()
-                val decryptedVault = decryptStealthVaultBytes(rawBytes)
-                if (decryptedVault.isNotEmpty()) {
-                    onLog?.invoke("Stealth Vault decrypted in RAM (${decryptedVault.lines().size} encrypted nodes)")
-                    return decryptedVault
+                if (code != HttpURLConnection.HTTP_OK) {
+                    throw IllegalStateException("HTTP $code")
                 }
-                return String(rawBytes, StandardCharsets.UTF_8).trim()
+                val contentLen = conn.contentLengthLong
+                if (contentLen > MAX_DOWNLOAD_BYTES) {
+                    throw IllegalStateException("Response too large ($contentLen bytes)")
+                }
+                conn.inputStream.use { input ->
+                    val out = ByteArrayOutputStream()
+                    val buf = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val read = input.read(buf)
+                        if (read < 0) break
+                        total += read
+                        if (total > MAX_DOWNLOAD_BYTES) {
+                            throw IllegalStateException("Exceeded 4 MB download limit")
+                        }
+                        out.write(buf, 0, read)
+                    }
+                    val rawBytes = out.toByteArray()
+                    val decryptedVault = decryptStealthVaultBytes(rawBytes)
+                    if (decryptedVault.isNotEmpty()) {
+                        onLog?.invoke("Stealth Vault decrypted in RAM (${decryptedVault.lines().size} encrypted nodes)")
+                        return decryptedVault
+                    }
+                    return String(rawBytes, StandardCharsets.UTF_8).trim()
+                }
+            } finally {
+                conn.disconnect()
             }
-        } finally {
-            conn.disconnect()
         }
+        throw IllegalStateException("Too many HTTP redirects")
     }
 
     /**
@@ -1332,15 +1348,40 @@ internal object PennyServerScanner {
         return if (outLines.isNotEmpty()) outLines.joinToString("\n") else trimmed
     }
 
-    private fun isSafeNestedSubscriptionUrl(urlStr: String): Boolean {
+    fun isSafeNestedSubscriptionUrl(urlStr: String): Boolean {
         return try {
             val u = URL(urlStr)
             if (!u.protocol.equals("https", ignoreCase = true)) return false
             val h = u.host.trim().lowercase()
-            if (h.isEmpty() || h == "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return false
-            val addr = runCatching { InetAddress.getByName(h) }.getOrNull()
-            if (addr != null && (addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isAnyLocalAddress || addr.isLinkLocalAddress)) {
+            if (
+                h.isEmpty() ||
+                h == "localhost" ||
+                h.endsWith(".localhost") ||
+                h.endsWith(".local") ||
+                h.endsWith(".internal") ||
+                h.endsWith(".arpa")
+            ) {
                 return false
+            }
+            val addr = runCatching { InetAddress.getByName(h) }.getOrNull()
+            if (addr != null) {
+                if (
+                    addr.isLoopbackAddress ||
+                    addr.isSiteLocalAddress ||
+                    addr.isAnyLocalAddress ||
+                    addr.isLinkLocalAddress ||
+                    addr.isMulticastAddress
+                ) {
+                    return false
+                }
+                val b = addr.address
+                if (b.size == 4) {
+                    val a0 = b[0].toInt() and 0xFF
+                    val a1 = b[1].toInt() and 0xFF
+                    if (a0 == 0 || a0 == 10 || a0 == 127 || (a0 == 100 && a1 in 64..127) || (a0 == 169 && a1 == 254)) {
+                        return false
+                    }
+                }
             }
             true
         } catch (_: Exception) {

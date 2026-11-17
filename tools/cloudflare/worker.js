@@ -316,12 +316,18 @@ async function handleDailyQuotaSync(request, env) {
   const body = await request.json().catch(() => ({}));
   const userUuid = String(body.userUuid || '').trim().toLowerCase();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
-  const localUsedBytes = Math.max(0, Number(body.localUsedBytes || 0));
-  const deltaBytes = Math.min(2 * 1024 * 1024 * 1024, Math.max(0, Number(body.deltaBytes || 0)));
-  const activeMode = String(body.activeMode || 'PUBLIC').trim().toUpperCase();
+  const rawLocal = Number(body.localUsedBytes || 0);
+  const localUsedBytes = Number.isFinite(rawLocal) ? Math.min(10 * 1024 * 1024 * 1024, Math.max(0, Math.floor(rawLocal))) : 0;
+  const rawDelta = Number(body.deltaBytes || 0);
+  const deltaBytes = Number.isFinite(rawDelta) ? Math.min(512 * 1024 * 1024, Math.max(0, Math.floor(rawDelta))) : 0;
+  const rawMode = String(body.activeMode || 'PUBLIC').trim().toUpperCase();
+  const activeMode = rawMode === 'DEDICATED' || rawMode === 'GHOST' ? rawMode : 'PUBLIC';
 
-  if (!userUuid || !deviceId) {
-    return Response.json({ ok: false, error: 'Missing userUuid or deviceId' }, { status: 400 });
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userUuid) ||
+    !/^[A-Z0-9-]{4,32}$/.test(deviceId)
+  ) {
+    return Response.json({ ok: false, error: 'Invalid userUuid or deviceId' }, { status: 400 });
   }
 
   const d = new Date();
@@ -355,12 +361,15 @@ async function handleDailyQuotaSync(request, env) {
   });
 }
 
-function isBlockedIpv4Tuple(a, b) {
+function isBlockedIpv4Tuple(a, b, c = 0) {
   if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
   if (a === 192 && b === 168) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a >= 224) return true;
   return false;
 }
 
@@ -370,7 +379,19 @@ function isPrivateOrBlockedHost(host) {
   if (h.startsWith('[') && h.endsWith(']')) {
     h = h.slice(1, -1);
   }
-  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  const zoneIdx = h.indexOf('%');
+  if (zoneIdx !== -1) h = h.slice(0, zoneIdx);
+
+  if (
+    h === 'localhost' ||
+    h.endsWith('.localhost') ||
+    h.endsWith('.local') ||
+    h.endsWith('.internal') ||
+    h.endsWith('.arpa')
+  ) {
+    return true;
+  }
+  if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true;
 
   // IPv6 checks strictly for IPv6 literals (contains ':') so domains like fdroid.org are never blocked
   if (h.includes(':')) {
@@ -382,19 +403,31 @@ function isPrivateOrBlockedHost(host) {
       h === '0:0:0:0:0:0:0:0' ||
       h.startsWith('fc') ||
       h.startsWith('fd') ||
-      h.startsWith('fe80:')
+      h.startsWith('fe8') ||
+      h.startsWith('fe9') ||
+      h.startsWith('fea') ||
+      h.startsWith('feb') ||
+      h.startsWith('ff')
     ) {
       return true;
     }
     const v4Mapped = cleanV6.match(/^ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
     if (v4Mapped) {
-      return isBlockedIpv4Tuple(Number(v4Mapped[1]), Number(v4Mapped[2]));
+      return isBlockedIpv4Tuple(Number(v4Mapped[1]), Number(v4Mapped[2]), Number(v4Mapped[3]));
+    }
+    const v4MappedHex = cleanV6.match(/^ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (v4MappedHex) {
+      const hi = parseInt(v4MappedHex[1], 16);
+      const lo = parseInt(v4MappedHex[2], 16);
+      return isBlockedIpv4Tuple((hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff);
     }
   }
 
   const ipv4Match = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4Match) {
-    return isBlockedIpv4Tuple(Number(ipv4Match[1]), Number(ipv4Match[2]));
+    const octets = ipv4Match.slice(1).map(Number);
+    if (octets.some((n) => n < 0 || n > 255)) return true;
+    return isBlockedIpv4Tuple(octets[0], octets[1], octets[2]);
   }
   return false;
 }
@@ -556,7 +589,8 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 function processVlessHeader(vlessBuffer, userID) {
-  if (vlessBuffer.byteLength < 24) {
+  const totalLen = vlessBuffer.byteLength;
+  if (totalLen < 24) {
     return { hasError: true, message: 'invalid data' };
   }
   const version = new Uint8Array(vlessBuffer.slice(0, 1));
@@ -569,7 +603,13 @@ function processVlessHeader(vlessBuffer, userID) {
   }
 
   const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
-  const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
+  const commandIndex = 18 + optLength;
+  const portIndex = commandIndex + 1;
+  const addressIndex = portIndex + 2;
+  if (totalLen < addressIndex + 1) {
+    return { hasError: true, message: 'truncated vless header' };
+  }
+  const command = new Uint8Array(vlessBuffer.slice(commandIndex, commandIndex + 1))[0];
 
   let isUDP = false;
   if (command === 1) {
@@ -580,11 +620,12 @@ function processVlessHeader(vlessBuffer, userID) {
     return { hasError: true, message: `command ${command} is not supported` };
   }
 
-  const portIndex = 18 + optLength + 1;
   const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
   const portRemote = new DataView(portBuffer).getUint16(0);
+  if (portRemote === 0) {
+    return { hasError: true, message: 'invalid port 0' };
+  }
 
-  let addressIndex = portIndex + 2;
   const addressBuffer = new Uint8Array(vlessBuffer.slice(addressIndex, addressIndex + 1));
   const addressType = addressBuffer[0];
   let addressLength = 0;
@@ -594,21 +635,33 @@ function processVlessHeader(vlessBuffer, userID) {
   switch (addressType) {
     case 1:
       addressLength = 4;
+      if (totalLen < addressValueIndex + addressLength) {
+        return { hasError: true, message: 'truncated ipv4 address' };
+      }
       addressValue = new Uint8Array(
         vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
       ).join('.');
       break;
     case 2:
+      if (totalLen < addressValueIndex + 1) {
+        return { hasError: true, message: 'truncated domain length' };
+      }
       addressLength = new Uint8Array(
         vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)
       )[0];
       addressValueIndex += 1;
+      if (totalLen < addressValueIndex + addressLength) {
+        return { hasError: true, message: 'truncated domain address' };
+      }
       addressValue = new TextDecoder().decode(
         vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
       );
       break;
     case 3:
       addressLength = 16;
+      if (totalLen < addressValueIndex + addressLength) {
+        return { hasError: true, message: 'truncated ipv6 address' };
+      }
       const dataView = new DataView(
         vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
       );

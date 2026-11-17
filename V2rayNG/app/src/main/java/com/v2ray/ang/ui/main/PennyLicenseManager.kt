@@ -156,9 +156,75 @@ internal object VipLicenseManager {
         }.getOrDefault("")
     }
 
+    fun isTrustedHttpsEndpoint(rawUrl: String): Boolean {
+        val clean = rawUrl.trim()
+        if (!clean.startsWith("https://", ignoreCase = true)) return false
+        return runCatching {
+            val u = URL(clean)
+            val h = u.host.trim().lowercase(Locale.US)
+            if (h.isEmpty() || h == "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return false
+            val ipMatch = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""").matchEntire(h)
+            if (ipMatch != null) {
+                val a = ipMatch.groupValues[1].toInt()
+                val b = ipMatch.groupValues[2].toInt()
+                if (a == 0 || a == 10 || a == 127) return false
+                if (a == 169 && b == 254) return false
+                if (a == 172 && b in 16..31) return false
+                if (a == 192 && b == 168) return false
+                if (a == 100 && b in 64..127) return false
+            }
+            true
+        }.getOrDefault(false)
+    }
+
     /**
-     * ذخیره‌سازی محلی با برچسب یکپارچگی HMAC-SHA256 برای سهمیه روزانه ۱ گیگابایت
+     * ذخیره‌سازی محلی با برچسب یکپارچگی HMAC-SHA256 برای سهمیه روزانه ۱ گیگابایت و پاداش تبلیغ
      */
+    fun readTamperResistantDailyAllowance(
+        context: Context,
+        deviceId: String,
+        dayKey: String,
+        defaultMaxBytes: Long,
+        defaultAdsClaimed: Int
+    ): Pair<Long, Int> {
+        try {
+            val f = File(context.noBackupFilesDir, ".pny_a_${deviceId.hashCode()}.dat")
+            if (f.exists()) {
+                val parts = f.readText(StandardCharsets.UTF_8).trim().split("|")
+                if (parts.size == 4 && parts[0] == dayKey) {
+                    val maxB = parts[1].toLongOrNull() ?: defaultMaxBytes
+                    val ads = parts[2].toIntOrNull() ?: defaultAdsClaimed
+                    val expectedMac = computeQuotaHmac(context, "${parts[0]}|${parts[1]}|${parts[2]}")
+                    if (expectedMac.isNotEmpty() && MessageDigest.isEqual(
+                            expectedMac.toByteArray(StandardCharsets.UTF_8),
+                            parts[3].toByteArray(StandardCharsets.UTF_8)
+                        )
+                    ) {
+                        return maxB.coerceAtLeast(defaultMaxBytes) to ads.coerceIn(0, 10)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return defaultMaxBytes to defaultAdsClaimed.coerceIn(0, 10)
+    }
+
+    fun writeTamperResistantDailyAllowance(
+        context: Context,
+        deviceId: String,
+        dayKey: String,
+        maxBytes: Long,
+        adsClaimed: Int
+    ) {
+        try {
+            val f = File(context.noBackupFilesDir, ".pny_a_${deviceId.hashCode()}.dat")
+            val payload = "$dayKey|$maxBytes|$adsClaimed"
+            val mac = computeQuotaHmac(context, payload)
+            f.writeText("$payload|$mac", StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+        }
+    }
+
     fun readTamperResistantDailyUsed(context: Context, deviceId: String, dayKey: String, prefsUsed: Long): Long {
         var maxObserved = prefsUsed.coerceAtLeast(0L)
         try {
@@ -176,9 +242,6 @@ internal object VipLicenseManager {
                     ) {
                         if (v > maxObserved) maxObserved = v
                     }
-                } else if (parts.size == 2 && parts[0] == dayKey) {
-                    val v = parts[1].toLongOrNull() ?: 0L
-                    if (v > maxObserved) maxObserved = v
                 }
             }
         } catch (e: Exception) {

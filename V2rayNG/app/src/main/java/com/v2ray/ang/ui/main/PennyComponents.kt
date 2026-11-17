@@ -406,9 +406,9 @@ internal fun SponsoredQuotaCard(
             ) {
                 Text(
                     text = if (isConnected) {
-                        "Pauses VPN briefly to play on your direct IP, then auto-reconnects"
+                        "Pauses VPN briefly to view sponsor banner, then auto-reconnects"
                     } else {
-                        "Plays directly on your ISP IP via Start.io • Instant +100 MB VIP data"
+                        "Official Sponsor Partner • Instant +100 MB & +2h high-speed quota"
                     },
                     color = PlatinumMuted,
                     fontSize = 9.5.sp,

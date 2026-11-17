@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.main
 
 import android.content.Context
+import android.os.Build
 import android.telephony.TelephonyManager
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.MmkvManager
@@ -16,6 +17,8 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.FilterOutputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -1730,10 +1733,12 @@ internal object PennyServerScanner {
         return false
     }
 
-    fun checkAppUpdateOnGitHub(): AppUpdateInfo {
+    fun checkAppUpdateOnGitHub(installedVersion: String = APP_VERSION_NAME): AppUpdateInfo {
+        val currentVer = installedVersion.trim().ifEmpty { APP_VERSION_NAME }
         val apiUrls = listOf(
             "https://api.github.com/repos/o77ss0120-max/v2rayNG/releases/latest"
         )
+        val deviceAbi = runCatching { Build.SUPPORTED_ABIS.firstOrNull().orEmpty().lowercase() }.getOrDefault("")
         for (u in apiUrls) {
             try {
                 val conn = URL(u).openConnection() as HttpURLConnection
@@ -1741,30 +1746,39 @@ internal object PennyServerScanner {
                     conn.connectTimeout = 6000
                     conn.readTimeout = 6000
                     conn.setRequestProperty("Accept", "application/vnd.github+json")
-                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/2.9.4")
+                    conn.setRequestProperty("User-Agent", "PennyVPN-Updater/$currentVer")
                     if (conn.responseCode == 200) {
                         val text = conn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
                         val obj = JSONObject(text)
-                        val tag = obj.optString("tag_name", "").removePrefix("v").ifEmpty { APP_VERSION_NAME }
+                        val tag = obj.optString("tag_name", "").removePrefix("v").ifEmpty { currentVer }
+                        val releaseNotes = obj.optString("body", "").trim().take(240)
                         var apkUrl = obj.optString("html_url", GITHUB_RELEASES_PAGE)
                         val assets = obj.optJSONArray("assets")
                         if (assets != null) {
+                            val apkAssets = mutableListOf<String>()
                             for (i in 0 until assets.length()) {
                                 val a = assets.optJSONObject(i) ?: continue
-                                val dl = a.optString("browser_download_url", "")
-                                if (dl.endsWith(".apk", ignoreCase = true)) {
-                                    apkUrl = dl
-                                    break
+                                val dl = a.optString("browser_download_url", "").trim()
+                                if (dl.substringBefore('?').endsWith(".apk", ignoreCase = true) && isSafeNestedSubscriptionUrl(dl)) {
+                                    apkAssets.add(dl)
                                 }
                             }
+                            val preferred = apkAssets.firstOrNull {
+                                deviceAbi.isNotEmpty() && it.contains(deviceAbi, ignoreCase = true)
+                            } ?: apkAssets.firstOrNull {
+                                it.contains("universal", ignoreCase = true) || !it.contains("fdroid", ignoreCase = true)
+                            } ?: apkAssets.firstOrNull()
+                            if (preferred != null) {
+                                apkUrl = preferred
+                            }
                         }
-                        val isNewer = isSemanticVersionNewer(APP_VERSION_NAME, tag)
+                        val isNewer = isSemanticVersionNewer(currentVer, tag)
                         return AppUpdateInfo(
-                            currentVersion = APP_VERSION_NAME,
+                            currentVersion = currentVer,
                             latestVersion = tag,
                             hasUpdate = isNewer,
                             downloadUrl = apkUrl,
-                            releaseNotes = ""
+                            releaseNotes = releaseNotes
                         )
                     }
                 } finally {
@@ -1774,11 +1788,84 @@ internal object PennyServerScanner {
             }
         }
         return AppUpdateInfo(
-            currentVersion = APP_VERSION_NAME,
-            latestVersion = APP_VERSION_NAME,
+            currentVersion = currentVer,
+            latestVersion = currentVer,
             hasUpdate = false,
             downloadUrl = GITHUB_RELEASES_PAGE,
             releaseNotes = ""
         )
+    }
+
+    /**
+     * دانلود مستقیم و امن فایل APK از گیت‌هاب با بررسی ریدایرکت HTTPS و هدر ZIP/APK
+     */
+    fun downloadApkWithProgress(
+        apkUrl: String,
+        destFile: File,
+        onProgress: (Float) -> Unit
+    ): Boolean {
+        var currentUrl = apkUrl.trim()
+        if (!isSafeNestedSubscriptionUrl(currentUrl)) return false
+        val tmpFile = File(destFile.parentFile, "${destFile.name}.part")
+        if (tmpFile.exists()) tmpFile.delete()
+
+        for (hop in 0 until 6) {
+            val conn = URL(currentUrl).openConnection() as HttpURLConnection
+            try {
+                conn.instanceFollowRedirects = false
+                conn.connectTimeout = 15000
+                conn.readTimeout = 45000
+                conn.setRequestProperty("User-Agent", "PennyVPN-Updater/$APP_VERSION_NAME")
+                val code = conn.responseCode
+                if (code in 300..399) {
+                    val loc = conn.getHeaderField("Location")?.trim() ?: return false
+                    val resolved = runCatching { URL(URL(currentUrl), loc).toString() }.getOrNull() ?: return false
+                    if (!isSafeNestedSubscriptionUrl(resolved)) return false
+                    currentUrl = resolved
+                    continue
+                }
+                if (code !in 200..299) return false
+                val totalBytes = conn.contentLengthLong
+                var downloaded = 0L
+                val buf = ByteArray(16 * 1024)
+                conn.inputStream.use { input ->
+                    FileOutputStream(tmpFile).use { output ->
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n <= 0) break
+                            output.write(buf, 0, n)
+                            downloaded += n
+                            if (totalBytes > 0L) {
+                                onProgress((downloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f))
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+                if (downloaded < 512 * 1024L) {
+                    tmpFile.delete()
+                    return false
+                }
+                val header = ByteArray(2)
+                tmpFile.inputStream().use { it.read(header) }
+                if (header[0] != 0x50.toByte() || header[1] != 0x4B.toByte()) {
+                    tmpFile.delete()
+                    return false
+                }
+                if (destFile.exists()) destFile.delete()
+                if (!tmpFile.renameTo(destFile)) {
+                    tmpFile.copyTo(destFile, overwrite = true)
+                    tmpFile.delete()
+                }
+                onProgress(1f)
+                return true
+            } catch (_: Exception) {
+                if (tmpFile.exists()) tmpFile.delete()
+                return false
+            } finally {
+                conn.disconnect()
+            }
+        }
+        return false
     }
 }

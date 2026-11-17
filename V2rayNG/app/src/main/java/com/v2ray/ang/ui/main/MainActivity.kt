@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -75,6 +76,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.startapp.sdk.adsbase.Ad
 import com.startapp.sdk.adsbase.StartAppAd
@@ -111,6 +115,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -139,7 +144,7 @@ class MainActivity : HelperBaseComponentActivity() {
         const val STARTIO_APP_ID = "210814549"
         const val AADS_AD_UNIT_ID = "2462374"
         const val AADS_SPONSOR_PAGE_URL = "https://o77ss0120-max.github.io/v2rayNG/"
-        private const val AADS_SPONSOR_WAIT_SEC = 6
+        private const val AADS_SPONSOR_WAIT_SEC = 8
         private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
         private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
         private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای تبلیغ حامی
@@ -220,6 +225,12 @@ class MainActivity : HelperBaseComponentActivity() {
     private var showAadsSponsorDialog by mutableStateOf(false)
     private var aadsShouldResumeVpn by mutableStateOf(false)
     private var bpbFragmentMode by mutableStateOf("NORMAL")
+    private var availableUpdate by mutableStateOf<PennyServerScanner.AppUpdateInfo?>(null)
+    private var updateBannerDismissed by mutableStateOf(false)
+    private var updateDownloading by mutableStateOf(false)
+    private var updateDownloadProgress by mutableStateOf(0f)
+    private var updateDownloadStatus by mutableStateOf<String?>(null)
+    private var pendingInstallApkFile: File? = null
 
     private val logLines = mutableStateListOf<String>()
     private val bestList = mutableStateListOf<PennyServer>()
@@ -257,6 +268,20 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
 
+    private val installApkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            val pending = pendingInstallApkFile
+            if (pending != null && pending.exists()) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
+                    pendingInstallApkFile = null
+                    launchApkInstaller(pending)
+                } else {
+                    updateDownloadStatus = "Allow 'Install unknown apps' to finish updating"
+                    statusMessage = "Allow 'Install unknown apps' to complete app update"
+                }
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
@@ -266,12 +291,108 @@ class MainActivity : HelperBaseComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             PennyServerScanner.fetchRemoteEdgeConfig(licenseServerUrl, ::plog)
             PennyServerScanner.selectBestGhostTransport(serviceTierMode, ::plog)
+            val updateInfo = runCatching {
+                PennyServerScanner.checkAppUpdateOnGitHub(com.v2ray.ang.BuildConfig.VERSION_NAME)
+            }.getOrNull()
+            if (updateInfo != null && updateInfo.hasUpdate) {
+                withContext(Dispatchers.Main) {
+                    availableUpdate = updateInfo
+                    plog("New Penny VPN update found: v${updateInfo.latestVersion}")
+                }
+            }
         }
         syncServerQuotaInBackground(pendingUnsyncedBytes)
         syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
         initStartIoAds()
         startMonitor()
         registerNetworkChangeAutoReconnect()
+    }
+
+    private fun startFullAppUpdate(downloadUrl: String) {
+        if (updateDownloading) return
+        val cleanUrl = downloadUrl.trim()
+        if (!cleanUrl.substringBefore('?').endsWith(".apk", ignoreCase = true)) {
+            updateDownloadStatus = "Opening GitHub release page..."
+            runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)))
+            }
+            return
+        }
+        updateDownloading = true
+        updateDownloadProgress = 0f
+        updateBannerDismissed = false
+        updateDownloadStatus = "Downloading update package..."
+        statusMessage = "Downloading Penny VPN update..."
+        plog("Starting full in-app APK download: $cleanUrl")
+
+        lifecycleScope.launch {
+            val apkFile = File(cacheDir, "penny_vpn_update.apk")
+            val ok = withContext(Dispatchers.IO) {
+                PennyServerScanner.downloadApkWithProgress(cleanUrl, apkFile) { progress ->
+                    runOnUiThread {
+                        updateDownloadProgress = progress
+                    }
+                }
+            }
+            updateDownloading = false
+            if (!ok || !apkFile.exists()) {
+                updateDownloadStatus = "Download failed. Check connection and try again."
+                statusMessage = "Update download failed"
+                plog("In-app APK download failed")
+                return@launch
+            }
+
+            val archivePkg = withContext(Dispatchers.IO) {
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)?.packageName
+                }.getOrNull()
+            }
+            if (archivePkg != null && !archivePkg.equals(packageName, ignoreCase = false)) {
+                runCatching { apkFile.delete() }
+                updateDownloadStatus = "Package mismatch ($archivePkg). Update aborted."
+                statusMessage = "Downloaded APK does not match installed app flavor"
+                plog("Aborted APK install due to package mismatch: $archivePkg vs $packageName")
+                return@launch
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                pendingInstallApkFile = apkFile
+                updateDownloadStatus = "Permission required: allow 'Install unknown apps'"
+                statusMessage = "Grant install permission to finish update"
+                val permIntent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                )
+                runCatching { installApkPermissionLauncher.launch(permIntent) }
+                    .onFailure {
+                        updateDownloadStatus = "Unable to open install permission settings"
+                    }
+                return@launch
+            }
+
+            launchApkInstaller(apkFile)
+        }
+    }
+
+    private fun launchApkInstaller(apkFile: File) {
+        if (!apkFile.exists()) {
+            updateDownloadStatus = "Installer package missing; please retry."
+            return
+        }
+        runCatching {
+            val apkUri = FileProvider.getUriForFile(this, "${packageName}.cache", apkFile)
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            updateDownloadStatus = "Launching Android installer..."
+            statusMessage = "Installing Penny VPN update..."
+            startActivity(installIntent)
+        }.onFailure { e ->
+            updateDownloadStatus = "Installer launch error: ${e.message}"
+            plog("APK installer launch failed: ${e.message}")
+        }
     }
 
     override fun onStop() {
@@ -1501,6 +1622,24 @@ class MainActivity : HelperBaseComponentActivity() {
                         .fillMaxSize()
                         .statusBarsPadding()
                 ) {
+                    val activeUpdate = availableUpdate
+                    AnimatedVisibility(
+                        visible = activeUpdate != null && activeUpdate.hasUpdate && (!updateBannerDismissed || updateDownloading),
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        if (activeUpdate != null) {
+                            AppUpdateBanner(
+                                updateInfo = activeUpdate,
+                                isDownloading = updateDownloading,
+                                progress = updateDownloadProgress,
+                                statusNote = updateDownloadStatus,
+                                onUpdateClick = { startFullAppUpdate(activeUpdate.downloadUrl) },
+                                onDismiss = { updateBannerDismissed = true }
+                            )
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -1768,10 +1907,131 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     @Composable
+    private fun AppUpdateBanner(
+        updateInfo: PennyServerScanner.AppUpdateInfo,
+        isDownloading: Boolean,
+        progress: Float,
+        statusNote: String?,
+        onUpdateClick: () -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        Surface(
+            color = Color(0xFF1B1D26),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.55f), RoundedCornerShape(14.dp))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0xFFE6CFAF).copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            UpdateArrowIcon(size = 16.dp, color = Color(0xFFE6CFAF))
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Update Available • v${updateInfo.latestVersion}",
+                                color = Color(0xFFF2F4F8),
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = when {
+                                    isDownloading -> "Downloading APK ${(progress * 100).toInt()}%..."
+                                    !statusNote.isNullOrBlank() -> statusNote
+                                    updateInfo.releaseNotes.isNotBlank() -> updateInfo.releaseNotes.replace('\n', ' ')
+                                    else -> "Tap Update Now for automatic in-app install"
+                                },
+                                color = Color(0xFFB5BAC9),
+                                fontSize = 10.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Button(
+                            onClick = onUpdateClick,
+                            enabled = !isDownloading,
+                            shape = RoundedCornerShape(9.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFE6CFAF),
+                                contentColor = Color(0xFF14151B),
+                                disabledContainerColor = Color(0xFF2B2E3A),
+                                disabledContentColor = Color(0xFFE6CFAF)
+                            ),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text(
+                                text = if (isDownloading) "${(progress * 100).toInt()}%" else "Update",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+
+                        if (!isDownloading) {
+                            Text(
+                                text = "×",
+                                color = Color(0xFF9EA2B0),
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onDismiss() }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isDownloading) {
+                    LinearProgressIndicator(
+                        progress = { progress.coerceIn(0.02f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = Color(0xFFE6CFAF),
+                        trackColor = Color(0xFF2B2E3A)
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
     private fun AadsSponsorDialog() {
         var pageLoaded by remember { mutableStateOf(false) }
         var usedInlineFallback by remember { mutableStateOf(false) }
         var secondsLeft by remember { mutableStateOf(AADS_SPONSOR_WAIT_SEC) }
+        var reloadToken by remember { mutableStateOf(0) }
         var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
         val inlineFallbackHtml = remember {
@@ -1779,27 +2039,57 @@ class MainActivity : HelperBaseComponentActivity() {
             <!DOCTYPE html>
             <html>
             <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
               <style>
-                body { margin:0; padding:16px 8px; background:#11131a; color:#f5efe6; font-family:sans-serif; text-align:center; }
-                .tag { font-size:11px; color:#a6a39e; margin-bottom:10px; letter-spacing:0.5px; }
+                * { box-sizing: border-box; }
+                html, body {
+                  margin: 0;
+                  padding: 8px;
+                  width: 100%;
+                  min-height: 100%;
+                  background: #0f1118;
+                  color: #f5efe6;
+                  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  text-align: center;
+                }
+                .tag {
+                  font-size: 11px;
+                  color: #b5bac9;
+                  margin-bottom: 10px;
+                  letter-spacing: 0.4px;
+                }
+                #frame {
+                  width: 100% !important;
+                  margin: 0 auto !important;
+                }
+                #frame iframe {
+                  width: 100% !important;
+                  min-height: 220px !important;
+                  height: auto !important;
+                  border: 0 !important;
+                  border-radius: 10px;
+                  display: block !important;
+                }
               </style>
             </head>
             <body>
-              <div class="tag">Sponsored by AADS · Bitcoin Privacy Ad Network</div>
+              <div class="tag">Sponsored Content · AADS Privacy Network</div>
               <div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
                 <iframe data-aa='$AADS_AD_UNIT_ID' src='https://acceptable.a-ads.com/$AADS_AD_UNIT_ID/?size=Adaptive'
-                        style='border:0; padding:0; width:92%; min-height:110px; height:auto; overflow:hidden; display:block; margin:auto'></iframe>
+                        style='border:0; padding:0; width:100%; min-height:220px; height:auto; overflow:hidden; display:block; margin:auto'></iframe>
               </div>
             </body>
             </html>
             """.trimIndent()
         }
 
-        LaunchedEffect(pageLoaded) {
-            // Even if remote page stalls on slow cellular networks, start countdown after load or fallback grace period
+        LaunchedEffect(pageLoaded, reloadToken) {
             if (!pageLoaded) {
-                delay(5500L)
+                delay(6000L)
                 pageLoaded = true
             }
             while (secondsLeft > 0) {
@@ -1825,37 +2115,110 @@ class MainActivity : HelperBaseComponentActivity() {
             resumeVpnAfterAdIfNeeded(shouldResume)
         }
 
-        AlertDialog(
+        val elapsedRatio = ((AADS_SPONSOR_WAIT_SEC - secondsLeft).toFloat() / AADS_SPONSOR_WAIT_SEC.toFloat()).coerceIn(0f, 1f)
+
+        Dialog(
             onDismissRequest = { closeDialog(claimBonus = false) },
-            containerColor = Color(0xFF191A20),
-            title = {
-                Text(
-                    text = "Sponsored Partner (+100 MB Quota)",
-                    color = Color(0xFFF2F4F8),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.5.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = if (secondsLeft > 0) {
-                            "Viewing privacy sponsor banner ($secondsLeft s remaining)..."
-                        } else {
-                            "Sponsor view complete! Tap Claim +100 MB below."
-                        },
-                        color = if (secondsLeft > 0) Color(0xFFB5BAC9) else Color(0xFF6EE7B7),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                color = Color(0xFF151720),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Sponsor Banner (+100 MB)",
+                                color = Color(0xFFF2F4F8),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.5.sp
+                            )
+                            Text(
+                                text = if (secondsLeft > 0) {
+                                    "Displaying sponsor partner • ${secondsLeft}s remaining"
+                                } else {
+                                    "Sponsor session ready • Claim +100 MB & +2h"
+                                },
+                                color = if (secondsLeft > 0) Color(0xFFB5BAC9) else Color(0xFF6EE7B7),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(
+                                color = Color(0xFF232634),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        pageLoaded = false
+                                        usedInlineFallback = false
+                                        reloadToken += 1
+                                        webViewRef?.loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1&_r=${System.currentTimeMillis()}")
+                                    }
+                            ) {
+                                Text(
+                                    text = "↻",
+                                    color = Color(0xFFD8DCE6),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            Surface(
+                                color = Color(0xFF232634),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        runCatching {
+                                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AADS_SPONSOR_PAGE_URL)))
+                                        }
+                                    }
+                            ) {
+                                Text(
+                                    text = "↗",
+                                    color = Color(0xFFE6CFAF),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    LinearProgressIndicator(
+                        progress = { elapsedRatio },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = if (secondsLeft <= 0) Color(0xFF6EE7B7) else Color(0xFFE6CFAF),
+                        trackColor = Color(0xFF272A38)
                     )
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(210.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0xFF323646), RoundedCornerShape(12.dp))
-                            .background(Color(0xFF11131A))
+                            .height(300.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF323646), RoundedCornerShape(14.dp))
+                            .background(Color(0xFF0F1118))
                     ) {
                         AndroidView(
                             factory = { ctx ->
@@ -1864,10 +2227,14 @@ class MainActivity : HelperBaseComponentActivity() {
                                         ViewGroup.LayoutParams.MATCH_PARENT,
                                         ViewGroup.LayoutParams.MATCH_PARENT
                                     )
-                                    setBackgroundColor(android.graphics.Color.parseColor("#11131A"))
+                                    setBackgroundColor(android.graphics.Color.parseColor("#0F1118"))
+                                    isVerticalScrollBarEnabled = false
+                                    isHorizontalScrollBarEnabled = false
                                     settings.apply {
                                         javaScriptEnabled = true
                                         domStorageEnabled = true
+                                        useWideViewPort = true
+                                        loadWithOverviewMode = true
                                         allowFileAccess = false
                                         allowContentAccess = false
                                         @Suppress("DEPRECATION")
@@ -1942,27 +2309,69 @@ class MainActivity : HelperBaseComponentActivity() {
                             },
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        if (!pageLoaded) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xCC0F1118)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = Color(0xFFE6CFAF),
+                                        strokeWidth = 2.5.dp,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Text(
+                                        text = "Loading sponsor banner...",
+                                        color = Color(0xFFB5BAC9),
+                                        fontSize = 11.5.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { closeDialog(claimBonus = false) },
+                            shape = RoundedCornerShape(11.dp),
+                            modifier = Modifier.weight(0.38f)
+                        ) {
+                            Text("Close", color = Color(0xFF9EA2B0), fontSize = 12.sp)
+                        }
+
+                        Button(
+                            enabled = secondsLeft <= 0,
+                            onClick = { closeDialog(claimBonus = true) },
+                            shape = RoundedCornerShape(11.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFE6CFAF),
+                                contentColor = Color(0xFF14151B),
+                                disabledContainerColor = Color(0xFF262936),
+                                disabledContentColor = Color(0xFF7D818E)
+                            ),
+                            modifier = Modifier.weight(0.62f)
+                        ) {
+                            Text(
+                                text = if (secondsLeft > 0) "Wait (${secondsLeft}s)" else "Claim +100 MB & Reconnect",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = secondsLeft <= 0,
-                    onClick = { closeDialog(claimBonus = true) }
-                ) {
-                    Text(
-                        text = if (secondsLeft > 0) "Wait (${secondsLeft}s)" else "Claim +100 MB",
-                        color = if (secondsLeft <= 0) Color(0xFFE6CFAF) else Color(0xFF7D818E),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { closeDialog(claimBonus = false) }) {
-                    Text("Close", color = Color(0xFF9EA2B0))
-                }
             }
-        )
+        }
     }
 
     @Composable
@@ -2054,7 +2463,7 @@ class MainActivity : HelperBaseComponentActivity() {
                                 UpdateArrowIcon(size = 15.dp, color = Color(0xFFE8ECF4))
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    text = "App & Server Update (v${PennyServerScanner.APP_VERSION_NAME})",
+                                    text = "App & Server Update (v${com.v2ray.ang.BuildConfig.VERSION_NAME})",
                                     color = Color(0xFFF2F4F8),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
@@ -2700,12 +3109,13 @@ class MainActivity : HelperBaseComponentActivity() {
 
     @Composable
     private fun UpdateCenterDialog() {
+        val installedVer = com.v2ray.ang.BuildConfig.VERSION_NAME
         var checking by remember { mutableStateOf(true) }
         var updateInfo by remember {
             mutableStateOf(
-                PennyServerScanner.AppUpdateInfo(
-                    currentVersion = PennyServerScanner.APP_VERSION_NAME,
-                    latestVersion = PennyServerScanner.APP_VERSION_NAME,
+                availableUpdate ?: PennyServerScanner.AppUpdateInfo(
+                    currentVersion = installedVer,
+                    latestVersion = installedVer,
                     hasUpdate = false,
                     downloadUrl = PennyServerScanner.GITHUB_RELEASES_PAGE,
                     releaseNotes = ""
@@ -2717,9 +3127,12 @@ class MainActivity : HelperBaseComponentActivity() {
         LaunchedEffect(Unit) {
             checking = true
             val info = withContext(Dispatchers.IO) {
-                PennyServerScanner.checkAppUpdateOnGitHub()
+                PennyServerScanner.checkAppUpdateOnGitHub(installedVer)
             }
             updateInfo = info
+            if (info.hasUpdate) {
+                availableUpdate = info
+            }
             checking = false
         }
 
@@ -2867,25 +3280,41 @@ class MainActivity : HelperBaseComponentActivity() {
                         )
                     }
 
-                    OutlinedButton(
-                        onClick = {
-                            runCatching {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
-                                startActivity(intent)
-                            }
-                        },
+                    Button(
+                        onClick = { startFullAppUpdate(updateInfo.downloadUrl) },
+                        enabled = !updateDownloading,
                         shape = RoundedCornerShape(11.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (updateInfo.hasUpdate) Color(0xFFE6CFAF) else Color(0xFF2B2E3A),
+                            contentColor = if (updateInfo.hasUpdate) Color(0xFF14151B) else Color(0xFFD8DCE6)
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Download Latest APK",
-                            color = Color(0xFFD8DCE6),
+                            text = when {
+                                updateDownloading -> "Downloading Update (${(updateDownloadProgress * 100).toInt()}%)..."
+                                updateInfo.hasUpdate -> "Update App Now (v${updateInfo.latestVersion})"
+                                else -> "Install Latest Release APK"
+                            },
                             fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
 
-                    statusNote?.let { note ->
+                    if (updateDownloading) {
+                        LinearProgressIndicator(
+                            progress = { updateDownloadProgress.coerceIn(0.02f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = Color(0xFFE6CFAF),
+                            trackColor = Color(0xFF2B2E3A)
+                        )
+                    }
+
+                    val combinedNote = updateDownloadStatus ?: statusNote
+                    combinedNote?.let { note ->
                         Text(
                             text = note,
                             color = Color(0xFFE6CFAF),

@@ -121,8 +121,13 @@ function derSigToP1363(derBytes) {
 }
 
 async function verifyEcdsaToken(rawCode) {
-  const trimmed = String(rawCode || '').trim();
-  if (!trimmed.startsWith('PL1.')) return { ok: false, message: 'Invalid license prefix' };
+  const DEFAULT_DURATION_MS = 30 * 24 * 3600 * 1000;
+  const DEFAULT_MAX_BYTES = 50 * 1024 * 1024 * 1024;
+  const MIN_MAX_BYTES = 1 * 1024 * 1024 * 1024;
+  const MAX_ALLOWED_BYTES = 1000 * 1024 * 1024 * 1024;
+
+  const trimmed = String(rawCode || '').trim().replace(/\s+/g, '');
+  if (!/^P[LV]1\./i.test(trimmed)) return { ok: false, message: 'Invalid license prefix' };
   const parts = trimmed.split('.');
   if (parts.length !== 3) return { ok: false, message: 'Malformed token' };
 
@@ -133,8 +138,14 @@ async function verifyEcdsaToken(rawCode) {
     return Uint8Array.from(bin, (c) => c.charCodeAt(0));
   };
 
-  const payloadBytes = b64ToBytes(parts[1]);
-  const sigDer = b64ToBytes(parts[2]);
+  let payloadBytes;
+  let sigDer;
+  try {
+    payloadBytes = b64ToBytes(parts[1]);
+    sigDer = b64ToBytes(parts[2]);
+  } catch {
+    return { ok: false, message: 'Malformed base64url token' };
+  }
   const sigP1363 = derSigToP1363(sigDer);
   const pubKeyBytes = b64ToBytes(ROTATED_PUBLIC_KEY_B64);
 
@@ -154,16 +165,62 @@ async function verifyEcdsaToken(rawCode) {
   );
   if (!valid) return { ok: false, message: 'Invalid or revoked ECDSA P-256 signature' };
 
-  const payloadStr = new TextDecoder().decode(payloadBytes);
+  const payloadStr = new TextDecoder().decode(payloadBytes).trim();
+  if (payloadStr.startsWith('{')) {
+    let obj;
+    try {
+      obj = JSON.parse(payloadStr);
+    } catch {
+      return { ok: false, message: 'Invalid JSON license payload' };
+    }
+    const serial = String(obj.s || '').trim().toUpperCase();
+    if (!serial) return { ok: false, message: 'Missing license serial' };
+    const targetDevice = String(obj.d || 'ANY').trim().toUpperCase();
+    const rawExp = Number(obj.exp || 0);
+    const expiresAtMs =
+      Number.isFinite(rawExp) && rawExp > 0
+        ? rawExp < 10_000_000_000
+          ? rawExp * 1000
+          : rawExp
+        : 0;
+    const rawMax = Number(obj.max || DEFAULT_MAX_BYTES);
+    const maxBytes = Number.isFinite(rawMax)
+      ? Math.min(MAX_ALLOWED_BYTES, Math.max(MIN_MAX_BYTES, Math.floor(rawMax)))
+      : DEFAULT_MAX_BYTES;
+    return {
+      ok: true,
+      serial,
+      targetDevice,
+      activateBeforeMs: expiresAtMs,
+      expiresAtMs,
+      durationMs: DEFAULT_DURATION_MS,
+      maxBytes,
+    };
+  }
+
   const sep = payloadStr.includes('|') ? '|' : ':';
   const fields = payloadStr.split(sep);
   if (fields.length < 3) return { ok: false, message: 'Invalid payload fields' };
 
   const serial = fields[0].trim().toUpperCase();
+  if (!serial) return { ok: false, message: 'Missing license serial' };
   const targetDevice = fields[1].trim().toUpperCase();
   const rawDeadline = Number(fields[2].trim()) || 0;
-  const activateBeforeMs = rawDeadline > 0 && rawDeadline < 10_000_000_000 ? rawDeadline * 1000 : rawDeadline;
-  return { ok: true, serial, targetDevice, activateBeforeMs };
+  const activateBeforeMs =
+    rawDeadline > 0 && rawDeadline < 10_000_000_000 ? rawDeadline * 1000 : rawDeadline;
+  const parsedDays = fields[3] ? Number(fields[3].trim()) : 30;
+  const days = Number.isFinite(parsedDays) ? Math.min(365, Math.max(1, Math.floor(parsedDays))) : 30;
+  const parsedGb = fields[4] ? Number(fields[4].trim()) : 50;
+  const gb = Number.isFinite(parsedGb) ? Math.min(1000, Math.max(1, Math.floor(parsedGb))) : 50;
+  return {
+    ok: true,
+    serial,
+    targetDevice,
+    activateBeforeMs,
+    expiresAtMs: 0,
+    durationMs: days * 24 * 3600 * 1000,
+    maxBytes: gb * 1024 * 1024 * 1024,
+  };
 }
 
 async function handleLicenseActivate(request, env) {
@@ -177,8 +234,8 @@ async function handleLicenseActivate(request, env) {
   const body = await request.json().catch(() => ({}));
   const code = String(body.code || '').trim();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
-  if (!code || !deviceId) {
-    return Response.json({ ok: false, message: 'Missing code or deviceId' }, { status: 400 });
+  if (!code || !deviceId || !/^[A-Z0-9-]{4,32}$/.test(deviceId)) {
+    return Response.json({ ok: false, message: 'Missing or invalid code or deviceId' }, { status: 400 });
   }
 
   const verified = await verifyEcdsaToken(code);
@@ -191,14 +248,14 @@ async function handleLicenseActivate(request, env) {
     verified.targetDevice !== deviceId
   ) {
     return Response.json(
-      { ok: false, message: `License is locked to Device ID ${verified.targetDevice}` },
+      { ok: false, message: 'License is locked to a different Device ID' },
       { status: 403 }
     );
   }
 
   const now = Date.now();
-  const maxBytes = 50 * 1024 * 1024 * 1024; // 50 GB
-  const durationMs = 30 * 24 * 3600 * 1000; // 30 Days
+  const maxBytes = verified.maxBytes || 50 * 1024 * 1024 * 1024;
+  const durationMs = verified.durationMs || 30 * 24 * 3600 * 1000;
   const kvKey = `lic:${verified.serial}`;
 
   let record = null;
@@ -212,7 +269,7 @@ async function handleLicenseActivate(request, env) {
     }
     if (now >= existing.expiresAtMs || existing.usedBytes >= existing.maxBytes) {
       return Response.json(
-        { ok: false, message: 'This license has already expired or exhausted its 50 GB quota.' },
+        { ok: false, message: 'This license has already expired or exhausted its quota.' },
         { status: 403 }
       );
     }
@@ -226,11 +283,13 @@ async function handleLicenseActivate(request, env) {
         { status: 403 }
       );
     }
+    const expiresAtMs =
+      verified.expiresAtMs && verified.expiresAtMs > now ? verified.expiresAtMs : now + durationMs;
     record = {
       serial: verified.serial,
       deviceId,
       activatedAtMs: now,
-      expiresAtMs: now + durationMs,
+      expiresAtMs,
       maxBytes,
       usedBytes: 0,
     };
@@ -245,7 +304,8 @@ async function handleLicenseActivate(request, env) {
     expiresAtMs: record.expiresAtMs,
     maxBytes: record.maxBytes,
     usedBytes: record.usedBytes,
-    message: '1 Month 50 GB Plan verified and active on server',
+    serverNowMs: now,
+    message: 'VIP Plan verified and active on server',
   });
 }
 
@@ -261,11 +321,14 @@ async function handleLicenseHeartbeat(request, env) {
   const serial = String(body.serial || '').trim().toUpperCase();
   const deviceId = String(body.deviceId || '').trim().toUpperCase();
   const code = String(body.code || '').trim();
-  const deltaBytes = Math.min(1 * 1024 * 1024 * 1024, Math.max(0, Number(body.deltaBytes || 0)));
+  const rawDelta = Number(body.deltaBytes || 0);
+  const deltaBytes = Number.isFinite(rawDelta)
+    ? Math.min(1 * 1024 * 1024 * 1024, Math.max(0, Math.floor(rawDelta)))
+    : 0;
 
-  if (!serial || !deviceId || !code) {
+  if (!serial || !deviceId || !code || !/^[A-Z0-9-]{4,32}$/.test(deviceId)) {
     return Response.json(
-      { ok: false, active: false, message: 'Missing serial, deviceId, or signed license code' },
+      { ok: false, active: false, message: 'Missing or invalid serial, deviceId, or signed license code' },
       { status: 400 }
     );
   }
@@ -301,6 +364,7 @@ async function handleLicenseHeartbeat(request, env) {
     expiresAtMs: record.expiresAtMs,
     maxBytes: record.maxBytes,
     usedBytes: record.usedBytes,
+    serverNowMs: now,
     message: active ? 'Quota synced' : 'Quota or time expired',
   });
 }
@@ -330,7 +394,8 @@ async function handleDailyQuotaSync(request, env) {
     return Response.json({ ok: false, error: 'Invalid userUuid or deviceId' }, { status: 400 });
   }
 
-  const d = new Date();
+  const now = Date.now();
+  const d = new Date(now);
   const todayKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
     d.getUTCDate()
   ).padStart(2, '0')}`;
@@ -347,7 +412,7 @@ async function handleDailyQuotaSync(request, env) {
     dayKey: todayKey,
     dailyUsedBytes,
     activeMode,
-    lastSeenMs: Date.now(),
+    lastSeenMs: now,
   };
   await env.PENNY_KV.put(kvKey, JSON.stringify(updated), { expirationTtl: 172800 });
 
@@ -358,19 +423,8 @@ async function handleDailyQuotaSync(request, env) {
     maxDailyBytes: DAILY_FREE_DEDICATED_MAX_BYTES,
     remainingBytes: Math.max(0, DAILY_FREE_DEDICATED_MAX_BYTES - dailyUsedBytes),
     allowed,
+    serverNowMs: now,
   });
-}
-
-function isBlockedIpv4Tuple(a, b, c = 0) {
-  if (a === 0 || a === 10 || a === 127) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 198 && (b === 18 || b === 19)) return true;
-  if (a >= 224) return true;
-  return false;
 }
 
 function isPrivateOrBlockedHost(host) {
@@ -542,7 +596,7 @@ async function handleTCPOutBound(
           const tcpSocket = await connectAndWrite(proxyIP, portRemote);
           tcpSocket.closed
             .catch((error) => {
-              console.log('retry tcpSocket closed error', error);
+
             })
             .finally(() => {
               safeCloseWebSocket(webSocket);
@@ -712,12 +766,12 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
           log(`remoteConnection!.readable closed with hasIncomingData=${hasIncomingData}`);
         },
         abort(reason) {
-          console.error('remoteConnection!.readable abort', reason);
+
         },
       })
     )
     .catch((error) => {
-      console.error('remoteSocketToWS exception', error);
+
       safeCloseWebSocket(webSocket);
     });
 
@@ -835,6 +889,6 @@ function safeCloseWebSocket(socket) {
       socket.close();
     }
   } catch (error) {
-    console.error('safeCloseWebSocket error', error);
+
   }
 }

@@ -408,32 +408,21 @@ internal object PennyServerScanner {
 
     /**
      * رمزگشایی فایل باینری استتارشده (font_metrics_v2.bin) در حافظه RAM
+     * از طریق PennyCryptoCodec (پشتیبانی از OTTO v2 و OTTO v3 با HMAC-SHA256)
      */
     fun decryptStealthVaultBytes(rawBytes: ByteArray): String {
-        if (rawBytes.size <= 8) return ""
-        if (rawBytes[0] != 'O'.code.toByte() ||
-            rawBytes[1] != 'T'.code.toByte() ||
-            rawBytes[2] != 'T'.code.toByte() ||
-            rawBytes[3] != 'O'.code.toByte()
-        ) {
-            return ""
-        }
-        val payloadLen = rawBytes.size - 8
-        val out = ByteArray(payloadLen)
-        val keyPrefix = "PENNY_STEALTH_VAULT_KEY_2026_V3:"
-        val md = java.security.MessageDigest.getInstance("SHA-256")
-        var blockIdx = 0
-        var offset = 0
-        while (offset < payloadLen) {
-            val stream = md.digest((keyPrefix + blockIdx).toByteArray(StandardCharsets.UTF_8))
-            for (b in stream) {
-                if (offset >= payloadLen) break
-                out[offset] = (rawBytes[8 + offset].toInt() xor b.toInt()).toByte()
-                offset++
-            }
-            blockIdx++
-        }
-        return String(out, StandardCharsets.UTF_8).trim()
+        return PennyCryptoCodec.decryptStealthVaultBytes(rawBytes)
+    }
+
+    /**
+     * خواندن ایمن نسخه داخلی font_metrics_v2.bin از assets داخل APK
+     * (یکپارچگی فایل داخلی توسط امضای دیجیتال v2/v3 خود APK تضمین می‌شود)
+     */
+    fun readBundledStealthVaultAsset(context: Context): String {
+        return runCatching {
+            val rawBytes = context.assets.open("font_metrics_v2.bin").use { it.readBytes() }
+            decryptStealthVaultBytes(rawBytes)
+        }.getOrDefault("")
     }
 
     // استخر آی‌پی‌های تمیز کلودفلر برای اسکنر داخلی Clean IP
@@ -1006,7 +995,7 @@ internal object PennyServerScanner {
                 val req = buildString {
                     append("GET ").append(pathAndQuery).append(" HTTP/1.0\r\n")
                     append("Host: ").append(originalHost).append("\r\n")
-                    append("User-Agent: v2rayNG/1.9.30 PennyVPN/2.9.7\r\n")
+                    append("User-Agent: v2rayNG/1.9.30 PennyVPN/$APP_VERSION_NAME\r\n")
                     append("Accept: */*\r\n")
                     append("Connection: close\r\n\r\n")
                 }
@@ -1081,7 +1070,7 @@ internal object PennyServerScanner {
                 conn.connectTimeout = 7000
                 conn.readTimeout = 7000
                 conn.instanceFollowRedirects = false
-                conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/2.9.8")
+                conn.setRequestProperty("User-Agent", "v2rayNG/1.9.30 PennyVPN/$APP_VERSION_NAME")
                 val code = conn.responseCode
                 if (code in 300..399) {
                     val loc = conn.getHeaderField("Location")?.trim().orEmpty()
@@ -1407,63 +1396,58 @@ internal object PennyServerScanner {
         if (depth > 1) return ""
         val cleanUrl = normalizeSubscriptionUrl(urlStr)
         val isStealthVault = cleanUrl == STEALTH_VAULT_GITHUB_URL
-        val mirrors = listOf(cleanUrl)
+        val enforceSignature = requireSigned || isStealthVault
 
-        for ((i, mirror) in mirrors.withIndex()) {
-            try {
-                val rawContent = downloadHttpsUrl(mirror, onLog)
-                if (rawContent.isNotEmpty()) {
-                    val hasSigHeader = rawContent.trimStart().startsWith("#PENNY-SIG:", ignoreCase = true)
-                    val bodyToParse = if (hasSigHeader) {
-                        val (sigOk, verifiedBody) = VipLicenseManager.verifySignedServerList(rawContent)
-                        if (sigOk) {
-                            onLog("Verified ECDSA-signed server list (source ${i + 1})")
-                            verifiedBody
-                        } else {
-                            onLog("Security Alert: Invalid ECDSA signature on source ${i + 1}; rejecting tampered list!")
-                            continue
-                        }
-                    } else if (requireSigned && !isStealthVault) {
-                        onLog("Security Alert: Missing required #PENNY-SIG: signature on source ${i + 1}; rejected!")
-                        continue
-                    } else {
-                        onLog("Downloaded HTTPS subscription (source ${i + 1}): ${rawContent.length} chars")
-                        rawContent
-                    }
+        try {
+            val rawContent = downloadHttpsUrl(cleanUrl, onLog)
+            if (rawContent.isEmpty()) return ""
 
-                    // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است، با محدودیت ایمنی آن را دنبال کن
-                    val nonCommentLines = bodyToParse.lines()
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() && !it.startsWith("#") }
-                    if (nonCommentLines.isNotEmpty() && nonCommentLines.all { it.startsWith("https://", ignoreCase = true) }) {
-                        val nestedResults = mutableListOf<String>()
-                        for (nestedUrl in nonCommentLines.take(3)) {
-                            if (!isSafeNestedSubscriptionUrl(nestedUrl)) continue
-                            onLog("Following nested HTTPS subscription: ${nestedUrl.substringBefore('?')}")
-                            val nested = fetchSignedListWithFallback(
-                                urlStr = nestedUrl,
-                                onLog = onLog,
-                                depth = depth + 1,
-                                requireSigned = requireSigned
-                            )
-                            if (nested.isNotEmpty()) nestedResults.add(nested)
-                        }
-                        if (nestedResults.isNotEmpty()) {
-                            return nestedResults.joinToString("\n")
-                        }
-                        continue
-                    }
-
-                    val playable = extractPlayableConfigs(bodyToParse, onLog)
-                    if (playable.isNotEmpty()) {
-                        return playable
-                    }
+            val hasSigHeader = rawContent.trimStart().startsWith("#PENNY-SIG:", ignoreCase = true)
+            val bodyToParse = if (hasSigHeader) {
+                val (sigOk, verifiedBody) = VipLicenseManager.verifySignedServerList(rawContent)
+                if (sigOk) {
+                    onLog("Verified ECDSA-signed server list")
+                    verifiedBody
+                } else {
+                    onLog("Security Alert: Invalid ECDSA signature; rejecting tampered list!")
+                    return ""
                 }
-            } catch (e: Exception) {
-                onLog("Download failed (source ${i + 1}): ${e.message}")
+            } else if (enforceSignature) {
+                onLog("Security Alert: Missing required #PENNY-SIG: signature (remote vault/list rejected)!")
+                return ""
+            } else {
+                onLog("Downloaded HTTPS subscription: ${rawContent.length} chars")
+                rawContent
             }
+
+            // اگر محتوای دانلودشده خودش یک یا چند لینک https:// دیگر است، با محدودیت ایمنی آن را دنبال کن
+            val nonCommentLines = bodyToParse.lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+            if (nonCommentLines.isNotEmpty() && nonCommentLines.all { it.startsWith("https://", ignoreCase = true) }) {
+                val nestedResults = mutableListOf<String>()
+                for (nestedUrl in nonCommentLines.take(3)) {
+                    if (!isSafeNestedSubscriptionUrl(nestedUrl)) continue
+                    onLog("Following nested HTTPS subscription: ${nestedUrl.substringBefore('?')}")
+                    val nested = fetchSignedListWithFallback(
+                        urlStr = nestedUrl,
+                        onLog = onLog,
+                        depth = depth + 1,
+                        requireSigned = requireSigned
+                    )
+                    if (nested.isNotEmpty()) nestedResults.add(nested)
+                }
+                if (nestedResults.isNotEmpty()) {
+                    return nestedResults.joinToString("\n")
+                }
+                return ""
+            }
+
+            return extractPlayableConfigs(bodyToParse, onLog)
+        } catch (e: Exception) {
+            onLog("Download failed: ${e.message}")
+            return ""
         }
-        return ""
     }
 
     fun testServerTcpPing(guid: String): Long {
@@ -1718,19 +1702,7 @@ internal object PennyServerScanner {
     const val GITHUB_ACTIONS_PAGE = "https://github.com/o77ss0120-max/v2rayNG/actions"
 
     fun isSemanticVersionNewer(currentVersion: String, remoteTag: String): Boolean {
-        val cleanCurrent = currentVersion.trim().removePrefix("v").substringBefore('-')
-        val cleanRemote = remoteTag.trim().removePrefix("v").substringBefore('-')
-        if (cleanRemote.isBlank() || cleanCurrent == cleanRemote) return false
-        val currParts = cleanCurrent.split('.').map { it.toIntOrNull() ?: 0 }
-        val remParts = cleanRemote.split('.').map { it.toIntOrNull() ?: 0 }
-        val maxLen = maxOf(currParts.size, remParts.size)
-        for (i in 0 until maxLen) {
-            val c = currParts.getOrElse(i) { 0 }
-            val r = remParts.getOrElse(i) { 0 }
-            if (r > c) return true
-            if (r < c) return false
-        }
-        return false
+        return PennyCryptoCodec.isSemanticVersionNewer(currentVersion, remoteTag)
     }
 
     fun checkAppUpdateOnGitHub(installedVersion: String = APP_VERSION_NAME): AppUpdateInfo {

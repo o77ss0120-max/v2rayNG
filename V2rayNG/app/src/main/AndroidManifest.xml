@@ -14,6 +14,9 @@
         android:name="android.hardware.camera"
         android:required="false" />
     <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+    <uses-feature
         android:name="android.hardware.camera.autofocus"
         android:required="false" />
     <uses-feature
@@ -40,7 +43,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
-    <!-- CAMERA permission removed: not needed by Penny VPN -->
+    <!-- Optional CAMERA permission used exclusively on-device by ScannerActivity for QR config import -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
         tools:ignore="ForegroundServicesPolicy" />
     <uses-permission

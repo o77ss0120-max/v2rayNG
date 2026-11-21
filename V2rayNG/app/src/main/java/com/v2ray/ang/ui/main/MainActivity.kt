@@ -8,32 +8,18 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
-import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
-import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -43,51 +29,22 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
-import com.startapp.sdk.adsbase.Ad
-import com.startapp.sdk.adsbase.StartAppAd
-import com.startapp.sdk.adsbase.StartAppSDK
-import com.startapp.sdk.adsbase.adlisteners.AdDisplayListener
-import com.startapp.sdk.adsbase.adlisteners.AdEventListener
-import com.startapp.sdk.adsbase.adlisteners.VideoListener
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.core.CoreNativeManager
@@ -113,46 +70,43 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import java.util.UUID
 
 /**
  * MainActivity ماژولار شده Penny VPN:
- * منطق مدل‌ها در PennyModels.kt، اعتبارسنجی سرورمحور لایسنس ECDSA در PennyLicenseManager.kt،
- * اسکنر امن و امضاشده در PennyServerScanner.kt و کامپوننت‌های گرافیکی در PennyComponents.kt تفکیک شده‌اند.
+ * - رمزنگاری و اعتبارسنجی خالص: PennyCryptoCodec.kt (قابل تست با JUnit 5)
+ * - ذخیره‌سازی MMKV و مهاجرت خودکار: PennyStorage.kt
+ * - لایسنس و همگام‌سازی سهمیه (OkHttp): PennyLicenseManager.kt
+ * - اسکنر و امضای لیست‌ها: PennyServerScanner.kt
+ * - هماهنگ‌کننده تبلیغات با رضایت صریح: PennyAdCoordinator.kt
+ * - هماهنگ‌کننده آپدیت امن APK: PennyUpdateCoordinator.kt
+ * - صفحات و دیالوگ‌ها: PennyComponents.kt، PennyPages.kt، PennyDialogs.kt
  */
 class MainActivity : HelperBaseComponentActivity() {
 
     companion object {
         private const val TAG = "PennyVPN"
 
-        private const val REAL_TEST_COUNT = 60
-        private const val REAL_TEST_TIMEOUT_MS = 45_000L
         private const val BEST_LIST_SIZE = 15
         private const val MAX_CONNECT_ATTEMPTS = 10
 
         private const val STALE_MS = 6 * 60 * 60 * 1000L
         private const val MONITOR_INTERVAL_MS = 40_000L
 
-        // ── مدل درآمدزایی Time-Boxed + سهمیه روزانه ۱ گیگابایت + چرخش بین دو واحد بیت‌کوینی AADS (2462374 & 2462387) ──
-        const val STARTIO_APP_ID = "210814549"
-        const val AADS_AD_UNIT_ID = "2462374"
-        const val AADS_SECONDARY_UNIT_ID = "2462387"
-        private val AADS_AD_UNITS = listOf(AADS_AD_UNIT_ID, AADS_SECONDARY_UNIT_ID)
-        const val AADS_SPONSOR_PAGE_URL = "https://o77ss0120-max.github.io/v2rayNG/"
-        private const val AADS_SPONSOR_WAIT_SEC = 8
-        private const val INTERSTITIAL_COOLDOWN_MS = 10 * 60 * 1000L // حداکثر ۱ تبلیغ تمام‌صفحه در هر ۱۰ دقیقه
-        private const val BASE_FREE_SESSION_SEC = 3600L              // ۱ ساعت اتصال پایه با هر Connect
-        private const val REWARD_ADD_TIME_SEC = 2 * 3600L            // +۲ ساعت افزایش زمان با تماشای تبلیغ حامی
-        private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L // ۱ گیگابایت سهمیه پایه روزانه هر دیوایس
-        private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L  // +۱۰۰ مگابایت سهمیه VIP با نمایش بنر حامی
-        private const val MAX_DAILY_SPONSORED_ADS = 3                         // حداکثر ۳ بار دریافت پاداش روزانه تبلیغ شفاف
+        const val STARTIO_APP_ID = PennyAdCoordinator.STARTIO_APP_ID
+        const val AADS_AD_UNIT_ID = PennyAdCoordinator.AADS_AD_UNIT_ID
+        const val AADS_SECONDARY_UNIT_ID = PennyAdCoordinator.AADS_SECONDARY_UNIT_ID
+        const val AADS_SPONSOR_PAGE_URL = PennyAdCoordinator.AADS_SPONSOR_PAGE_URL
+
+        private const val BASE_FREE_SESSION_SEC = 3600L
+        private const val REWARD_ADD_TIME_SEC = 2 * 3600L
+        private const val BASE_DAILY_FREE_BYTES = 1L * 1024L * 1024L * 1024L
+        private const val STARTIO_REWARD_BONUS_BYTES = 100L * 1024L * 1024L
+        private const val MAX_DAILY_SPONSORED_ADS = 3
     }
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -160,9 +114,9 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private val socksPort: Int get() = SettingsManager.getSocksPort()
+    private val store: PennyPreferencesStore by lazy { PennyPreferencesStore(this) }
 
-    // ── وضعیت Start.io SDK و سهمیه روزانه ۱ گیگ به ازای هر دیوایس ──
-    private var startIoInterstitialAd: StartAppAd? = null
+    // ── وضعیت سهمیه روزانه و تبلیغات ──
     private var lastInterstitialShownMs by mutableStateOf(0L)
     private var freeSessionRemainingSec by mutableStateOf(BASE_FREE_SESSION_SEC)
     private var dailyQuotaDayKey by mutableStateOf("")
@@ -178,6 +132,12 @@ class MainActivity : HelperBaseComponentActivity() {
     @Volatile
     private var disconnectEpoch: Long = 0L
     private var monitorActionJob: Job? = null
+
+    // ── همگام‌سازی ساعت تاییدشده سرور (جلوگیری از قفل دائمی expiry در پرش ساعت دستگاه) ──
+    @Volatile
+    private var lastServerNowMs: Long = 0L
+    @Volatile
+    private var elapsedAtServerSyncMs: Long = 0L
 
     // ── وضعیت UI ──
     private var showSplash by mutableStateOf(true)
@@ -198,7 +158,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private var connectionProfile by mutableStateOf(ConnectionProfile.SMART)
     private var userWantsConnected by mutableStateOf(false)
 
-    // ── وضعیت اشتراک ۱ ماه ۵۰ گیگ (تأیید و شمارش حجم سمت سرور) ──
+    // ── وضعیت اشتراک VIP ──
     private var vipActive by mutableStateOf(false)
     private var useVipServers by mutableStateOf(false)
     private var vipCode by mutableStateOf("")
@@ -259,7 +219,43 @@ class MainActivity : HelperBaseComponentActivity() {
     private var workJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    private val prefs by lazy { getSharedPreferences("penny_prefs", Context.MODE_PRIVATE) }
+    private val adCoordinator: PennyAdCoordinator by lazy {
+        PennyAdCoordinator(
+            context = this,
+            store = store,
+            scope = lifecycleScope,
+            isVipActive = { vipActive },
+            isVpnUiRunning = { mainViewModel.uiState.value.isRunning },
+            pauseVpnForDirectIpAd = { pauseVpnForDirectIpAdIfNeeded() },
+            onResumeVpnAfterAd = { shouldResume -> resumeVpnAfterAdIfNeeded(shouldResume) },
+            onShowConsentDialog = { showAdConsentDialog = true },
+            onOpenAadsSponsorDialog = { unitId, shouldResume ->
+                currentAadsUnitId = unitId
+                aadsShouldResumeVpn = shouldResume
+                showAadsSponsorDialog = true
+            },
+            onStatusMessage = { statusMessage = it },
+            onLog = ::plog
+        )
+    }
+
+    private val updateCoordinator: PennyUpdateCoordinator by lazy {
+        PennyUpdateCoordinator(
+            context = this,
+            scope = lifecycleScope,
+            onDownloadingChange = { updateDownloading = it },
+            onProgressChange = { updateDownloadProgress = it },
+            onShowBanner = { updateBannerDismissed = false },
+            onDownloadStatus = { updateDownloadStatus = it },
+            onStatusMessage = { statusMessage = it },
+            onRequestInstallPermission = { permIntent, apkFile ->
+                pendingInstallApkFile = apkFile
+                runCatching { installApkPermissionLauncher.launch(permIntent) }
+                    .onFailure { updateDownloadStatus = "Unable to open install permission settings" }
+            },
+            onLog = ::plog
+        )
+    }
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -277,7 +273,7 @@ class MainActivity : HelperBaseComponentActivity() {
             if (pending != null && pending.exists()) {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
                     pendingInstallApkFile = null
-                    launchApkInstaller(pending)
+                    updateCoordinator.launchApkInstaller(pending)
                 } else {
                     updateDownloadStatus = "Allow 'Install unknown apps' to finish updating"
                     statusMessage = "Allow 'Install unknown apps' to complete app update"
@@ -295,7 +291,7 @@ class MainActivity : HelperBaseComponentActivity() {
             PennyServerScanner.fetchRemoteEdgeConfig(licenseServerUrl, ::plog)
             PennyServerScanner.selectBestGhostTransport(serviceTierMode, ::plog)
             val updateInfo = runCatching {
-                PennyServerScanner.checkAppUpdateOnGitHub(com.v2ray.ang.BuildConfig.VERSION_NAME)
+                PennyServerScanner.checkAppUpdateOnGitHub(BuildConfig.VERSION_NAME)
             }.getOrNull()
             if (updateInfo != null && updateInfo.hasUpdate) {
                 withContext(Dispatchers.Main) {
@@ -306,116 +302,25 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         syncServerQuotaInBackground(pendingUnsyncedBytes)
         syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
-        initStartIoAds()
+        adCoordinator.initSdkIfConsented()
         startMonitor()
         registerNetworkChangeAutoReconnect()
-    }
-
-    private fun startFullAppUpdate(downloadUrl: String) {
-        if (updateDownloading) return
-        val cleanUrl = downloadUrl.trim()
-        if (!cleanUrl.substringBefore('?').endsWith(".apk", ignoreCase = true)) {
-            updateDownloadStatus = "Opening GitHub release page..."
-            runCatching {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)))
-            }
-            return
-        }
-        updateDownloading = true
-        updateDownloadProgress = 0f
-        updateBannerDismissed = false
-        updateDownloadStatus = "Downloading update package..."
-        statusMessage = "Downloading Penny VPN update..."
-        plog("Starting full in-app APK download: $cleanUrl")
-
-        lifecycleScope.launch {
-            val apkFile = File(cacheDir, "penny_vpn_update.apk")
-            val ok = withContext(Dispatchers.IO) {
-                PennyServerScanner.downloadApkWithProgress(cleanUrl, apkFile) { progress ->
-                    runOnUiThread {
-                        updateDownloadProgress = progress
-                    }
-                }
-            }
-            updateDownloading = false
-            if (!ok || !apkFile.exists()) {
-                updateDownloadStatus = "Download failed. Check connection and try again."
-                statusMessage = "Update download failed"
-                plog("In-app APK download failed")
-                return@launch
-            }
-
-            val archivePkg = withContext(Dispatchers.IO) {
-                runCatching {
-                    @Suppress("DEPRECATION")
-                    packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)?.packageName
-                }.getOrNull()
-            }
-            if (archivePkg != null && !archivePkg.equals(packageName, ignoreCase = false)) {
-                runCatching { apkFile.delete() }
-                updateDownloadStatus = "Package mismatch ($archivePkg). Update aborted."
-                statusMessage = "Downloaded APK does not match installed app flavor"
-                plog("Aborted APK install due to package mismatch: $archivePkg vs $packageName")
-                return@launch
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-                pendingInstallApkFile = apkFile
-                updateDownloadStatus = "Permission required: allow 'Install unknown apps'"
-                statusMessage = "Grant install permission to finish update"
-                val permIntent = Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:$packageName")
-                )
-                runCatching { installApkPermissionLauncher.launch(permIntent) }
-                    .onFailure {
-                        updateDownloadStatus = "Unable to open install permission settings"
-                    }
-                return@launch
-            }
-
-            launchApkInstaller(apkFile)
-        }
-    }
-
-    private fun launchApkInstaller(apkFile: File) {
-        if (!apkFile.exists()) {
-            updateDownloadStatus = "Installer package missing; please retry."
-            return
-        }
-        runCatching {
-            val apkUri = FileProvider.getUriForFile(this, "${packageName}.cache", apkFile)
-            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            updateDownloadStatus = "Launching Android installer..."
-            statusMessage = "Installing Penny VPN update..."
-            startActivity(installIntent)
-        }.onFailure { e ->
-            updateDownloadStatus = "Installer launch error: ${e.message}"
-            plog("APK installer launch failed: ${e.message}")
-        }
     }
 
     override fun onStop() {
         val now = effectiveNowMs()
         if (vipActive) {
-            prefs.edit()
-                .putLong("vip_used_bytes", vipUsedBytes)
-                .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
-                .putLong("vip_last_seen_ms", now)
-                .apply()
+            store.putLong("vip_used_bytes", vipUsedBytes)
+            store.putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
+            store.putLong("vip_last_seen_ms", now)
             if (pendingUnsyncedBytes > 0L) {
                 syncServerQuotaInBackground(pendingUnsyncedBytes)
             }
         } else {
             ensureDailyDeviceQuotaCurrent()
-            prefs.edit()
-                .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
-                .putLong("free_session_rem_sec", freeSessionRemainingSec)
-                .apply()
+            store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+            store.putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+            store.putLong("free_session_rem_sec", freeSessionRemainingSec)
             VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, dailyQuotaDayKey, dailyUsedBytes)
             if (pendingDailyUnsyncedBytes > 0L) {
                 syncDailyDedicatedQuotaInBackground(pendingDailyUnsyncedBytes)
@@ -429,16 +334,32 @@ class MainActivity : HelperBaseComponentActivity() {
         super.onDestroy()
     }
 
-    private fun effectiveNowMs(): Long {
-        val sysNow = System.currentTimeMillis()
-        if (sysNow > vipLastSeenMs) {
-            vipLastSeenMs = sysNow
-            prefs.edit().putLong("vip_last_seen_ms", vipLastSeenMs).apply()
+    private fun recordServerClockAnchor(serverNowMs: Long) {
+        if (serverNowMs > 1_700_000_000_000L) {
+            lastServerNowMs = serverNowMs
+            elapsedAtServerSyncMs = SystemClock.elapsedRealtime()
+            vipLastSeenMs = serverNowMs
+            store.putLong("vip_last_seen_ms", serverNowMs)
         }
-        return maxOf(sysNow, vipLastSeenMs)
     }
 
-    // ═════════════════════════ همگام‌سازی حجم ۵۰ گیگ و اعتبار لایسنس با سرور ═════════════════════════
+    private fun effectiveNowMs(): Long {
+        val sysNow = System.currentTimeMillis()
+        val resolved = PennyCryptoCodec.resolveEffectiveNowMs(
+            systemWallMs = sysNow,
+            storedLastSeenMs = vipLastSeenMs,
+            lastServerNowMs = lastServerNowMs,
+            elapsedAtServerSyncMs = elapsedAtServerSyncMs,
+            currentElapsedMs = SystemClock.elapsedRealtime()
+        )
+        if (resolved != vipLastSeenMs) {
+            vipLastSeenMs = resolved
+            store.putLong("vip_last_seen_ms", resolved)
+        }
+        return resolved
+    }
+
+    // ═════════════════════════ همگام‌سازی سهمیه و لایسنس با سرور ═════════════════════════
 
     private fun syncServerQuotaInBackground(deltaToReport: Long) {
         if (!vipActive || vipSerial.isBlank() || isVipSyncInFlight) return
@@ -455,18 +376,17 @@ class MainActivity : HelperBaseComponentActivity() {
                 ) ?: return@launch
 
                 withContext(Dispatchers.Main) {
+                    if (state.serverNowMs > 0L) recordServerClockAnchor(state.serverNowMs)
                     pendingUnsyncedBytes = (pendingUnsyncedBytes - clampedDelta).coerceAtLeast(0L)
                     vipUsedBytes = maxOf(vipUsedBytes, state.usedBytes)
                     vipMaxBytes = state.maxBytes
                     if (state.expiresAtMs > 0L) {
                         vipExpireMs = state.expiresAtMs
                     }
-                    prefs.edit()
-                        .putLong("vip_used_bytes", vipUsedBytes)
-                        .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
-                        .putLong("vip_max_bytes", vipMaxBytes)
-                        .putLong("vip_expire_ms", vipExpireMs)
-                        .apply()
+                    store.putLong("vip_used_bytes", vipUsedBytes)
+                    store.putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
+                    store.putLong("vip_max_bytes", vipMaxBytes)
+                    store.putLong("vip_expire_ms", vipExpireMs)
                     if (!state.active || vipUsedBytes >= vipMaxBytes) {
                         checkVipExpiration()
                     }
@@ -477,56 +397,12 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    // ═════════════════════════ Start.io SDK (App ID: 210814549) ═════════════════════════
-
-    private fun initStartIoAds() {
-        if (vipActive) return
-        val hasConsent = prefs.getBoolean("startio_ads_consent", false)
-        runCatching {
-            StartAppSDK.initParams(this@MainActivity, STARTIO_APP_ID)
-                .setReturnAdsEnabled(false)
-                .init()
-            StartAppSDK.setUserConsent(this@MainActivity, "pas", System.currentTimeMillis(), hasConsent)
-            StartAppAd.disableSplash()
-            if (hasConsent) {
-                loadStartIoInterstitialAd()
-            }
-            plog("Start.io SDK initialized (App ID: $STARTIO_APP_ID • Consent=$hasConsent • ReturnAds=false)")
-        }.onFailure { e ->
-            plog("Start.io init warning: ${e.message}")
-        }
-    }
-
-    private fun isVpnTransportActive(): Boolean {
-        return runCatching {
-            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-            val activeNet = cm.activeNetwork ?: return false
-            val caps = cm.getNetworkCapabilities(activeNet) ?: return false
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-        }.getOrDefault(false)
-    }
-
-    private fun loadStartIoInterstitialAd() {
-        // فقط زمانی که VPN خاموش است و اینترفیس TUN بسته شده پیش‌بارگذاری انجام می‌شود تا درخواست تبلیغ از آی‌پی واقعی کاربر ارسال شود
-        if (vipActive || mainViewModel.uiState.value.isRunning || isVpnTransportActive()) return
-        runCatching {
-            val ad = StartAppAd(this)
-            ad.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
-                override fun onReceiveAd(receivedAd: Ad) {
-                    startIoInterstitialAd = ad
-                    plog("Start.io Interstitial preloaded on direct user IP")
-                }
-
-                override fun onFailedToReceiveAd(failedAd: Ad?) {
-                    startIoInterstitialAd = null
-                    plog("Start.io preload note: ${failedAd?.errorMessage ?: "waiting for inventory"}")
-                }
-            })
-        }
-    }
+    // ═════════════════════════ هماهنگی تبلیغات با قطع موقت VPN ═════════════════════════
 
     private suspend fun pauseVpnForDirectIpAdIfNeeded(): Boolean {
-        val wasRunning = mainViewModel.uiState.value.isRunning || isVpnTransportActive() || phase != Phase.IDLE
+        val wasRunning = mainViewModel.uiState.value.isRunning ||
+            adCoordinator.isVpnTransportActive() ||
+            phase != Phase.IDLE
         if (wasRunning) {
             withContext(Dispatchers.Main) {
                 disconnectEpoch++
@@ -536,16 +412,15 @@ class MainActivity : HelperBaseComponentActivity() {
                 phase = Phase.IDLE
                 scanProgress = 0f
                 statusMessage = "Disconnecting VPN to load ad on your direct IP..."
-                plog("Stopping VPN before ad request so Start.io loads from user's real IP")
+                plog("Stopping VPN before ad request so sponsor loads from user's direct IP")
                 runCatching { PennySpeedLimiter.stop() }
                 runCatching { LauncherManager.stopService(this@MainActivity) }
             }
             var waitedMs = 0L
-            while ((mainViewModel.uiState.value.isRunning || isVpnTransportActive()) && waitedMs < 3200L) {
+            while ((mainViewModel.uiState.value.isRunning || adCoordinator.isVpnTransportActive()) && waitedMs < 3200L) {
                 delay(150L)
                 waitedMs += 150L
             }
-            // صبر ۱۱۰۰ میلی‌ثانیه‌ای برای بازگشت کامل DNS و جدول مسیریابی اندروید به اینترنت مستقیم کاربر
             delay(1100L)
         }
         return wasRunning
@@ -572,11 +447,9 @@ class MainActivity : HelperBaseComponentActivity() {
         adsClaimedToday = (adsClaimedToday + 1).coerceAtMost(MAX_DAILY_SPONSORED_ADS)
         dailyMaxBytes += STARTIO_REWARD_BONUS_BYTES
         freeSessionRemainingSec += REWARD_ADD_TIME_SEC
-        prefs.edit()
-            .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
-            .putLong("free_session_rem_sec", freeSessionRemainingSec)
-            .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
-            .apply()
+        store.putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
+        store.putLong("free_session_rem_sec", freeSessionRemainingSec)
+        store.putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
         VipLicenseManager.writeTamperResistantDailyAllowance(
             this,
             deviceId,
@@ -586,195 +459,10 @@ class MainActivity : HelperBaseComponentActivity() {
         )
         val remBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
         statusMessage = "+100 MB Added ($adsClaimedToday of $MAX_DAILY_SPONSORED_ADS claimed today • ${fmtBytes(remBytes)} left)"
-        plog("Sponsored Ad completed on real IP: +100 MB ($adsClaimedToday/$MAX_DAILY_SPONSORED_ADS claimed today)")
+        plog("Sponsored Ad completed: +100 MB ($adsClaimedToday/$MAX_DAILY_SPONSORED_ADS claimed today)")
     }
 
-    private fun nextRotatedAadsUnitId(): String {
-        val idx = (prefs.getInt("aads_unit_rot_idx", 0) % AADS_AD_UNITS.size + AADS_AD_UNITS.size) % AADS_AD_UNITS.size
-        val chosen = AADS_AD_UNITS[idx]
-        prefs.edit().putInt("aads_unit_rot_idx", (idx + 1) % AADS_AD_UNITS.size).apply()
-        currentAadsUnitId = chosen
-        return chosen
-    }
-
-    private fun showStartIoRewardedVideoForQuota() {
-        if (vipActive) {
-            statusMessage = "VIP Plan active (Ad-Free)"
-            return
-        }
-        ensureDailyDeviceQuotaCurrent()
-        if (adsClaimedToday >= MAX_DAILY_SPONSORED_ADS) {
-            statusMessage = "Daily limit reached ($MAX_DAILY_SPONSORED_ADS of $MAX_DAILY_SPONSORED_ADS claimed today)"
-            return
-        }
-        if (!prefs.getBoolean("startio_ads_consent", false)) {
-            showAdConsentDialog = true
-            return
-        }
-        lifecycleScope.launch(Dispatchers.Main) {
-            val chosenUnit = nextRotatedAadsUnitId()
-            val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
-            statusMessage = "Loading AADS Sponsor Banner #$chosenUnit (+100 MB)..."
-            plog("Opening AADS Bitcoin Sponsor View (Rotating Unit: $chosenUnit)")
-            aadsShouldResumeVpn = wasVpnRunning
-            showAadsSponsorDialog = true
-        }
-    }
-
-    @Suppress("unused")
-    private fun showLegacyStartIoVideoFallback() {
-        lifecycleScope.launch(Dispatchers.Main) {
-            val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
-            statusMessage = "Loading Sponsored Ad on your direct IP (+100 MB)..."
-            plog("Requesting Start.io Ad on direct user IP (App ID: $STARTIO_APP_ID)...")
-
-            fun showLoadedStartIoAd(adInstance: StartAppAd, allowDurationRewardFallback: Boolean, resetTestModeAfter: Boolean) {
-                var rewardGranted = false
-                var adDisplayed = false
-                var shownAtMs = 0L
-                adInstance.setVideoListener(VideoListener {
-                    runOnUiThread {
-                        if (!rewardGranted) {
-                            rewardGranted = true
-                            claimStartIoRewardBonus()
-                        }
-                    }
-                })
-                val shown = adInstance.showAd(object : AdDisplayListener {
-                    override fun adHidden(displayedAd: Ad?) {
-                        if (resetTestModeAfter) {
-                            runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                        }
-                        val elapsed = if (shownAtMs > 0L) SystemClock.elapsedRealtime() - shownAtMs else 0L
-                        if (!rewardGranted && allowDurationRewardFallback && adDisplayed && elapsed >= 4000L) {
-                            rewardGranted = true
-                            claimStartIoRewardBonus()
-                        }
-                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                    }
-
-                    override fun adDisplayed(displayedAd: Ad?) {
-                        adDisplayed = true
-                        shownAtMs = SystemClock.elapsedRealtime()
-                        plog("Start.io Sponsored Ad displayed on user's real IP")
-                    }
-
-                    override fun adClicked(displayedAd: Ad?) {}
-
-                    override fun adNotDisplayed(displayedAd: Ad?) {
-                        if (resetTestModeAfter) {
-                            runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                        }
-                        plog("Start.io adNotDisplayed: ${displayedAd?.errorMessage ?: "unknown"}")
-                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                    }
-                })
-                if (!shown) {
-                    if (resetTestModeAfter) {
-                        runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                    }
-                    resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                }
-            }
-
-            // مرحله ۲: اگر اسلات REWARDED_VIDEO در منطقه کاربر پر نشد، اسلات AUTOMATIC Start.io روی IP مستقیم بارگذاری شود
-            fun loadAutomaticStartIoFallback() {
-                val autoAd = StartAppAd(this@MainActivity)
-                autoAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
-                    override fun onReceiveAd(ad: Ad) {
-                        plog("Start.io AUTOMATIC ad loaded on direct IP")
-                        showLoadedStartIoAd(autoAd, allowDurationRewardFallback = true, resetTestModeAfter = false)
-                    }
-
-                    override fun onFailedToReceiveAd(ad: Ad?) {
-                        plog("Start.io AUTOMATIC no-fill (${ad?.errorMessage ?: "no fill"})")
-                        if (com.v2ray.ang.BuildConfig.DEBUG) {
-                            runCatching {
-                                StartAppSDK.setTestAdsEnabled(true)
-                                val debugAd = StartAppAd(this@MainActivity)
-                                debugAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
-                                    override fun onReceiveAd(tAd: Ad) {
-                                        showLoadedStartIoAd(debugAd, allowDurationRewardFallback = true, resetTestModeAfter = true)
-                                    }
-
-                                    override fun onFailedToReceiveAd(tAd: Ad?) {
-                                        runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                                        statusMessage = "Sponsored ad unavailable right now; please try again shortly"
-                                        resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                                    }
-                                })
-                            }.onFailure {
-                                runCatching { StartAppSDK.setTestAdsEnabled(false) }
-                                resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                            }
-                        } else {
-                            statusMessage = "Sponsored ad unavailable on current ISP; please try again shortly"
-                            resumeVpnAfterAdIfNeeded(wasVpnRunning)
-                        }
-                    }
-                })
-            }
-
-            // مرحله ۱: درخواست رسمی REWARDED_VIDEO از Start.io روی IP واقعی کاربر
-            runCatching {
-                val rewarded = StartAppAd(this@MainActivity)
-                rewarded.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
-                    override fun onReceiveAd(ad: Ad) {
-                        plog("Start.io REWARDED_VIDEO loaded on direct IP")
-                        showLoadedStartIoAd(rewarded, allowDurationRewardFallback = false, resetTestModeAfter = false)
-                    }
-
-                    override fun onFailedToReceiveAd(ad: Ad?) {
-                        plog("Start.io REWARDED_VIDEO no-fill (${ad?.errorMessage ?: "no fill"}); trying Start.io AUTOMATIC mode...")
-                        loadAutomaticStartIoFallback()
-                    }
-                })
-            }.onFailure { e ->
-                plog("Start.io Rewarded error: ${e.message}")
-                loadAutomaticStartIoFallback()
-            }
-        }
-    }
-
-    private fun showInterstitialAdIfReady(allowResumeVpn: Boolean = false) {
-        if (vipActive) return
-        val now = System.currentTimeMillis()
-        if (now - lastInterstitialShownMs < INTERSTITIAL_COOLDOWN_MS) {
-            val waitSec = ((INTERSTITIAL_COOLDOWN_MS - (now - lastInterstitialShownMs)) / 1000L).coerceAtLeast(1L)
-            plog("Interstitial skipped by 10m Frequency Cap (${waitSec}s remaining)")
-            return
-        }
-        lifecycleScope.launch(Dispatchers.Main) {
-            val wasVpnRunning = pauseVpnForDirectIpAdIfNeeded()
-            val shouldResumeAfter = allowResumeVpn && wasVpnRunning
-            val startAd = startIoInterstitialAd
-            if (startAd != null && startAd.isReady) {
-                lastInterstitialShownMs = now
-                prefs.edit().putLong("last_interstitial_ms", now).apply()
-                startIoInterstitialAd = null
-                startAd.showAd(object : AdDisplayListener {
-                    override fun adHidden(ad: Ad?) {
-                        loadStartIoInterstitialAd()
-                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
-                    }
-
-                    override fun adDisplayed(ad: Ad?) {
-                        plog("Start.io Interstitial displayed on user's real IP")
-                    }
-
-                    override fun adClicked(ad: Ad?) {}
-
-                    override fun adNotDisplayed(ad: Ad?) {
-                        loadStartIoInterstitialAd()
-                        resumeVpnAfterAdIfNeeded(shouldResumeAfter)
-                    }
-                })
-                return@launch
-            }
-            loadStartIoInterstitialAd()
-            resumeVpnAfterAdIfNeeded(shouldResumeAfter)
-        }
-    }
+    // ═════════════════════════ سهمیه روزانه ۱ گیگابایت ═════════════════════════
 
     private fun todayDateKey(): String =
         SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
@@ -783,56 +471,35 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun ensureDailyDeviceQuotaCurrent() {
         val today = todayDateKey()
-        val storedDay = prefs.getString("daily_quota_day_$deviceId", "") ?: ""
+        val storedDay = store.getString("daily_quota_day_$deviceId", "") ?: ""
+        val maxCap = BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
         if (storedDay != today || dailyQuotaDayKey != today) {
             dailyQuotaDayKey = today
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
             val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
-                this,
-                deviceId,
-                today,
-                BASE_DAILY_FREE_BYTES,
-                0
+                this, deviceId, today, BASE_DAILY_FREE_BYTES, 0
             )
             dailyUsedBytes = recovered
-            dailyMaxBytes = verifiedMax.coerceIn(
-                BASE_DAILY_FREE_BYTES,
-                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
-            )
+            dailyMaxBytes = verifiedMax.coerceIn(BASE_DAILY_FREE_BYTES, maxCap)
             pendingDailyUnsyncedBytes = 0L
             adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
-            prefs.edit()
-                .putString("daily_quota_day_$deviceId", today)
-                .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                .putLong("pending_daily_unsynced_bytes_$deviceId", 0L)
-                .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
-                .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
-                .apply()
+            store.putString("daily_quota_day_$deviceId", today)
+            store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+            store.putLong("pending_daily_unsynced_bytes_$deviceId", 0L)
+            store.putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
+            store.putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
             VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, today, dailyUsedBytes)
-            VipLicenseManager.writeTamperResistantDailyAllowance(
-                this,
-                deviceId,
-                today,
-                dailyMaxBytes,
-                adsClaimedToday
-            )
+            VipLicenseManager.writeTamperResistantDailyAllowance(this, deviceId, today, dailyMaxBytes, adsClaimedToday)
         } else {
             val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
-                this,
-                deviceId,
-                today,
-                BASE_DAILY_FREE_BYTES,
-                0
+                this, deviceId, today, BASE_DAILY_FREE_BYTES, 0
             )
             adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
-            dailyMaxBytes = verifiedMax.coerceIn(
-                BASE_DAILY_FREE_BYTES,
-                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
-            )
+            dailyMaxBytes = verifiedMax.coerceIn(BASE_DAILY_FREE_BYTES, maxCap)
             val recovered = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, dailyUsedBytes)
             if (recovered > dailyUsedBytes) {
                 dailyUsedBytes = recovered
-                prefs.edit().putLong("daily_used_bytes_$deviceId", dailyUsedBytes).apply()
+                store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
             }
         }
     }
@@ -860,22 +527,19 @@ class MainActivity : HelperBaseComponentActivity() {
                     transportHealth = PennyServerScanner.activeTransportHealth
                 ) ?: return@launch
                 withContext(Dispatchers.Main) {
+                    if (res.serverNowMs > 0L) recordServerClockAnchor(res.serverNowMs)
                     pendingDailyUnsyncedBytes = (pendingDailyUnsyncedBytes - clampedDelta).coerceAtLeast(0L)
                     if (res.usedBytes > dailyUsedBytes) {
                         dailyUsedBytes = res.usedBytes
                     }
-                    prefs.edit()
-                        .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                        .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
-                        .apply()
+                    store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                    store.putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
                     VipLicenseManager.writeTamperResistantDailyUsed(this@MainActivity, deviceId, today, dailyUsedBytes)
 
                     if (res.blocked && !vipActive && (serviceTierMode == ServiceTierMode.DEDICATED || serviceTierMode == ServiceTierMode.GHOST)) {
                         dailyUsedBytes = maxOf(dailyUsedBytes, dailyMaxBytes)
-                        prefs.edit()
-                            .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                            .putString("service_tier_mode", ServiceTierMode.PUBLIC.name)
-                            .apply()
+                        store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                        store.putString("service_tier_mode", ServiceTierMode.PUBLIC.name)
                         VipLicenseManager.writeTamperResistantDailyUsed(this@MainActivity, deviceId, today, dailyUsedBytes)
                         serviceTierMode = ServiceTierMode.PUBLIC
                         PennyServerScanner.syncGhostModeKernelRules(ServiceTierMode.PUBLIC, ghostMessagingOnly, splitTunnelLocal)
@@ -892,7 +556,7 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    // ═════════════════════════ مدیریت اشتراک ۱ ماه ۵۰ گیگ (سرورمحور + ECDSA چرخانده‌شده) ═════════════════════════
+    // ═════════════════════════ مدیریت اشتراک VIP ═════════════════════════
 
     private fun getSubscriptionSources(mode: ServiceTierMode): List<String> {
         val custom = customVipSubUrl.trim()
@@ -918,14 +582,12 @@ class MainActivity : HelperBaseComponentActivity() {
                 vipCode = ""
                 vipSerial = ""
                 PennySpeedLimiter.isVipUnrestricted = false
-                prefs.edit()
-                    .putBoolean("vip_active", false)
-                    .putBoolean("use_vip_servers", false)
-                    .putString("vip_code", "")
-                    .putString("vip_serial", "")
-                    .apply()
+                store.putBoolean("vip_active", false)
+                store.putBoolean("use_vip_servers", false)
+                store.putString("vip_code", "")
+                store.putString("vip_serial", "")
                 plog("Cleared unverified local VIP state")
-                initStartIoAds()
+                adCoordinator.initSdkIfConsented()
                 return true
             }
         }
@@ -939,19 +601,17 @@ class MainActivity : HelperBaseComponentActivity() {
             useVipServers = false
             vipCode = ""
             PennySpeedLimiter.isVipUnrestricted = false
-            prefs.edit()
-                .putBoolean("vip_active", false)
-                .putBoolean("use_vip_servers", false)
-                .putString("vip_code", "")
-                .putLong("vip_last_seen_ms", now)
-                .apply()
+            store.putBoolean("vip_active", false)
+            store.putBoolean("use_vip_servers", false)
+            store.putString("vip_code", "")
+            store.putLong("vip_last_seen_ms", now)
             statusMessage = if (trafficExpired) {
-                "Your 50 GB server traffic quota has been reached."
+                "Your VIP traffic quota has been reached."
             } else {
-                "Your 1-month subscription has expired."
+                "Your VIP subscription has expired."
             }
             plog("VIP expired: timeExpired=$timeExpired, trafficExpired=$trafficExpired")
-            initStartIoAds()
+            adCoordinator.initSdkIfConsented()
             if (mainViewModel.uiState.value.isRunning) {
                 LauncherManager.stopService(this)
             }
@@ -975,6 +635,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     onComplete(false, msg)
                     return@withContext
                 }
+                if (serverState.serverNowMs > 0L) recordServerClockAnchor(serverState.serverNowMs)
                 val now = effectiveNowMs()
                 vipActive = true
                 useVipServers = true
@@ -985,19 +646,17 @@ class MainActivity : HelperBaseComponentActivity() {
                 vipUsedBytes = serverState.usedBytes
                 vipLastSeenMs = now
 
-                prefs.edit()
-                    .putBoolean("vip_active", true)
-                    .putBoolean("use_vip_servers", true)
-                    .putString("vip_code", vipCode)
-                    .putString("vip_serial", vipSerial)
-                    .putLong("vip_expire_ms", vipExpireMs)
-                    .putLong("vip_max_bytes", vipMaxBytes)
-                    .putLong("vip_used_bytes", vipUsedBytes)
-                    .putLong("vip_last_seen_ms", now)
-                    .apply()
+                store.putBoolean("vip_active", true)
+                store.putBoolean("use_vip_servers", true)
+                store.putString("vip_code", vipCode)
+                store.putString("vip_serial", vipSerial)
+                store.putLong("vip_expire_ms", vipExpireMs)
+                store.putLong("vip_max_bytes", vipMaxBytes)
+                store.putLong("vip_used_bytes", vipUsedBytes)
+                store.putLong("vip_last_seen_ms", now)
 
-                plog("Server-verified 1M/50GB Plan Activated (${VipLicenseManager.maskCode(vipCode)}, used=${fmtBytes(vipUsedBytes)})")
-                statusMessage = "1 Month 50 GB Plan Activated (Server Verified)"
+                plog("Server-verified VIP Plan Activated (${VipLicenseManager.maskCode(vipCode)}, used=${fmtBytes(vipUsedBytes)})")
+                statusMessage = "VIP Plan Activated (Server Verified)"
                 onComplete(true, statusMessage)
             }
         }
@@ -1087,104 +746,77 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    // ═════════════════════════ ذخیره / بازیابی ═════════════════════════
+    // ═════════════════════════ ذخیره / بازیابی (MMKV) ═════════════════════════
 
     private fun loadSaved() {
         appLang = AppLang.EN
         statusMessage = Strings.ready(appLang)
         PennyServerScanner.applyBpbCoreOptimizations()
-        autoSwitch = prefs.getBoolean("auto_switch", true)
-        autoReconnect = prefs.getBoolean("auto_reconnect", true)
-        splitTunnelLocal = prefs.getBoolean("split_tunnel_local", true)
-        cleanDnsShield = prefs.getBoolean("clean_dns_shield", true)
-        loadBalanceEnabled = prefs.getBoolean("load_balance_enabled", true)
-        killSwitchEnabled = prefs.getBoolean("kill_switch_enabled", true)
-        favoriteCountries = (prefs.getStringSet("fav_countries", setOf("NL", "DE")) ?: setOf("NL", "DE")).toSet()
-        val savedProf = prefs.getString("conn_profile", ConnectionProfile.SMART.name) ?: ConnectionProfile.SMART.name
+        autoSwitch = store.getBoolean("auto_switch", true)
+        autoReconnect = store.getBoolean("auto_reconnect", true)
+        splitTunnelLocal = store.getBoolean("split_tunnel_local", true)
+        cleanDnsShield = store.getBoolean("clean_dns_shield", true)
+        loadBalanceEnabled = store.getBoolean("load_balance_enabled", true)
+        killSwitchEnabled = store.getBoolean("kill_switch_enabled", true)
+        favoriteCountries = store.getStringSet("fav_countries", setOf("NL", "DE"))
+        val savedProf = store.getString("conn_profile", ConnectionProfile.SMART.name) ?: ConnectionProfile.SMART.name
         connectionProfile = runCatching { ConnectionProfile.valueOf(savedProf) }.getOrDefault(ConnectionProfile.SMART)
-        val savedTier = prefs.getString("service_tier_mode", ServiceTierMode.DEDICATED.name) ?: ServiceTierMode.DEDICATED.name
+        val savedTier = store.getString("service_tier_mode", ServiceTierMode.DEDICATED.name) ?: ServiceTierMode.DEDICATED.name
         serviceTierMode = runCatching { ServiceTierMode.valueOf(savedTier) }.getOrDefault(ServiceTierMode.DEDICATED)
-        ghostMessagingOnly = prefs.getBoolean("ghost_messaging_only", true)
+        ghostMessagingOnly = store.getBoolean("ghost_messaging_only", true)
+        bpbFragmentMode = store.getString("bpb_frag_mode", "NORMAL") ?: "NORMAL"
         PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, splitTunnelLocal)
-        userWantsConnected = prefs.getBoolean("user_connected", false)
-        lastScanTime = prefs.getLong("scan_time", 0L)
-        vipLastScanTime = prefs.getLong("vip_scan_time", 0L)
-        ghostLastScanTime = prefs.getLong("ghost_scan_time", 0L)
-        connectStartMs = prefs.getLong("connect_time", 0L)
-        lastConnectedGuid = prefs.getString("last_guid", null)
-        lastInterstitialShownMs = prefs.getLong("last_interstitial_ms", 0L)
-        freeSessionRemainingSec = prefs.getLong("free_session_rem_sec", BASE_FREE_SESSION_SEC).coerceAtLeast(60L)
+        userWantsConnected = store.getBoolean("user_connected", false)
+        lastScanTime = store.getLong("scan_time", 0L)
+        vipLastScanTime = store.getLong("vip_scan_time", 0L)
+        ghostLastScanTime = store.getLong("ghost_scan_time", 0L)
+        connectStartMs = store.getLong("connect_time", 0L)
+        lastConnectedGuid = store.getString("last_guid", null)
+        lastInterstitialShownMs = store.getLong("last_interstitial_ms", 0L)
+        freeSessionRemainingSec = store.getLong("free_session_rem_sec", BASE_FREE_SESSION_SEC).coerceAtLeast(60L)
+
+        vipLastSeenMs = store.getLong("vip_last_seen_ms", 0L)
+        effectiveNowMs()
 
         val today = todayDateKey()
-        val savedDay = prefs.getString("daily_quota_day_$deviceId", "") ?: ""
-        if (savedDay == today) {
-            dailyQuotaDayKey = today
-            val prefUsed = prefs.getLong("daily_used_bytes_$deviceId", 0L).coerceAtLeast(0L)
-            dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, prefUsed)
-            val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
-                this,
-                deviceId,
-                today,
-                BASE_DAILY_FREE_BYTES,
-                0
-            )
-            dailyMaxBytes = verifiedMax.coerceIn(
-                BASE_DAILY_FREE_BYTES,
-                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
-            )
-            adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
-        } else {
-            dailyQuotaDayKey = today
-            dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, 0L)
-            val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
-                this,
-                deviceId,
-                today,
-                BASE_DAILY_FREE_BYTES,
-                0
-            )
-            dailyMaxBytes = verifiedMax.coerceIn(
-                BASE_DAILY_FREE_BYTES,
-                BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
-            )
-            adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
-            prefs.edit()
-                .putString("daily_quota_day_$deviceId", today)
-                .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                .putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
-                .putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
-                .apply()
-            VipLicenseManager.writeTamperResistantDailyAllowance(
-                this,
-                deviceId,
-                today,
-                dailyMaxBytes,
-                adsClaimedToday
-            )
+        val savedDay = store.getString("daily_quota_day_$deviceId", "") ?: ""
+        val maxCap = BASE_DAILY_FREE_BYTES + MAX_DAILY_SPONSORED_ADS * STARTIO_REWARD_BONUS_BYTES
+        dailyQuotaDayKey = today
+        val prefUsed = if (savedDay == today) store.getLong("daily_used_bytes_$deviceId", 0L).coerceAtLeast(0L) else 0L
+        dailyUsedBytes = VipLicenseManager.readTamperResistantDailyUsed(this, deviceId, today, prefUsed)
+        val (verifiedMax, verifiedAds) = VipLicenseManager.readTamperResistantDailyAllowance(
+            this, deviceId, today, BASE_DAILY_FREE_BYTES, 0
+        )
+        dailyMaxBytes = verifiedMax.coerceIn(BASE_DAILY_FREE_BYTES, maxCap)
+        adsClaimedToday = verifiedAds.coerceIn(0, MAX_DAILY_SPONSORED_ADS)
+        if (savedDay != today) {
+            store.putString("daily_quota_day_$deviceId", today)
+            store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+            store.putLong("daily_max_bytes_$deviceId", dailyMaxBytes)
+            store.putInt("ads_claimed_${deviceId}_$today", adsClaimedToday)
+            VipLicenseManager.writeTamperResistantDailyAllowance(this, deviceId, today, dailyMaxBytes, adsClaimedToday)
         }
 
-        val rawVipActive = prefs.getBoolean("vip_active", false)
-        vipCode = prefs.getString("vip_code", "") ?: ""
-        vipSerial = prefs.getString("vip_serial", "") ?: ""
-        vipExpireMs = prefs.getLong("vip_expire_ms", 0L)
-        vipMaxBytes = prefs.getLong("vip_max_bytes", VipLicenseManager.VIP_MAX_BYTES)
-        vipUsedBytes = prefs.getLong("vip_used_bytes", 0L)
+        val rawVipActive = store.getBoolean("vip_active", false)
+        vipCode = store.getString("vip_code", "") ?: ""
+        vipSerial = store.getString("vip_serial", "") ?: ""
+        vipExpireMs = store.getLong("vip_expire_ms", 0L)
+        vipMaxBytes = store.getLong("vip_max_bytes", VipLicenseManager.VIP_MAX_BYTES)
+        vipUsedBytes = store.getLong("vip_used_bytes", 0L)
         if (rawVipActive) {
             val (verifiedLic, _) = VipLicenseManager.verifyLicenseOfflineSignature(vipCode, deviceId, 0L)
             if (verifiedLic != null && vipSerial.isNotBlank() && verifiedLic.serial.equals(vipSerial, ignoreCase = true)) {
                 vipActive = true
-                useVipServers = prefs.getBoolean("use_vip_servers", false)
+                useVipServers = store.getBoolean("use_vip_servers", false)
             } else {
                 vipActive = false
                 useVipServers = false
                 vipCode = ""
                 vipSerial = ""
-                prefs.edit()
-                    .putBoolean("vip_active", false)
-                    .putBoolean("use_vip_servers", false)
-                    .putString("vip_code", "")
-                    .putString("vip_serial", "")
-                    .apply()
+                store.putBoolean("vip_active", false)
+                store.putBoolean("use_vip_servers", false)
+                store.putString("vip_code", "")
+                store.putString("vip_serial", "")
                 plog("Rejected tampered or unverified saved VIP flag")
             }
         } else {
@@ -1192,11 +824,10 @@ class MainActivity : HelperBaseComponentActivity() {
             useVipServers = false
         }
         PennySpeedLimiter.isVipUnrestricted = vipActive
-        pendingUnsyncedBytes = prefs.getLong("pending_unsynced_bytes", 0L).coerceAtLeast(0L)
-        pendingDailyUnsyncedBytes = prefs.getLong("pending_daily_unsynced_bytes_$deviceId", 0L).coerceAtLeast(0L)
-        vipLastSeenMs = prefs.getLong("vip_last_seen_ms", 0L)
-        effectiveNowMs()
-        customVipSubUrl = prefs.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_VPS_SUB_URL)
+        pendingUnsyncedBytes = store.getLong("pending_unsynced_bytes", 0L).coerceAtLeast(0L)
+        pendingDailyUnsyncedBytes = store.getLong("pending_daily_unsynced_bytes_$deviceId", 0L).coerceAtLeast(0L)
+
+        customVipSubUrl = store.getString("custom_vip_sub_url", PennyServerScanner.DEDICATED_VPS_SUB_URL)
             ?.trim()
             ?.takeIf {
                 it.isNotBlank() &&
@@ -1205,83 +836,22 @@ class MainActivity : HelperBaseComponentActivity() {
                     PennyServerScanner.isSafeNestedSubscriptionUrl(it)
             }
             ?: PennyServerScanner.DEDICATED_VPS_SUB_URL
-        licenseServerUrl = prefs.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
+        licenseServerUrl = store.getString("license_server_url", VipLicenseManager.DEFAULT_LICENSE_API_BASE)
             ?.trim()
             ?.takeIf { VipLicenseManager.isTrustedHttpsEndpoint(it) }
             ?: VipLicenseManager.DEFAULT_LICENSE_API_BASE
 
         val lbSeed = if (loadBalanceEnabled) kotlin.math.abs(deviceId.hashCode()) else 0
-
-        prefs.getString("list", null)?.let { json ->
-            try {
-                val arr = JSONArray(json)
-                val out = mutableListOf<PennyServer>()
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    val g = o.getString("g")
-                    if (MmkvManager.decodeServerConfig(g) != null) {
-                        out.add(PennyServer(g, o.optString("c", ""), o.optLong("m"), "", false))
-                    }
-                }
-                bestList.clear()
-                bestList.addAll(assignLabels(out, isVipList = false, loadBalanceSeed = lbSeed))
-            } catch (e: Exception) {
-                plog("Error loading Public cache: ${e.message}")
-            }
-        }
-
-        prefs.getString("vip_list", null)?.let { json ->
-            try {
-                val arr = JSONArray(json)
-                val out = mutableListOf<PennyServer>()
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    val g = o.getString("g")
-                    if (MmkvManager.decodeServerConfig(g) != null) {
-                        out.add(PennyServer(g, o.optString("c", ""), o.optLong("m"), "", true))
-                    }
-                }
-                vipBestList.clear()
-                vipBestList.addAll(assignLabels(out, isVipList = true, loadBalanceSeed = lbSeed))
-            } catch (e: Exception) {
-                plog("Error loading VIP Mode cache: ${e.message}")
-            }
-        }
-
-        prefs.getString("ghost_list", null)?.let { json ->
-            try {
-                val arr = JSONArray(json)
-                val out = mutableListOf<PennyServer>()
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    val g = o.getString("g")
-                    if (MmkvManager.decodeServerConfig(g) != null) {
-                        out.add(PennyServer(g, o.optString("c", ""), o.optLong("m"), "", true))
-                    }
-                }
-                ghostBestList.clear()
-                ghostBestList.addAll(assignLabels(out, isVipList = true, loadBalanceSeed = lbSeed))
-            } catch (e: Exception) {
-                plog("Error loading Ghost cache: ${e.message}")
-            }
-        }
+        bestList.clear()
+        bestList.addAll(store.loadCachedServerList(ServiceTierMode.PUBLIC, lbSeed))
+        vipBestList.clear()
+        vipBestList.addAll(store.loadCachedServerList(ServiceTierMode.DEDICATED, lbSeed))
+        ghostBestList.clear()
+        ghostBestList.addAll(store.loadCachedServerList(ServiceTierMode.GHOST, lbSeed))
     }
 
     private fun saveList(list: List<PennyServer>, scanTime: Long, mode: ServiceTierMode) {
-        try {
-            val arr = JSONArray()
-            list.forEach { arr.put(JSONObject().put("g", it.guid).put("c", it.codeTag).put("m", it.ms)) }
-            when (mode) {
-                ServiceTierMode.PUBLIC ->
-                    prefs.edit().putString("list", arr.toString()).putLong("scan_time", scanTime).apply()
-                ServiceTierMode.DEDICATED ->
-                    prefs.edit().putString("vip_list", arr.toString()).putLong("vip_scan_time", scanTime).apply()
-                ServiceTierMode.GHOST ->
-                    prefs.edit().putString("ghost_list", arr.toString()).putLong("ghost_scan_time", scanTime).apply()
-            }
-        } catch (e: Exception) {
-            plog("Error saving cache: ${e.message}")
-        }
+        store.saveCachedServerList(list, scanTime, mode)
     }
 
     private fun plog(msg: String) {
@@ -1314,6 +884,12 @@ class MainActivity : HelperBaseComponentActivity() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("PennyVPN User UUID", userUuid))
         statusMessage = "Hardware User UUID copied to clipboard"
+    }
+
+    private fun copyDeviceIdToClipboard() {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("PennyVPN Device ID", deviceId))
+        statusMessage = "Device ID copied: $deviceId"
     }
 
     private suspend fun ui(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
@@ -1371,21 +947,15 @@ class MainActivity : HelperBaseComponentActivity() {
                     val dRx = (rx - lastRx).coerceAtLeast(0L)
                     val dTx = (tx - lastTx).coerceAtLeast(0L)
                     stepDeltaBytes = dRx + dTx
-                    val rawDown = (dRx * 1000L / dt).coerceAtLeast(0L)
-                    val rawUp = (dTx * 1000L / dt).coerceAtLeast(0L)
-                    downSpeed = rawDown
-                    upSpeed = rawUp
+                    downSpeed = (dRx * 1000L / dt).coerceAtLeast(0L)
+                    upSpeed = (dTx * 1000L / dt).coerceAtLeast(0L)
                     totalDown = (rx - rx0).coerceAtLeast(0L)
                     totalUp = (tx - tx0).coerceAtLeast(0L)
                     lastRx = rx
                     lastTx = tx
                 } else {
                     val coreStats = withContext(Dispatchers.IO) {
-                        try {
-                            CoreServiceManager.queryAllOutboundTrafficStats()
-                        } catch (_: Exception) {
-                            emptyList()
-                        }
+                        runCatching { CoreServiceManager.queryAllOutboundTrafficStats() }.getOrDefault(emptyList())
                     }
                     var d = 0L
                     var u = 0L
@@ -1394,10 +964,8 @@ class MainActivity : HelperBaseComponentActivity() {
                         else if (st.direction == AppConfig.UPLINK) u += st.value
                     }
                     stepDeltaBytes = (d + u).coerceAtLeast(0L)
-                    val rawDown = (d * 1000L / dt).coerceAtLeast(0L)
-                    val rawUp = (u * 1000L / dt).coerceAtLeast(0L)
-                    downSpeed = rawDown
-                    upSpeed = rawUp
+                    downSpeed = (d * 1000L / dt).coerceAtLeast(0L)
+                    upSpeed = (u * 1000L / dt).coerceAtLeast(0L)
                     totalDown += d
                     totalUp += u
                 }
@@ -1414,15 +982,10 @@ class MainActivity : HelperBaseComponentActivity() {
                         dailyUsedBytes += stepDeltaBytes
                         pendingDailyUnsyncedBytes += stepDeltaBytes
                         if (tickCount % 5 == 0) {
-                            prefs.edit()
-                                .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                                .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
-                                .apply()
+                            store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                            store.putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
                             VipLicenseManager.writeTamperResistantDailyUsed(
-                                this@MainActivity,
-                                deviceId,
-                                dailyQuotaDayKey,
-                                dailyUsedBytes
+                                this@MainActivity, deviceId, dailyQuotaDayKey, dailyUsedBytes
                             )
                         }
                         if (tickCount % 15 == 0 && pendingDailyUnsyncedBytes > 0L) {
@@ -1430,19 +993,14 @@ class MainActivity : HelperBaseComponentActivity() {
                         }
                     }
                     if (dailyUsedBytes >= dailyMaxBytes) {
-                        prefs.edit()
-                            .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-                            .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
-                            .apply()
+                        store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+                        store.putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
                         VipLicenseManager.writeTamperResistantDailyUsed(
-                            this@MainActivity,
-                            deviceId,
-                            dailyQuotaDayKey,
-                            dailyUsedBytes
+                            this@MainActivity, deviceId, dailyQuotaDayKey, dailyUsedBytes
                         )
                         plog("Daily 1 GB quota (${fmtBytes(dailyMaxBytes)}) reached; switching to Public Mode")
                         serviceTierMode = ServiceTierMode.PUBLIC
-                        prefs.edit().putString("service_tier_mode", ServiceTierMode.PUBLIC.name).apply()
+                        store.putString("service_tier_mode", ServiceTierMode.PUBLIC.name)
                         PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, splitTunnelLocal)
                         statusMessage = "1 GB Daily Quota Reached • Switched to Public Mode"
                         LauncherManager.stopService(this@MainActivity)
@@ -1452,7 +1010,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     if (freeSessionRemainingSec > 0L) {
                         freeSessionRemainingSec -= 1L
                         if (tickCount % 10 == 0) {
-                            prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
+                            store.putLong("free_session_rem_sec", freeSessionRemainingSec)
                         }
                     } else {
                         plog("1-hour session timer ended; disconnecting")
@@ -1467,10 +1025,8 @@ class MainActivity : HelperBaseComponentActivity() {
                     vipUsedBytes += stepDeltaBytes
                     pendingUnsyncedBytes += stepDeltaBytes
                     if (tickCount % 5 == 0) {
-                        prefs.edit()
-                            .putLong("vip_used_bytes", vipUsedBytes)
-                            .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
-                            .apply()
+                        store.putLong("vip_used_bytes", vipUsedBytes)
+                        store.putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
                     }
                     if (tickCount % 15 == 0 && pendingUnsyncedBytes > 0L) {
                         syncServerQuotaInBackground(pendingUnsyncedBytes)
@@ -1533,7 +1089,7 @@ class MainActivity : HelperBaseComponentActivity() {
         val dailyRemBytes = (dailyMaxBytes - dailyUsedBytes).coerceAtLeast(0L)
         val dailyRemText = when (serviceTierMode) {
             ServiceTierMode.DEDICATED ->
-                if (vipActive) "VIP 50 GB Active"
+                if (vipActive) "VIP Active"
                 else "${fmtBytes(dailyRemBytes)} / ${fmtBytes(dailyMaxBytes)} left"
             ServiceTierMode.GHOST ->
                 if (ghostMessagingOnly) "Chat-Only Lock (42 KB/s)"
@@ -1543,7 +1099,7 @@ class MainActivity : HelperBaseComponentActivity() {
 
         val onGhostToggleChanged: (Boolean) -> Unit = { enabled ->
             ghostMessagingOnly = enabled
-            prefs.edit().putBoolean("ghost_messaging_only", enabled).apply()
+            store.putBoolean("ghost_messaging_only", enabled)
             PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, enabled, splitTunnelLocal)
             statusMessage = if (enabled) {
                 "Ghost Messaging-Only Lock Enabled (42 KB/s Cap • Video Blocked)"
@@ -1559,10 +1115,10 @@ class MainActivity : HelperBaseComponentActivity() {
         val onModeSelected: (ServiceTierMode) -> Unit = { newMode ->
             if (serviceTierMode != newMode) {
                 serviceTierMode = newMode
-                prefs.edit().putString("service_tier_mode", newMode.name).apply()
+                store.putString("service_tier_mode", newMode.name)
                 if (newMode == ServiceTierMode.GHOST && !ghostMessagingOnly) {
                     ghostMessagingOnly = true
-                    prefs.edit().putBoolean("ghost_messaging_only", true).apply()
+                    store.putBoolean("ghost_messaging_only", true)
                 }
                 PennyServerScanner.syncGhostModeKernelRules(newMode, ghostMessagingOnly, splitTunnelLocal)
                 PennyServerScanner.selectBestGhostTransport(newMode, ::plog)
@@ -1587,19 +1143,29 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
 
+        val onSplitTunnelChange: (Boolean) -> Unit = { enabled ->
+            splitTunnelLocal = enabled
+            store.putBoolean("split_tunnel_local", enabled)
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (enabled) "1" else "2")
+            PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, enabled)
+            statusMessage = if (enabled) "Domestic (.ir) & LAN Direct Bypass Enabled" else "All Traffic Routed in Tunnel"
+            plog("Smart Split Tunneling set to $enabled")
+        }
+
+        val onCleanDnsChange: (Boolean) -> Unit = { enabled ->
+            cleanDnsShield = enabled
+            store.putBoolean("clean_dns_shield", enabled)
+            val dnsServer = if (enabled) "1.1.1.2" else "1.1.1.1"
+            MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsServer)
+            statusMessage = "Encrypted DNS set to $dnsServer"
+            plog("Clean DNS Shield set to $dnsServer")
+        }
+
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                bgTopColor,
-                                bgMidColor,
-                                bgBottomColor
-                            )
-                        )
-                    )
+                    .background(Brush.verticalGradient(listOf(bgTopColor, bgMidColor, bgBottomColor)))
             ) {
                 if (ambientGlowAlpha > 0.01f) {
                     Box(
@@ -1628,7 +1194,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         .alpha(if (isConnectedMode) 0.04f else 0.025f)
                 )
 
-                // ═══════════════════════ رابط کاربری موبایل (بدون اسکرول در Home، Doctor و Profile، اسکرول فقط در لیست سرورها) ═══════════════════════
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1641,12 +1206,12 @@ class MainActivity : HelperBaseComponentActivity() {
                         exit = shrinkVertically() + fadeOut()
                     ) {
                         if (activeUpdate != null) {
-                            AppUpdateBanner(
+                            PennyAppUpdateBanner(
                                 updateInfo = activeUpdate,
                                 isDownloading = updateDownloading,
                                 progress = updateDownloadProgress,
                                 statusNote = updateDownloadStatus,
-                                onUpdateClick = { startFullAppUpdate(activeUpdate.downloadUrl) },
+                                onUpdateClick = { updateCoordinator.startFullAppUpdate(activeUpdate.downloadUrl) },
                                 onDismiss = { updateBannerDismissed = true }
                             )
                         }
@@ -1707,7 +1272,6 @@ class MainActivity : HelperBaseComponentActivity() {
                                         verticalArrangement = Arrangement.spacedBy(7.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        // حالت متصل واقعی: تایمر جلسه، نمودار سرعت زنده، حجم مصرف امروز و IP/کشور خروجی
                                         LiveConnectionTelemetryCard(
                                             mode = mode,
                                             elapsedSec = elapsedSec,
@@ -1724,13 +1288,17 @@ class MainActivity : HelperBaseComponentActivity() {
                                             activeTransport = PennyServerScanner.activeTransport
                                         )
 
-                                        // کارت جدا و شفاف تبلیغ با برچسب Sponsored و شمارنده «2 of 3 claimed today»
                                         if (!vipActive) {
                                             SponsoredQuotaCard(
                                                 adsClaimedToday = adsClaimedToday,
                                                 maxDailyAds = MAX_DAILY_SPONSORED_ADS,
                                                 isConnected = mode == UiMode.CONNECTED,
-                                                onWatchSponsorAd = { showStartIoRewardedVideoForQuota() }
+                                                onWatchSponsorAd = {
+                                                    adCoordinator.openSponsorQuotaFlow(
+                                                        adsClaimedToday = adsClaimedToday,
+                                                        maxDailyAds = MAX_DAILY_SPONSORED_ADS
+                                                    )
+                                                }
                                             )
                                         }
                                     }
@@ -1756,16 +1324,13 @@ class MainActivity : HelperBaseComponentActivity() {
                                         val next = favoriteCountries.toMutableSet()
                                         if (next.contains(iso)) next.remove(iso) else next.add(iso)
                                         favoriteCountries = next.toSet()
-                                        prefs.edit().putStringSet("fav_countries", favoriteCountries).apply()
+                                        store.putStringSet("fav_countries", favoriteCountries)
                                     },
                                     onScanClick = { startScanOnly() },
                                     onAutoSelectClick = {
-                                        val bestAuto = currentList.minByOrNull { if (it.ms > 0) it.ms else 9999L } ?: currentList.firstOrNull()
-                                        if (bestAuto != null) {
-                                            connectToEntry(bestAuto)
-                                        } else {
-                                            startSmartConnect()
-                                        }
+                                        val bestAuto = currentList.minByOrNull { if (it.ms > 0) it.ms else 9999L }
+                                            ?: currentList.firstOrNull()
+                                        if (bestAuto != null) connectToEntry(bestAuto) else startSmartConnect()
                                     },
                                     onServerClick = { entry -> connectToEntry(entry) }
                                 )
@@ -1781,32 +1346,21 @@ class MainActivity : HelperBaseComponentActivity() {
                                     serverCount = currentList.size,
                                     bestPingMs = current?.ms ?: 0L,
                                     cleanDnsShield = cleanDnsShield,
-                                    onCleanDnsShieldChange = {
-                                        cleanDnsShield = it
-                                        prefs.edit().putBoolean("clean_dns_shield", it).apply()
-                                        val dnsServer = if (it) "1.1.1.2" else "1.1.1.1"
-                                        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsServer)
-                                        statusMessage = "Encrypted DNS set to $dnsServer"
-                                        plog("Network Doctor: Clean DNS Shield set to $dnsServer")
-                                    },
+                                    onCleanDnsShieldChange = onCleanDnsChange,
                                     splitTunnelLocal = splitTunnelLocal,
-                                    onSplitTunnelLocalChange = {
-                                        splitTunnelLocal = it
-                                        prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "2")
-                                        PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, it)
-                                        statusMessage = if (it) "Domestic (.ir) & LAN Direct Bypass Enabled" else "All Traffic Routed in Tunnel"
-                                        plog("Network Doctor: Smart Split Tunneling set to $it")
-                                    },
+                                    onSplitTunnelLocalChange = onSplitTunnelChange,
                                     ghostMessagingOnly = ghostMessagingOnly,
                                     showAds = !vipActive,
-                                    onSponsorClick = { showStartIoRewardedVideoForQuota() },
+                                    onSponsorClick = {
+                                        adCoordinator.openSponsorQuotaFlow(
+                                            adsClaimedToday = adsClaimedToday,
+                                            maxDailyAds = MAX_DAILY_SPONSORED_ADS
+                                        )
+                                    },
                                     onAutoTuneClick = {
                                         val tuned = PennyServerScanner.detectCarrierAndTuneFragment(this@MainActivity, ::plog)
                                         statusMessage = "ISP Auto-Tuned: $tuned"
-                                        if (isRunning) {
-                                            safeRestartVpnOnMainThread()
-                                        }
+                                        if (isRunning) safeRestartVpnOnMainThread()
                                     },
                                     onScanNodesClick = { startScanOnly() },
                                     onOpenLogsClick = { showLog = true }
@@ -1829,33 +1383,21 @@ class MainActivity : HelperBaseComponentActivity() {
                                     autoSwitch = autoSwitch,
                                     onAutoSwitchChange = {
                                         autoSwitch = it
-                                        prefs.edit().putBoolean("auto_switch", it).apply()
+                                        store.putBoolean("auto_switch", it)
                                     },
                                     autoReconnect = autoReconnect,
                                     onAutoReconnectChange = {
                                         autoReconnect = it
-                                        prefs.edit().putBoolean("auto_reconnect", it).apply()
+                                        store.putBoolean("auto_reconnect", it)
                                     },
                                     splitTunnelLocal = splitTunnelLocal,
-                                    onSplitTunnelChange = {
-                                        splitTunnelLocal = it
-                                        prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                        MmkvManager.encodeSettings(AppConfig.PREF_VPN_BYPASS_LAN, if (it) "1" else "2")
-                                        PennyServerScanner.syncGhostModeKernelRules(serviceTierMode, ghostMessagingOnly, it)
-                                        statusMessage = if (it) "Domestic (.ir) & LAN Direct Bypass Enabled" else "All Traffic Routed in Tunnel"
-                                    },
+                                    onSplitTunnelChange = onSplitTunnelChange,
                                     cleanDnsShield = cleanDnsShield,
-                                    onCleanDnsShieldChange = {
-                                        cleanDnsShield = it
-                                        prefs.edit().putBoolean("clean_dns_shield", it).apply()
-                                        val dnsServer = if (it) "1.1.1.2" else "1.1.1.1"
-                                        MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsServer)
-                                        statusMessage = "Encrypted DNS set to $dnsServer"
-                                    },
+                                    onCleanDnsShieldChange = onCleanDnsChange,
                                     loadBalanceEnabled = loadBalanceEnabled,
                                     onLoadBalanceChange = {
                                         loadBalanceEnabled = it
-                                        prefs.edit().putBoolean("load_balance_enabled", it).apply()
+                                        store.putBoolean("load_balance_enabled", it)
                                         val seed = if (it) kotlin.math.abs(deviceId.hashCode()) else 0
                                         val target = activeList.toList()
                                         if (target.isNotEmpty()) {
@@ -1874,14 +1416,19 @@ class MainActivity : HelperBaseComponentActivity() {
                                         killSwitchEnabled = it
                                         if (it && !autoReconnect) {
                                             autoReconnect = true
-                                            prefs.edit().putBoolean("auto_reconnect", true).apply()
+                                            store.putBoolean("auto_reconnect", true)
                                         }
-                                        prefs.edit().putBoolean("kill_switch_enabled", it).apply()
+                                        store.putBoolean("kill_switch_enabled", it)
                                         statusMessage = if (it) "VPN Kill Switch & Auto-Reconnect Guard Active" else "VPN Kill Switch Guard Disabled"
                                     },
                                     onCopyUuid = { copyUuidToClipboard() },
                                     onOpenVipDialog = { showVipDialog = true },
-                                    onWatchSponsorAd = { showStartIoRewardedVideoForQuota() },
+                                    onWatchSponsorAd = {
+                                        adCoordinator.openSponsorQuotaFlow(
+                                            adsClaimedToday = adsClaimedToday,
+                                            maxDailyAds = MAX_DAILY_SPONSORED_ADS
+                                        )
+                                    },
                                     onOpenLogs = { showLog = true },
                                     onOpenUpdate = { showUpdateDialog = true }
                                 )
@@ -1908,1483 +1455,170 @@ class MainActivity : HelperBaseComponentActivity() {
                 }
             }
 
-            if (showMenu) ModernMenuDialog(isVipMode)
-            if (showBest) BestConfigsDialog(uiState.selectedGuid, isRunning, isVipMode)
-            if (showVipDialog) VipSubscriptionDialog()
-            if (showUpdateDialog) UpdateCenterDialog()
-            if (showAdConsentDialog) AdConsentDialog()
-            if (showAadsSponsorDialog) AadsSponsorDialog()
-            if (showLog) LogDialog()
-        }
-    }
-
-    @Composable
-    private fun AppUpdateBanner(
-        updateInfo: PennyServerScanner.AppUpdateInfo,
-        isDownloading: Boolean,
-        progress: Float,
-        statusNote: String?,
-        onUpdateClick: () -> Unit,
-        onDismiss: () -> Unit
-    ) {
-        Surface(
-            color = Color(0xFF1B1D26),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp)
-                .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.55f), RoundedCornerShape(14.dp))
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(Color(0xFFE6CFAF).copy(alpha = 0.16f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            UpdateArrowIcon(size = 16.dp, color = Color(0xFFE6CFAF))
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Update Available • v${updateInfo.latestVersion}",
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = when {
-                                    isDownloading -> "Downloading APK ${(progress * 100).toInt()}%..."
-                                    !statusNote.isNullOrBlank() -> statusNote
-                                    updateInfo.releaseNotes.isNotBlank() -> updateInfo.releaseNotes.replace('\n', ' ')
-                                    else -> "Tap Update Now for automatic in-app install"
-                                },
-                                color = Color(0xFFB5BAC9),
-                                fontSize = 10.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Button(
-                            onClick = onUpdateClick,
-                            enabled = !isDownloading,
-                            shape = RoundedCornerShape(9.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFE6CFAF),
-                                contentColor = Color(0xFF14151B),
-                                disabledContainerColor = Color(0xFF2B2E3A),
-                                disabledContentColor = Color(0xFFE6CFAF)
-                            ),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text(
-                                text = if (isDownloading) "${(progress * 100).toInt()}%" else "Update",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-
-                        if (!isDownloading) {
-                            Text(
-                                text = "×",
-                                color = Color(0xFF9EA2B0),
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable { onDismiss() }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-
-                if (isDownloading) {
-                    LinearProgressIndicator(
-                        progress = { progress.coerceIn(0.02f, 1f) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = Color(0xFFE6CFAF),
-                        trackColor = Color(0xFF2B2E3A)
-                    )
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun AadsSponsorDialog() {
-        var pageLoaded by remember { mutableStateOf(false) }
-        var usedInlineFallback by remember { mutableStateOf(false) }
-        var secondsLeft by remember { mutableStateOf(AADS_SPONSOR_WAIT_SEC) }
-        var reloadToken by remember { mutableStateOf(0) }
-        var webViewRef by remember { mutableStateOf<WebView?>(null) }
-
-        val activeUnit = currentAadsUnitId
-        fun buildInlineFallbackHtml(unitId: String): String {
-            val frameSnippet = if (unitId == AADS_SECONDARY_UNIT_ID) {
-                """
-                <div id="frame" style="width:100%; max-width:468px; margin:auto; z-index:99998; height:auto;">
-                  <iframe data-aa='2462387' src='https://ad.a-ads.com/2462387/?size=468x60'
-                          style='border:0; padding:0; width:100%; max-width:468px; height:60px; overflow:hidden; display:block; margin:auto'></iframe>
-                  <div style="width:100%; margin:auto; text-align:center;">
-                    <a target="_blank" style="display:inline-block;font-size:12px;color:#263238;padding:3px 10px;background:#F8F8F9;text-decoration:none;border-radius:0 0 4px 4px;" id="frame-link" href="https://aads.com/campaigns/new/?source_id=2462387&source_type=ad_unit&partner=2462387">Advertise here</a>
-                  </div>
-                </div>
-                """.trimIndent()
-            } else {
-                """
-                <div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
-                  <iframe data-aa='2462374' src='https://acceptable.a-ads.com/2462374/?size=Adaptive'
-                          style='border:0; padding:0; width:100%; min-height:220px; height:auto; overflow:hidden; display:block; margin:auto'></iframe>
-                </div>
-                """.trimIndent()
-            }
-            return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-              <style>
-                * { box-sizing: border-box; }
-                html, body {
-                  margin: 0;
-                  padding: 8px;
-                  width: 100%;
-                  min-height: 100%;
-                  background: #0f1118;
-                  color: #f5efe6;
-                  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                  display: flex;
-                  flex-direction: column;
-                  align-items: center;
-                  justify-content: center;
-                  text-align: center;
-                }
-                .tag {
-                  font-size: 11px;
-                  color: #b5bac9;
-                  margin-bottom: 10px;
-                  letter-spacing: 0.4px;
-                }
-                #frame iframe {
-                  border: 0 !important;
-                  border-radius: 10px;
-                  display: block !important;
-                  margin: 0 auto !important;
-                }
-              </style>
-            </head>
-            <body>
-              <div class="tag">Sponsored Content · AADS Unit #$unitId</div>
-              $frameSnippet
-            </body>
-            </html>
-            """.trimIndent()
-        }
-
-        LaunchedEffect(pageLoaded, reloadToken) {
-            if (!pageLoaded) {
-                delay(6000L)
-                pageLoaded = true
-            }
-            while (secondsLeft > 0) {
-                delay(1000L)
-                secondsLeft -= 1
-            }
-        }
-
-        DisposableEffect(Unit) {
-            onDispose {
-                runCatching { webViewRef?.destroy() }
-                webViewRef = null
-            }
-        }
-
-        fun closeDialog(claimBonus: Boolean) {
-            val shouldResume = aadsShouldResumeVpn
-            aadsShouldResumeVpn = false
-            showAadsSponsorDialog = false
-            if (claimBonus) {
-                claimStartIoRewardBonus()
-            }
-            resumeVpnAfterAdIfNeeded(shouldResume)
-        }
-
-        val elapsedRatio = ((AADS_SPONSOR_WAIT_SEC - secondsLeft).toFloat() / AADS_SPONSOR_WAIT_SEC.toFloat()).coerceIn(0f, 1f)
-
-        Dialog(
-            onDismissRequest = { closeDialog(claimBonus = false) },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Surface(
-                color = Color(0xFF151720),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Sponsor Banner • #$activeUnit (+100 MB)",
-                                color = Color(0xFFF2F4F8),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 15.sp
-                            )
-                            Text(
-                                text = if (secondsLeft > 0) {
-                                    "Displaying sponsor partner • ${secondsLeft}s remaining"
-                                } else {
-                                    "Sponsor session ready • Claim +100 MB & +2h"
-                                },
-                                color = if (secondsLeft > 0) Color(0xFFB5BAC9) else Color(0xFF6EE7B7),
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(
-                                color = Color(0xFF232634),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        val nextUnit = nextRotatedAadsUnitId()
-                                        pageLoaded = false
-                                        usedInlineFallback = false
-                                        reloadToken += 1
-                                        webViewRef?.loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1&unit=$nextUnit&_r=${System.currentTimeMillis()}")
-                                    }
-                            ) {
-                                Text(
-                                    text = "↻",
-                                    color = Color(0xFFD8DCE6),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                )
-                            }
-
-                            Surface(
-                                color = Color(0xFF232634),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        runCatching {
-                                            startActivity(
-                                                Intent(
-                                                    Intent.ACTION_VIEW,
-                                                    Uri.parse("${AADS_SPONSOR_PAGE_URL}?unit=$activeUnit")
-                                                )
-                                            )
-                                        }
-                                    }
-                            ) {
-                                Text(
-                                    text = "↗",
-                                    color = Color(0xFFE6CFAF),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    LinearProgressIndicator(
-                        progress = { elapsedRatio },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
-                        color = if (secondsLeft <= 0) Color(0xFF6EE7B7) else Color(0xFFE6CFAF),
-                        trackColor = Color(0xFF272A38)
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(300.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFF323646), RoundedCornerShape(14.dp))
-                            .background(Color(0xFF0F1118))
-                    ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    layoutParams = ViewGroup.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        ViewGroup.LayoutParams.MATCH_PARENT
-                                    )
-                                    setBackgroundColor(android.graphics.Color.parseColor("#0F1118"))
-                                    isVerticalScrollBarEnabled = false
-                                    isHorizontalScrollBarEnabled = false
-                                    settings.apply {
-                                        javaScriptEnabled = true
-                                        domStorageEnabled = true
-                                        useWideViewPort = true
-                                        loadWithOverviewMode = true
-                                        allowFileAccess = false
-                                        allowContentAccess = false
-                                        @Suppress("DEPRECATION")
-                                        allowFileAccessFromFileURLs = false
-                                        @Suppress("DEPRECATION")
-                                        allowUniversalAccessFromFileURLs = false
-                                        mediaPlaybackRequiresUserGesture = true
-                                    }
-                                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                                    webViewClient = object : WebViewClient() {
-                                        override fun onPageFinished(view: WebView?, url: String?) {
-                                            pageLoaded = true
-                                        }
-
-                                        override fun shouldOverrideUrlLoading(
-                                            view: WebView?,
-                                            request: WebResourceRequest?
-                                        ): Boolean {
-                                            val target = request?.url ?: return true
-                                            val scheme = target.scheme?.lowercase(Locale.US) ?: ""
-                                            val host = target.host?.lowercase(Locale.US) ?: ""
-                                            if (scheme != "https") return true
-                                            if (host.endsWith("github.io") || host.endsWith("a-ads.com")) {
-                                                return false
-                                            }
-                                            runCatching {
-                                                ctx.startActivity(Intent(Intent.ACTION_VIEW, target))
-                                            }
-                                            return true
-                                        }
-
-                                        override fun onReceivedError(
-                                            view: WebView?,
-                                            request: WebResourceRequest?,
-                                            error: WebResourceError?
-                                        ) {
-                                            if (request?.isForMainFrame == true && !usedInlineFallback) {
-                                                usedInlineFallback = true
-                                                view?.loadDataWithBaseURL(
-                                                    AADS_SPONSOR_PAGE_URL,
-                                                    buildInlineFallbackHtml(currentAadsUnitId),
-                                                    "text/html",
-                                                    "UTF-8",
-                                                    null
-                                                )
-                                            }
-                                        }
-
-                                        override fun onReceivedHttpError(
-                                            view: WebView?,
-                                            request: WebResourceRequest?,
-                                            errorResponse: WebResourceResponse?
-                                        ) {
-                                            if (request?.isForMainFrame == true &&
-                                                (errorResponse?.statusCode ?: 0) >= 400 &&
-                                                !usedInlineFallback
-                                            ) {
-                                                usedInlineFallback = true
-                                                view?.loadDataWithBaseURL(
-                                                    AADS_SPONSOR_PAGE_URL,
-                                                    buildInlineFallbackHtml(currentAadsUnitId),
-                                                    "text/html",
-                                                    "UTF-8",
-                                                    null
-                                                )
-                                            }
-                                        }
-                                    }
-                                    loadUrl("${AADS_SPONSOR_PAGE_URL}?inapp=1&unit=$activeUnit")
-                                    webViewRef = this
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        if (!pageLoaded) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color(0xCC0F1118)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = Color(0xFFE6CFAF),
-                                        strokeWidth = 2.5.dp,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                    Text(
-                                        text = "Loading sponsor banner...",
-                                        color = Color(0xFFB5BAC9),
-                                        fontSize = 11.5.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { closeDialog(claimBonus = false) },
-                            shape = RoundedCornerShape(11.dp),
-                            modifier = Modifier.weight(0.38f)
-                        ) {
-                            Text("Close", color = Color(0xFF9EA2B0), fontSize = 12.sp)
-                        }
-
-                        Button(
-                            enabled = secondsLeft <= 0,
-                            onClick = { closeDialog(claimBonus = true) },
-                            shape = RoundedCornerShape(11.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFE6CFAF),
-                                contentColor = Color(0xFF14151B),
-                                disabledContainerColor = Color(0xFF262936),
-                                disabledContentColor = Color(0xFF7D818E)
-                            ),
-                            modifier = Modifier.weight(0.62f)
-                        ) {
-                            Text(
-                                text = if (secondsLeft > 0) "Wait (${secondsLeft}s)" else "Claim +100 MB & Reconnect",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun AdConsentDialog() {
-        AlertDialog(
-            onDismissRequest = { showAdConsentDialog = false },
-            containerColor = Color(0xFF191A20),
-            title = {
-                Text(
-                    text = "Sponsored Ad Notice (+100 MB)",
-                    color = Color(0xFFF2F4F8),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp
+            if (showMenu) {
+                PennyModernMenuDialog(
+                    appLang = appLang,
+                    isVipMode = isVipMode,
+                    activeServerCount = activeList.size,
+                    autoSwitch = autoSwitch,
+                    onAutoSwitchChange = {
+                        autoSwitch = it
+                        store.putBoolean("auto_switch", it)
+                    },
+                    autoReconnect = autoReconnect,
+                    onAutoReconnectChange = {
+                        autoReconnect = it
+                        store.putBoolean("auto_reconnect", it)
+                    },
+                    splitTunnelLocal = splitTunnelLocal,
+                    onSplitTunnelChange = onSplitTunnelChange,
+                    cleanDnsShield = cleanDnsShield,
+                    onCleanDnsShieldChange = onCleanDnsChange,
+                    onOpenUpdate = { showMenu = false; showUpdateDialog = true },
+                    onOpenVip = { showMenu = false; showVipDialog = true },
+                    onOpenBest = { showMenu = false; showBest = true },
+                    onOpenAppLogs = { showMenu = false; showLog = true },
+                    onOpenCoreLogs = {
+                        showMenu = false
+                        startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
+                    },
+                    onDismiss = { showMenu = false }
                 )
-            },
-            text = {
-                Text(
-                    text = "Sponsored banners rotate across AADS privacy sponsor units ($AADS_AD_UNIT_ID & $AADS_SECONDARY_UNIT_ID). To verify genuine impressions, the VPN tunnel will pause briefly while the sponsor banner loads over your direct connection, then reconnects automatically.",
-                    color = Color(0xFFB5BAC9),
-                    fontSize = 12.5.sp
+            }
+
+            if (showBest) {
+                PennyBestConfigsDialog(
+                    appLang = appLang,
+                    servers = activeList.toList(),
+                    selectedGuid = uiState.selectedGuid,
+                    isRunning = isRunning,
+                    isVipMode = isVipMode,
+                    busy = busy,
+                    onSelectServer = { entry ->
+                        showBest = false
+                        connectToEntry(entry)
+                    },
+                    onDismiss = { showBest = false }
                 )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
+            }
+
+            if (showVipDialog) {
+                PennyVipSubscriptionDialog(
+                    appLang = appLang,
+                    deviceId = deviceId,
+                    vipActive = vipActive,
+                    vipCode = vipCode,
+                    vipExpireMs = vipExpireMs,
+                    vipUsedBytes = vipUsedBytes,
+                    vipMaxBytes = vipMaxBytes,
+                    effectiveNowMs = effectiveNowMs(),
+                    useVipServers = useVipServers,
+                    customVipSubUrl = customVipSubUrl,
+                    onCopyDeviceId = { copyDeviceIdToClipboard() },
+                    onUseVipServersChange = { enabled ->
+                        useVipServers = enabled
+                        store.putBoolean("use_vip_servers", enabled)
+                        if (enabled) {
+                            serviceTierMode = ServiceTierMode.DEDICATED
+                            store.putString("service_tier_mode", ServiceTierMode.DEDICATED.name)
+                        }
+                    },
+                    onCustomVipSubUrlChange = { clean ->
+                        if (clean.isBlank()) {
+                            customVipSubUrl = PennyServerScanner.DEDICATED_VPS_SUB_URL
+                            store.putString("custom_vip_sub_url", customVipSubUrl)
+                        } else if (VipLicenseManager.isTrustedHttpsEndpoint(clean) &&
+                            PennyServerScanner.isSafeNestedSubscriptionUrl(clean)
+                        ) {
+                            customVipSubUrl = clean
+                            store.putString("custom_vip_sub_url", clean)
+                        } else {
+                            statusMessage = "Only trusted public HTTPS subscription URLs are allowed"
+                        }
+                    },
+                    onActivateLicense = { code, cb -> activateVipWithServerVerification(code, cb) },
+                    onDismiss = { showVipDialog = false }
+                )
+            }
+
+            if (showUpdateDialog) {
+                PennyUpdateCenterDialog(
+                    appLang = appLang,
+                    availableUpdate = availableUpdate,
+                    bpbFragmentMode = bpbFragmentMode,
+                    busy = busy,
+                    updateDownloading = updateDownloading,
+                    updateDownloadProgress = updateDownloadProgress,
+                    updateDownloadStatus = updateDownloadStatus,
+                    onUpdateInfoDiscovered = { info -> availableUpdate = info },
+                    onSelectFragmentMode = { modeName ->
+                        bpbFragmentMode = modeName
+                        store.putString("bpb_frag_mode", modeName)
+                        if (modeName == "SMART") {
+                            PennyServerScanner.applyBpbCoreOptimizations(fragLength = "10-30", fragInterval = "1")
+                        } else {
+                            PennyServerScanner.applyBpbCoreOptimizations(fragLength = "100-200", fragInterval = "1")
+                        }
+                    },
+                    onRunNetworkDoctor = {
+                        PennyServerScanner.runNetworkDoctor(this@MainActivity, ::plog)
+                    },
+                    onScanServers = {
+                        showUpdateDialog = false
+                        startScanOnly()
+                    },
+                    onStartAppUpdate = { url -> updateCoordinator.startFullAppUpdate(url) },
+                    onDismiss = { showUpdateDialog = false }
+                )
+            }
+
+            if (showAdConsentDialog) {
+                PennyAdConsentDialog(
+                    onAccept = {
                         showAdConsentDialog = false
-                        prefs.edit().putBoolean("startio_ads_consent", true).apply()
-                        runCatching {
-                            StartAppSDK.setUserConsent(this@MainActivity, "pas", System.currentTimeMillis(), true)
-                        }
-                        showStartIoRewardedVideoForQuota()
-                    }
-                ) {
-                    Text("Agree & View Sponsor", color = Color(0xFFE6CFAF), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAdConsentDialog = false }) {
-                    Text("Cancel", color = Color(0xFF9EA2B0))
-                }
-            }
-        )
-    }
-
-    @Composable
-    private fun ModernMenuDialog(isVipMode: Boolean) {
-        AlertDialog(
-            onDismissRequest = { showMenu = false },
-            containerColor = Color(0xFF191A20),
-            confirmButton = {
-                TextButton(onClick = { showMenu = false }) {
-                    Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
-                }
-            },
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    MenuLinesIcon(size = 16.dp)
-                    Text(
-                        text = "Settings & Control Center",
-                        color = Color(0xFFF2F4F8),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 17.sp
-                    )
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
-                            .clickable {
-                                showMenu = false
-                                showUpdateDialog = true
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                UpdateArrowIcon(size = 15.dp, color = Color(0xFFE8ECF4))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "App & Server Update (v${com.v2ray.ang.BuildConfig.VERSION_NAME})",
-                                    color = Color(0xFFF2F4F8),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                            Text("›", color = Color(0xFFD0D4DF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-                            .clickable {
-                                showMenu = false
-                                showVipDialog = true
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                GlassDiamondIcon(size = 15.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "1 Month 50 GB Plan",
-                                    color = Color(0xFFF2F4F8),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                            Text("›", color = Color(0xFFD0D4DF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
-                            .clickable {
-                                showMenu = false
-                                showBest = true
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = Strings.menuBestConfigs(appLang, isVipMode),
-                                color = Color(0xFFF2F4F8),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                            Text("${activeList.size}", color = Color(0xFFD8DCE6), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Auto-Switch on Drop", fontSize = 13.sp, color = Color(0xFFF2F4F8), modifier = Modifier.weight(1f))
-                            Switch(
-                                checked = autoSwitch,
-                                onCheckedChange = {
-                                    autoSwitch = it
-                                    prefs.edit().putBoolean("auto_switch", it).apply()
-                                },
-                                colors = metallicSwitchColors()
-                            )
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Auto-Reconnect on Net Change", fontSize = 13.sp, color = Color(0xFFF2F4F8), modifier = Modifier.weight(1f))
-                            Switch(
-                                checked = autoReconnect,
-                                onCheckedChange = {
-                                    autoReconnect = it
-                                    prefs.edit().putBoolean("auto_reconnect", it).apply()
-                                },
-                                colors = metallicSwitchColors()
-                            )
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Smart Split Tunneling", fontSize = 13.sp, color = Color(0xFFF2F4F8), fontWeight = FontWeight.SemiBold)
-                                Text("Bypass local & banking apps automatically", fontSize = 10.sp, color = Color(0xFF9EA1AB))
-                            }
-                            Switch(
-                                checked = splitTunnelLocal,
-                                onCheckedChange = {
-                                    splitTunnelLocal = it
-                                    prefs.edit().putBoolean("split_tunnel_local", it).apply()
-                                    MmkvManager.encodeSettings(AppConfig.PREF_PER_APP_PROXY, it)
-                                    MmkvManager.encodeSettings(AppConfig.PREF_BYPASS_APPS, true)
-                                    plog("Smart Split Tunneling: ${if (it) "Enabled" else "Disabled"}")
-                                },
-                                colors = metallicSwitchColors()
-                            )
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3A3C46), RoundedCornerShape(14.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Clean DNS & Tracker Shield", fontSize = 13.sp, color = Color(0xFFF2F4F8), fontWeight = FontWeight.SemiBold)
-                                Text("Encrypted DNS (1.1.1.2) • Malware & tracker block", fontSize = 10.sp, color = Color(0xFF9EA1AB))
-                            }
-                            Switch(
-                                checked = cleanDnsShield,
-                                onCheckedChange = {
-                                    cleanDnsShield = it
-                                    prefs.edit().putBoolean("clean_dns_shield", it).apply()
-                                    val dnsServer = if (it) "1.1.1.2" else "1.1.1.1"
-                                    MmkvManager.encodeSettings(AppConfig.PREF_REMOTE_DNS, dnsServer)
-                                    plog("Clean DNS Shield set to $dnsServer")
-                                },
-                                colors = metallicSwitchColors()
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { showMenu = false; showLog = true },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(Strings.menuAppLog(appLang), fontSize = 11.sp, maxLines = 1, color = Color(0xFFD8DCE6))
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                showMenu = false
-                                startActivity(Intent(this@MainActivity, LogcatActivity::class.java))
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(Strings.menuCoreLog(appLang), fontSize = 11.sp, maxLines = 1, color = Color(0xFFD8DCE6))
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    @Composable
-    private fun VipSubscriptionDialog() {
-        var inputCode by remember { mutableStateOf("") }
-        var subUrlInput by remember { mutableStateOf(customVipSubUrl) }
-        var feedback by remember { mutableStateOf<String?>(null) }
-        var isSuccess by remember { mutableStateOf(false) }
-        var isVerifying by remember { mutableStateOf(false) }
-
-        AlertDialog(
-            onDismissRequest = { showVipDialog = false },
-            containerColor = Color(0xFF191A20),
-            confirmButton = {
-                TextButton(onClick = { showVipDialog = false }) {
-                    Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
-                }
-            },
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    GlassDiamondIcon(size = 18.dp)
-                    Text(
-                        text = "1 Month 50 GB Plan",
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFFF2F4F8)
-                    )
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        color = Color(0xFF20222A),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF363844), RoundedCornerShape(10.dp))
-                            .clickable {
-                                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                cm.setPrimaryClip(ClipData.newPlainText("PennyVPN Device ID", deviceId))
-                                feedback = "Device ID ($deviceId) copied to clipboard"
-                                isSuccess = true
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Device ID: $deviceId",
-                                color = Color(0xFFE4E7F0),
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = "Copy ID",
-                                color = Color(0xFFD8DCE6),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    if (vipActive) {
-                        val now = effectiveNowMs()
-                        val remDays = ((vipExpireMs - now) / (24L * 3600_000L)).coerceAtLeast(0L)
-                        val remHours = (((vipExpireMs - now) % (24L * 3600_000L)) / 3600_000L).coerceAtLeast(0L)
-                        val remBytes = (vipMaxBytes - vipUsedBytes).coerceAtLeast(0L)
-
-                        Surface(
-                            color = Color(0xFF23252D),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.40f), RoundedCornerShape(12.dp))
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Status: Active (Server-Verified • Ad-Free)", color = Color(0xFFF2F4F8), fontWeight = FontWeight.Bold)
-                                Text("Active License: ${VipLicenseManager.maskCode(vipCode)}", fontSize = 12.sp, color = Color(0xFFD0D4DF), fontFamily = FontFamily.Monospace)
-                                Text("Time Remaining: ${remDays}d ${remHours}h", color = Color(0xFFD0D4DF), fontSize = 12.sp)
-                                Text("Server Quota Left: ${fmtBytes(remBytes)} (Used: ${fmtBytes(vipUsedBytes)} / ${fmtBytes(vipMaxBytes)})", color = Color(0xFFE4E7F0), fontSize = 12.sp)
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Use VIP Subscription Servers", color = Color(0xFFF2F4F8), fontSize = 13.sp)
-                            Switch(
-                                checked = useVipServers,
-                                onCheckedChange = {
-                                    useVipServers = it
-                                    prefs.edit().putBoolean("use_vip_servers", it).apply()
-                                },
-                                colors = metallicSwitchColors()
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = "Enter your ECDSA P-256 license (PL1....) to verify on server and unlock 1 Month / 50 GB:",
-                            color = Color(0xFFD0D4DF),
-                            fontSize = 12.5.sp
+                        adCoordinator.setUserConsent(true)
+                        adCoordinator.openSponsorQuotaFlow(
+                            adsClaimedToday = adsClaimedToday,
+                            maxDailyAds = MAX_DAILY_SPONSORED_ADS
                         )
-
-                        OutlinedTextField(
-                            value = inputCode,
-                            onValueChange = { inputCode = it.trim() },
-                            placeholder = { Text("PL1.<payload>.<signature>") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Button(
-                            onClick = {
-                                if (isVerifying) return@Button
-                                val cleanedSub = subUrlInput.trim()
-                                if (cleanedSub != customVipSubUrl && (cleanedSub.isEmpty() || (VipLicenseManager.isTrustedHttpsEndpoint(cleanedSub) && PennyServerScanner.isSafeNestedSubscriptionUrl(cleanedSub)))) {
-                                    customVipSubUrl = cleanedSub
-                                    prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
-                                }
-                                isVerifying = true
-                                activateVipWithServerVerification(inputCode) { ok, msg ->
-                                    isVerifying = false
-                                    isSuccess = ok
-                                    feedback = msg
-                                    if (ok && vipBestList.isEmpty()) {
-                                        startScanOnly()
-                                    }
-                                }
-                            },
-                            enabled = !isVerifying,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF383B46))
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                GlassDiamondIcon(size = 15.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = if (isVerifying) "Verifying on Server..." else "Activate 1 Month 50 GB",
-                                    color = Color(0xFFF2F4F8),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        feedback?.let { msg ->
-                            Text(
-                                text = msg,
-                                color = if (isSuccess) Color(0xFFE4E9F2) else Color(0xFFE57373),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = subUrlInput,
-                        onValueChange = {
-                            subUrlInput = it
-                            val cleaned = it.trim()
-                            if (cleaned.isEmpty() || (VipLicenseManager.isTrustedHttpsEndpoint(cleaned) && PennyServerScanner.isSafeNestedSubscriptionUrl(cleaned))) {
-                                customVipSubUrl = cleaned
-                                prefs.edit().putString("custom_vip_sub_url", customVipSubUrl).apply()
-                            }
-                        },
-                        label = { Text("Signed VIP Subscription URL (HTTPS + #PENNY-SIG)", fontSize = 11.sp) },
-                        placeholder = { Text("https://.../vip-sub.txt", fontSize = 11.sp) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        )
-    }
-
-    @Composable
-    private fun BestConfigsDialog(selectedGuid: String?, isRunning: Boolean, isVipMode: Boolean) {
-        val listToShow = activeList.sortedBy { it.ms }
-        var isGlobalBubbleView by remember { mutableStateOf(false) }
-
-        AlertDialog(
-            onDismissRequest = { showBest = false },
-            containerColor = Color(0xFF191A20),
-            confirmButton = {
-                TextButton(onClick = { showBest = false }) {
-                    Text(Strings.close(appLang), color = Color(0xFFE6CFAF))
-                }
-            },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (isVipMode) {
-                            GlassDiamondIcon(size = 16.dp)
-                        }
-                        Text(
-                            text = Strings.menuBestConfigs(appLang, isVipMode),
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFF2F4F8),
-                            fontSize = 15.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Surface(
-                        color = if (isGlobalBubbleView) Color(0xFF2D2820) else Color(0xFF25262E),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(
-                                1.dp,
-                                if (isGlobalBubbleView) Color(0xFFE6CFAF) else Color(0xFF454752),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .clickable { isGlobalBubbleView = !isGlobalBubbleView }
-                    ) {
-                        Text(
-                            text = if (isGlobalBubbleView) "List View" else "Global View",
-                            color = if (isGlobalBubbleView) Color(0xFFF5E6D3) else Color(0xFFD8DCE6),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        )
-                    }
-                }
-            },
-            text = {
-                if (listToShow.isEmpty()) {
-                    Text(Strings.emptyBestList(appLang))
-                } else if (isGlobalBubbleView) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 420.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Interactive Latency Bubble Map • Larger bubble = Faster ping",
-                            color = Color(0xFFA6A39E),
-                            fontSize = 10.5.sp,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        BoxWithConstraints(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(320.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF121318))
-                                .border(1.dp, Color(0xFF2E303A), RoundedCornerShape(16.dp))
-                        ) {
-                            val w = maxWidth
-                            val h = maxHeight
-                            val positions = listOf(
-                                0.50f to 0.48f,
-                                0.25f to 0.30f,
-                                0.75f to 0.32f,
-                                0.27f to 0.72f,
-                                0.74f to 0.70f,
-                                0.50f to 0.18f,
-                                0.50f to 0.82f,
-                                0.16f to 0.52f,
-                                0.84f to 0.52f
-                            )
-                            listToShow.take(positions.size).forEachIndexed { idx, s ->
-                                val active = isRunning && s.guid == selectedGuid
-                                val (fx, fy) = positions[idx]
-                                val bubbleSize = (82 - idx * 5).coerceIn(50, 82).dp
-                                val xOffset = (w * fx) - (bubbleSize / 2)
-                                val yOffset = (h * fy) - (bubbleSize / 2)
-
-                                Box(
-                                    modifier = Modifier
-                                        .offset(x = xOffset, y = yOffset)
-                                        .size(bubbleSize)
-                                        .clip(CircleShape)
-                                        .background(
-                                            Brush.radialGradient(
-                                                if (active) {
-                                                    listOf(Color(0xFFE6CFAF), Color(0xFF5A4E3C))
-                                                } else if (s.ms < 220) {
-                                                    listOf(Color(0xFF3E4250), Color(0xFF22242C))
-                                                } else {
-                                                    listOf(Color(0xFF2D2E38), Color(0xFF191A20))
-                                                }
-                                            )
-                                        )
-                                        .border(
-                                            width = if (active) 2.dp else 1.2.dp,
-                                            color = if (active) Color(0xFFF5E6D3)
-                                            else if (s.ms < 220) Color(0xFFD8DCE6).copy(alpha = 0.75f)
-                                            else Color(0xFF525564),
-                                            shape = CircleShape
-                                        )
-                                        .clickable(enabled = phase == Phase.IDLE) {
-                                            showBest = false
-                                            connectToEntry(s)
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = s.codeTag.ifEmpty { "A-1" },
-                                            color = if (active) Color(0xFF161512) else Color(0xFFF2F4F8),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                        Text(
-                                            text = "${s.ms}ms",
-                                            color = if (active) Color(0xFF23252E) else Color(0xFFECEEF4),
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace,
-                                            style = TextStyle(
-                                                shadow = Shadow(
-                                                    color = Color(0xFFD8DCE6).copy(alpha = if (active) 0.25f else 0.70f),
-                                                    offset = Offset(0f, 0f),
-                                                    blurRadius = 8f
-                                                )
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 420.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(listToShow, key = { idx, item -> "${item.guid}_$idx" }) { index, s ->
-                            StaggeredServerItem(index = index) {
-                                val active = isRunning && s.guid == selectedGuid
-                                val isOwn = isDedicatedServerTag(s.codeTag)
-                                val tagText = s.codeTag.ifEmpty { "CF-1" }
-                                Surface(
-                                    color = if (active) Color(0xFF332C24) else if (isOwn) Color(0xFF24211D) else Color(0xFF202128),
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .border(
-                                            1.dp,
-                                            when {
-                                                active -> Color(0xFFE6CFAF)
-                                                isOwn -> Color(0xFFE6CFAF).copy(alpha = 0.55f)
-                                                else -> Color(0xFF3A3942)
-                                            },
-                                            RoundedCornerShape(14.dp)
-                                        )
-                                        .clickable(enabled = phase == Phase.IDLE) {
-                                            showBest = false
-                                            connectToEntry(s)
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isOwn) Color(0xFF2F281F) else Color(0xFF17181D))
-                                                .border(
-                                                    1.dp,
-                                                    if (isOwn) Color(0xFFE6CFAF).copy(alpha = 0.8f) else Color(0xFF3E404A),
-                                                    RoundedCornerShape(8.dp)
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = tagText,
-                                                color = if (isOwn) Color(0xFFF5E6D3) else Color(0xFFB8BDCB),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                        Spacer(Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Text(
-                                                text = s.label,
-                                                color = Color(0xFFF2F4F8),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = if (isOwn) "★ VIP MODE · Balanced ($tagText)" else "PUBLIC · Community Node",
-                                                color = if (isOwn) Color(0xFFE6CFAF) else Color(0xFF9EA2AE),
-                                                fontSize = 9.5.sp,
-                                                fontWeight = if (isOwn) FontWeight.SemiBold else FontWeight.Normal,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Spacer(Modifier.width(6.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            ShinyGreenPingBadge(
-                                                ms = s.ms,
-                                                showDiamond = s.isVipServer
-                                            )
-                                            if (active) {
-                                                Text(
-                                                    text = "ACTIVE",
-                                                    color = Color(0xFFF2F4F8),
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 9.5.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    @Composable
-    private fun UpdateCenterDialog() {
-        val installedVer = com.v2ray.ang.BuildConfig.VERSION_NAME
-        var checking by remember { mutableStateOf(true) }
-        var updateInfo by remember {
-            mutableStateOf(
-                availableUpdate ?: PennyServerScanner.AppUpdateInfo(
-                    currentVersion = installedVer,
-                    latestVersion = installedVer,
-                    hasUpdate = false,
-                    downloadUrl = PennyServerScanner.GITHUB_RELEASES_PAGE,
-                    releaseNotes = ""
+                    },
+                    onDismiss = { showAdConsentDialog = false }
                 )
-            )
+            }
+
+            if (showAadsSponsorDialog) {
+                PennyAadsSponsorDialog(
+                    activeUnitId = currentAadsUnitId,
+                    waitSec = PennyAdCoordinator.AADS_SPONSOR_WAIT_SEC,
+                    onRotateUnit = {
+                        val nextUnit = adCoordinator.nextRotatedAadsUnitId()
+                        currentAadsUnitId = nextUnit
+                        nextUnit
+                    },
+                    onClose = { claimBonus ->
+                        showAadsSponsorDialog = false
+                        if (claimBonus) {
+                            claimStartIoRewardBonus()
+                        } else {
+                            statusMessage = "Sponsor banner closed before reward completed"
+                        }
+                        val resume = aadsShouldResumeVpn
+                        aadsShouldResumeVpn = false
+                        resumeVpnAfterAdIfNeeded(resume)
+                    }
+                )
+            }
+
+            if (showLog) {
+                PennyLogDialog(
+                    appLang = appLang,
+                    logLines = logLines.toList(),
+                    onCopyLogs = { copyLogToClipboard() },
+                    onClearLogs = { logLines.clear() },
+                    onDismiss = { showLog = false }
+                )
+            }
         }
-        var statusNote by remember { mutableStateOf<String?>(null) }
-
-        LaunchedEffect(Unit) {
-            checking = true
-            val info = withContext(Dispatchers.IO) {
-                PennyServerScanner.checkAppUpdateOnGitHub(installedVer)
-            }
-            updateInfo = info
-            if (info.hasUpdate) {
-                availableUpdate = info
-            }
-            checking = false
-        }
-
-        var diagnosing by remember { mutableStateOf(false) }
-
-        AlertDialog(
-            onDismissRequest = { showUpdateDialog = false },
-            containerColor = Color(0xFF191A20),
-            confirmButton = {
-                TextButton(onClick = { showUpdateDialog = false }) {
-                    Text(Strings.close(appLang), color = Color(0xFFD8DCE6))
-                }
-            },
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    UpdateArrowIcon(size = 17.dp, color = Color(0xFFE2E5EE))
-                    Text(
-                        text = "Update & Network Doctor",
-                        color = Color(0xFFF2F4F8),
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.5.sp
-                    )
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        color = Color(0xFF23252D),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF3E404C), RoundedCornerShape(12.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Version v${updateInfo.currentVersion}",
-                                color = Color(0xFFF2F4F8),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = if (checking) "CHECKING..." else if (updateInfo.hasUpdate) "NEW: v${updateInfo.latestVersion}" else "UP TO DATE",
-                                color = Color(0xFFE6CFAF),
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val isNormal = bpbFragmentMode == "NORMAL"
-                        OutlinedButton(
-                            onClick = {
-                                bpbFragmentMode = "NORMAL"
-                                prefs.edit().putString("bpb_frag_mode", "NORMAL").apply()
-                                PennyServerScanner.applyBpbCoreOptimizations(fragLength = "100-200", fragInterval = "1")
-                                statusNote = "Fragment: Normal (100-200B)"
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Normal Mode",
-                                fontSize = 11.sp,
-                                color = if (isNormal) Color(0xFFF2F4F8) else Color(0xFF8E929E),
-                                fontWeight = if (isNormal) FontWeight.ExtraBold else FontWeight.Medium
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                bpbFragmentMode = "SMART"
-                                prefs.edit().putString("bpb_frag_mode", "SMART").apply()
-                                PennyServerScanner.applyBpbCoreOptimizations(fragLength = "10-30", fragInterval = "1")
-                                statusNote = "Fragment: Deep Smart (10-30B)"
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Smart Mode",
-                                fontSize = 11.sp,
-                                color = if (!isNormal) Color(0xFFF2F4F8) else Color(0xFF8E929E),
-                                fontWeight = if (!isNormal) FontWeight.ExtraBold else FontWeight.Medium
-                            )
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            if (diagnosing) return@Button
-                            diagnosing = true
-                            statusNote = "Scanning Clean IPs & ISP DPI..."
-                            lifecycleScope.launch {
-                                val report = PennyServerScanner.runNetworkDoctor(this@MainActivity, ::plog)
-                                statusNote = report
-                                diagnosing = false
-                            }
-                        },
-                        enabled = !diagnosing && phase == Phase.IDLE,
-                        shape = RoundedCornerShape(11.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2E3A)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFFE6CFAF).copy(alpha = 0.55f), RoundedCornerShape(11.dp))
-                    ) {
-                        Text(
-                            text = if (diagnosing) "Running Network Doctor..." else "Network Doctor & Clean IP Scan",
-                            color = Color(0xFFE6CFAF),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 11.5.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            showUpdateDialog = false
-                            startScanOnly()
-                        },
-                        enabled = phase == Phase.IDLE,
-                        shape = RoundedCornerShape(11.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF343742)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFFD8DCE6).copy(alpha = 0.45f), RoundedCornerShape(11.dp))
-                    ) {
-                        Text(
-                            text = "Update Servers",
-                            color = Color(0xFFF2F4F8),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = { startFullAppUpdate(updateInfo.downloadUrl) },
-                        enabled = !updateDownloading,
-                        shape = RoundedCornerShape(11.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (updateInfo.hasUpdate) Color(0xFFE6CFAF) else Color(0xFF2B2E3A),
-                            contentColor = if (updateInfo.hasUpdate) Color(0xFF14151B) else Color(0xFFD8DCE6)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = when {
-                                updateDownloading -> "Downloading Update (${(updateDownloadProgress * 100).toInt()}%)..."
-                                updateInfo.hasUpdate -> "Update App Now (v${updateInfo.latestVersion})"
-                                else -> "Install Latest Release APK"
-                            },
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-
-                    if (updateDownloading) {
-                        LinearProgressIndicator(
-                            progress = { updateDownloadProgress.coerceIn(0.02f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = Color(0xFFE6CFAF),
-                            trackColor = Color(0xFF2B2E3A)
-                        )
-                    }
-
-                    val combinedNote = updateDownloadStatus ?: statusNote
-                    combinedNote?.let { note ->
-                        Text(
-                            text = note,
-                            color = Color(0xFFE6CFAF),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-        )
-    }
-
-    @Composable
-    private fun LogDialog() {
-        AlertDialog(
-            onDismissRequest = { showLog = false },
-            title = { Text(Strings.menuAppLog(appLang)) },
-            text = {
-                if (logLines.isEmpty()) {
-                    Text(Strings.emptyLogs(appLang))
-                } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 380.dp)) {
-                        items(logLines.toList().asReversed()) { line ->
-                            Text(
-                                text = line,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Row {
-                    TextButton(onClick = { copyLogToClipboard() }) { Text(Strings.copy(appLang)) }
-                    TextButton(onClick = { logLines.clear() }) { Text(Strings.clear(appLang)) }
-                }
-            },
-            dismissButton = { TextButton(onClick = { showLog = false }) { Text(Strings.close(appLang)) } }
-        )
     }
 
     // ═════════════════════════ اکشن‌ها ═════════════════════════
@@ -3403,7 +1637,7 @@ class MainActivity : HelperBaseComponentActivity() {
             ensureDailyDeviceQuotaCurrent()
             if (dailyUsedBytes >= dailyMaxBytes) {
                 serviceTierMode = ServiceTierMode.PUBLIC
-                prefs.edit().putString("service_tier_mode", ServiceTierMode.PUBLIC.name).apply()
+                store.putString("service_tier_mode", ServiceTierMode.PUBLIC.name)
                 statusMessage = "Dedicated 1 GB Daily Limit Reached • Connecting via Free Public Mode..."
                 plog("Dedicated 1 GB daily limit reached (${fmtBytes(dailyUsedBytes)} / ${fmtBytes(dailyMaxBytes)}); auto-falling back to Public Mode")
             }
@@ -3421,13 +1655,11 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun flushQuotaStateNow() {
         ensureDailyDeviceQuotaCurrent()
-        prefs.edit()
-            .putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
-            .putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
-            .putLong("free_session_rem_sec", freeSessionRemainingSec)
-            .putLong("vip_used_bytes", vipUsedBytes)
-            .putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
-            .apply()
+        store.putLong("daily_used_bytes_$deviceId", dailyUsedBytes)
+        store.putLong("pending_daily_unsynced_bytes_$deviceId", pendingDailyUnsyncedBytes)
+        store.putLong("free_session_rem_sec", freeSessionRemainingSec)
+        store.putLong("vip_used_bytes", vipUsedBytes)
+        store.putLong("pending_unsynced_bytes", pendingUnsyncedBytes)
         VipLicenseManager.writeTamperResistantDailyUsed(this, deviceId, dailyQuotaDayKey, dailyUsedBytes)
         if (vipActive && pendingUnsyncedBytes > 0L) {
             syncServerQuotaInBackground(pendingUnsyncedBytes)
@@ -3443,15 +1675,19 @@ class MainActivity : HelperBaseComponentActivity() {
         userWantsConnected = false
         phase = Phase.IDLE
         scanProgress = 0f
-        prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
+        store.putBoolean("user_connected", false)
+        store.remove("connect_time")
         flushQuotaStateNow()
         runCatching { PennySpeedLimiter.stop() }
         runCatching { LauncherManager.stopService(this) }
         statusMessage = "Disconnected"
         connectStartMs = 0L
         plog("Disconnected by user (auto-reconnect locked off)")
-        // پس از قطع کامل VPN توسط کاربر، allowResumeVpn = false ارسال می‌شود تا هرگز دوباره خودکار وصل نشود
-        showInterstitialAdIfReady(allowResumeVpn = false)
+        adCoordinator.showInterstitialIfReady(
+            lastShownMs = lastInterstitialShownMs,
+            onUpdateLastShownMs = { lastInterstitialShownMs = it },
+            allowResumeVpn = false
+        )
     }
 
     private fun cancelWork() {
@@ -3459,7 +1695,8 @@ class MainActivity : HelperBaseComponentActivity() {
         workJob?.cancel()
         monitorActionJob?.cancel()
         userWantsConnected = false
-        prefs.edit().putBoolean("user_connected", false).remove("connect_time").apply()
+        store.putBoolean("user_connected", false)
+        store.remove("connect_time")
         flushQuotaStateNow()
         MessageHelper.sendMsg2TestService(
             this, TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_CANCEL)
@@ -3474,7 +1711,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun startSmartConnect() {
         if (phase != Phase.IDLE) return
         userWantsConnected = true
-        prefs.edit().putBoolean("user_connected", true).apply()
+        store.putBoolean("user_connected", true)
         phase = Phase.CONNECTING
         statusMessage = "Preparing..."
         failedGuids.clear()
@@ -3500,7 +1737,7 @@ class MainActivity : HelperBaseComponentActivity() {
                     statusMessage = if (result != null) {
                         if (!vipActive && freeSessionRemainingSec < BASE_FREE_SESSION_SEC) {
                             freeSessionRemainingSec = BASE_FREE_SESSION_SEC
-                            prefs.edit().putLong("free_session_rem_sec", freeSessionRemainingSec).apply()
+                            store.putLong("free_session_rem_sec", freeSessionRemainingSec)
                         }
                         "Connected"
                     } else {
@@ -3547,11 +1784,6 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    /**
-     * ری‌استارت امن سرویس VPN روی ترد اصلی (Dispatchers.Main) برای جلوگیری کامل از کرش
-     * NullPointerException: Can't toast on a thread that has not called Looper.prepare()
-     * که در LauncherManager.restartService در CoreServiceManager رخ می‌داد.
-     */
     private fun safeRestartVpnOnMainThread() {
         val capturedEpoch = disconnectEpoch
         lifecycleScope.launch(Dispatchers.Main) {
@@ -3572,40 +1804,6 @@ class MainActivity : HelperBaseComponentActivity() {
         }
     }
 
-    private fun switchNext() {
-        workJob?.cancel()
-        userWantsConnected = true
-        phase = Phase.CONNECTING
-        statusMessage = "Switching to next balanced server..."
-        val current = mainViewModel.uiState.value.selectedGuid
-        workJob = lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                if (current != null) failedGuids.add(current)
-                val res = connectFromList(startAfter = current)
-                if (res == null && current != null && userWantsConnected) {
-                    plog("Next server not found; reverting to previous")
-                    failedGuids.remove(current)
-                    connectAndVerify(current)
-                }
-                ui {
-                    if (userWantsConnected) {
-                        statusMessage = if (res != null) {
-                            "Switched to ${res.label}"
-                        } else {
-                            "No other healthy server found."
-                        }
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                plog("Switch error: ${e.javaClass.simpleName}: ${e.message}")
-            } finally {
-                withContext(NonCancellable + Dispatchers.Main) { phase = Phase.IDLE }
-            }
-        }
-    }
-
     private fun connectToEntry(entry: PennyServer) {
         if (entry.guid.isBlank()) return
         val hasVpnPerm = !SettingsManager.isVpnMode() || VpnService.prepare(this) == null
@@ -3620,7 +1818,7 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         workJob?.cancel()
         userWantsConnected = true
-        prefs.edit().putBoolean("user_connected", true).apply()
+        store.putBoolean("user_connected", true)
         phase = Phase.CONNECTING
         statusMessage = "Switching to ${entry.label}..."
         workJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -3628,13 +1826,9 @@ class MainActivity : HelperBaseComponentActivity() {
                 val ping = connectAndVerify(entry.guid)
                 if (ping > 0 && userWantsConnected) {
                     markConnected(entry.guid, ping)
-                    ui {
-                        statusMessage = "Connected • ${entry.label}"
-                    }
+                    ui { statusMessage = "Connected • ${entry.label}" }
                 } else if (userWantsConnected) {
-                    ui {
-                        statusMessage = "Server did not respond; try another one."
-                    }
+                    ui { statusMessage = "Server did not respond; try another one." }
                     plog("${entry.label} failed")
                 }
             } catch (e: CancellationException) {
@@ -3685,7 +1879,6 @@ class MainActivity : HelperBaseComponentActivity() {
     private suspend fun healthCheckAndSwitch() {
         val capturedEpoch = disconnectEpoch
         if (!userWantsConnected) return
-        // حداقل ۳۵ ثانیه پس از اتصال جدید به تونل فرصت پایداری بدهیم و اگر ترافیک زنده در جریان است قطع نکنیم
         if (connectStartMs > 0L && System.currentTimeMillis() - connectStartMs < 35_000L) return
         val currentRx = TrafficStats.getUidRxBytes(Process.myUid())
         if (currentRx > 0L) {
@@ -3771,7 +1964,23 @@ class MainActivity : HelperBaseComponentActivity() {
         val downloadedContents = coroutineScope {
             sources.map { url ->
                 async(Dispatchers.IO) {
-                    PennyServerScanner.fetchSignedListWithFallback(url, ::plog)
+                    val isRemoteVault = url == PennyServerScanner.STEALTH_VAULT_GITHUB_URL
+                    val fetched = PennyServerScanner.fetchSignedListWithFallback(
+                        urlStr = url,
+                        onLog = ::plog,
+                        requireSigned = isRemoteVault
+                    )
+                    if (fetched.isNotEmpty()) {
+                        fetched
+                    } else if (isRemoteVault) {
+                        val bundled = PennyServerScanner.readBundledStealthVaultAsset(this@MainActivity)
+                        if (bundled.isNotEmpty()) {
+                            plog("Using APK-signed bundled stealth vault fallback")
+                            PennyServerScanner.extractPlayableConfigs(bundled, ::plog)
+                        } else ""
+                    } else {
+                        ""
+                    }
                 }
             }.awaitAll().filter { it.isNotEmpty() }
         }
@@ -3818,7 +2027,6 @@ class MainActivity : HelperBaseComponentActivity() {
                         cfg.finalMask = PennyServerScanner.BPB_FINALMASK_NORMAL_JSON
                     }
                     val originTag = detectServerOriginTag(g)
-                    // پاک‌سازی کامل نام سرور با حفظ کد کشور تا نقشه کشور مقصد روی کره زمین دقیق نمایش داده شود
                     cfg.remarks = when (originTag) {
                         "DED-NL" -> "PennyVPN DED-NL"
                         "DED-PL" -> "PennyVPN DED-PL"
@@ -4035,11 +2243,9 @@ class MainActivity : HelperBaseComponentActivity() {
         }
         val now = System.currentTimeMillis()
         val currentMode = serviceTierMode
-        prefs.edit()
-            .putString("last_guid", guid)
-            .putLong("connect_time", now)
-            .putBoolean("user_connected", true)
-            .apply()
+        store.putString("last_guid", guid)
+        store.putLong("connect_time", now)
+        store.putBoolean("user_connected", true)
         ui {
             if (!userWantsConnected) return@ui
             connectStartMs = now

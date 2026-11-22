@@ -8,8 +8,8 @@ use crypto::{resolve_effective_now_ms, verify_license_offline_with_key, ROTATED_
 use device::{get_device_identity, DeviceIdentity};
 use license::{
     activate_license_online, default_vip_max_bytes, fetch_signed_subscription,
-    is_trusted_https_endpoint, sync_daily_quota_online, DEFAULT_LICENSE_API_BASE,
-    STEALTH_VAULT_GITHUB_URL,
+    is_trusted_https_endpoint, load_bundled_vault_servers, sync_daily_quota_online,
+    DEFAULT_LICENSE_API_BASE, PUBLIC_SUBSCRIPTION_SOURCES, STEALTH_VAULT_GITHUB_URL,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -133,6 +133,33 @@ impl AppState {
             }
         }
 
+        let mut init_logs = vec![
+            "Penny VPN Desktop v2.9.8 initialized (ECDSA P-256 hardened).".to_string(),
+        ];
+
+        if persisted.servers.is_empty() {
+            if let Ok(vault_body) = load_bundled_vault_servers() {
+                let mut loaded = 0usize;
+                for (i, line) in vault_body.lines().enumerate() {
+                    if let Some(node) = parse_share_uri(line, "DEDICATED", i) {
+                        if !persisted.servers.iter().any(|s| s.raw_uri == node.raw_uri) {
+                            persisted.servers.push(node);
+                            loaded += 1;
+                        }
+                    }
+                }
+                if loaded > 0 {
+                    persisted.selected_server_id = persisted.servers.first().map(|s| s.id.clone());
+                    if let Ok(json) = serde_json::to_string_pretty(&persisted) {
+                        let _ = std::fs::write(&state_file, json);
+                    }
+                    init_logs.push(format!(
+                        "Loaded {loaded} authenticated Penny Vault node(s) from embedded bundle."
+                    ));
+                }
+            }
+        }
+
         Self {
             identity,
             state_file,
@@ -140,9 +167,7 @@ impl AppState {
             xray: Mutex::new(XrayProcessManager::new(data_dir)),
             connected_since_ms: Mutex::new(0),
             active_server_id: Mutex::new(None),
-            logs: Mutex::new(vec![
-                "Penny VPN Desktop v2.9.8 initialized (ECDSA P-256 hardened).".to_string(),
-            ]),
+            logs: Mutex::new(init_logs),
             boot_instant: Instant::now(),
             last_server_now_ms: Mutex::new(0),
             elapsed_at_sync_ms: Mutex::new(0),
@@ -347,19 +372,54 @@ async fn sync_signed_servers(
     state: State<'_, Arc<AppState>>,
     subscription_url: Option<String>,
 ) -> Result<DashboardSnapshot, String> {
-    let url = subscription_url
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| STEALTH_VAULT_GITHUB_URL.to_string());
-    let require_sig = url == STEALTH_VAULT_GITHUB_URL;
-    state.push_log("Fetching ECDSA-signed server list...");
-    let body = fetch_signed_subscription(&url, require_sig).await?;
+    let custom_url = subscription_url.and_then(|s| {
+        let t = s.trim().to_string();
+        if t.is_empty() { None } else { Some(t) }
+    });
+    let tier = state.persisted.lock().unwrap().service_tier.clone();
+
+    let (body, source_label) = if let Some(url) = custom_url {
+        let require_sig = url == STEALTH_VAULT_GITHUB_URL || url.ends_with(".bin");
+        state.push_log("Fetching custom subscription source...");
+        let data = fetch_signed_subscription(&url, require_sig).await?;
+        (data, "custom source")
+    } else if tier == "PUBLIC" {
+        state.push_log("Syncing Penny Public community mirrors...");
+        let mut combined = String::new();
+        for mirror in PUBLIC_SUBSCRIPTION_SOURCES {
+            if let Ok(chunk) = fetch_signed_subscription(mirror, false).await {
+                combined.push_str(&chunk);
+                combined.push('\n');
+            }
+        }
+        if combined.trim().is_empty() {
+            state.push_log("Public mirrors unreachable; loading embedded authenticated vault...");
+            (load_bundled_vault_servers()?, "embedded vault fallback")
+        } else {
+            (combined, "public mirrors")
+        }
+    } else {
+        state.push_log("Fetching authenticated Penny Stealth Vault...");
+        match fetch_signed_subscription(STEALTH_VAULT_GITHUB_URL, true).await {
+            Ok(data) => (data, "remote authenticated vault"),
+            Err(remote_err) => {
+                state.push_log(format!(
+                    "Remote vault sync fallback ({remote_err}); loading embedded verified vault..."
+                ));
+                (load_bundled_vault_servers()?, "embedded verified vault")
+            }
+        }
+    };
 
     let mut added = 0usize;
-    let tier = state.persisted.lock().unwrap().service_tier.clone();
+    let max_import = if tier == "PUBLIC" { 40usize } else { 100usize };
     {
         let mut p = state.persisted.lock().unwrap();
         let base_idx = p.servers.len();
         for (i, line) in body.lines().enumerate() {
+            if added >= max_import {
+                break;
+            }
             if let Some(node) = parse_share_uri(line, &tier, base_idx + i) {
                 if !p.servers.iter().any(|s| s.raw_uri == node.raw_uri) {
                     p.servers.push(node);
@@ -372,7 +432,9 @@ async fn sync_signed_servers(
         }
         state.save_persisted(&p);
     }
-    state.push_log(format!("Verified signed list and added {added} node(s)."));
+    state.push_log(format!(
+        "Sync complete from {source_label}: {added} new node(s) added."
+    ));
     Ok(state.snapshot())
 }
 
@@ -420,6 +482,15 @@ async fn connect_vpn(
 ) -> Result<DashboardSnapshot, String> {
     let (node, options, api_base, tier, local_used) = {
         let mut p = state.persisted.lock().unwrap();
+        if p.servers.is_empty() {
+            if let Ok(vault_body) = load_bundled_vault_servers() {
+                for (i, line) in vault_body.lines().enumerate() {
+                    if let Some(node) = parse_share_uri(line, &p.service_tier, i) {
+                        p.servers.push(node);
+                    }
+                }
+            }
+        }
         let target_id = server_id.or_else(|| p.selected_server_id.clone());
         let chosen = target_id
             .as_deref()
@@ -440,7 +511,7 @@ async fn connect_vpn(
     let cfg = build_xray_config(&node, &options)?;
     {
         let mut mgr = state.xray.lock().unwrap();
-        mgr.start(&cfg)?;
+        mgr.start(&cfg, options.tun_mode)?;
     }
 
     if !options.tun_mode {

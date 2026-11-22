@@ -459,6 +459,7 @@ pub async fn probe_tcp_latency(host: &str, port: u16) -> Option<u64> {
 pub struct XrayProcessManager {
     child: Option<Child>,
     config_path: PathBuf,
+    stderr_path: PathBuf,
 }
 
 impl XrayProcessManager {
@@ -467,6 +468,7 @@ impl XrayProcessManager {
         Self {
             child: None,
             config_path: app_data_dir.join("runtime_xray_config.json"),
+            stderr_path: app_data_dir.join("xray_stderr.log"),
         }
     }
 
@@ -492,7 +494,7 @@ impl XrayProcessManager {
         Err("Xray-core binary (xray.exe) not found next to application executable.".to_string())
     }
 
-    pub fn start(&mut self, config: &Value) -> Result<(), String> {
+    pub fn start(&mut self, config: &Value, tun_mode: bool) -> Result<(), String> {
         self.stop();
         let serialized = serde_json::to_string_pretty(config)
             .map_err(|e| format!("Failed to serialize Xray config: {e}"))?;
@@ -500,13 +502,17 @@ impl XrayProcessManager {
             .map_err(|e| format!("Failed to write Xray config: {e}"))?;
 
         let bin = Self::resolve_xray_binary()?;
+        let stderr_cfg = std::fs::File::create(&self.stderr_path)
+            .map(Stdio::from)
+            .unwrap_or_else(|_| Stdio::null());
+
         let mut cmd = Command::new(&bin);
         cmd.arg("run")
             .arg("-c")
             .arg(&self.config_path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(stderr_cfg);
 
         #[cfg(windows)]
         {
@@ -515,9 +521,27 @@ impl XrayProcessManager {
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let child = cmd
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("Failed to launch xray.exe: {e}"))?;
+
+        std::thread::sleep(Duration::from_millis(300));
+        if let Ok(Some(status)) = child.try_wait() {
+            let err_text = std::fs::read_to_string(&self.stderr_path).unwrap_or_default();
+            let detail = err_text
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("unknown startup error")
+                .trim();
+            if tun_mode {
+                return Err(format!(
+                    "TUN Mode requires Administrator privileges (or switch to System Proxy mode). Xray exited ({status}): {detail}"
+                ));
+            }
+            return Err(format!("Xray-core exited immediately ({status}): {detail}"));
+        }
+
         self.child = Some(child);
         Ok(())
     }

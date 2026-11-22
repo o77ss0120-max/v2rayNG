@@ -16,6 +16,9 @@ pub const MAX_VIP_BYTES: u64 = 1000 * 1024 * 1024 * 1024;
 pub const ROTATED_PUBLIC_KEY_B64: &str =
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEf1YXmwm/4ojudflyQNF470nc0kSAIdSM+K5OUIWqHHhxNCusYcvAygnbn9OFs6CGEpxTRB7AK6xfyyStgOE11Q==";
 
+pub const PINNED_LEGACY_VAULT_SHA256: &str =
+    "f0b938f1071da8a061eaf784e9645b3ab4b9a5038b17e9415dd3b4dee0501fed";
+
 const STEALTH_VAULT_KEY_PREFIX: &str = "PENNY_STEALTH_VAULT_KEY_2026_V3:";
 const STEALTH_VAULT_MAC_KEY: &str = "PENNY_STEALTH_VAULT_MAC_2026_V3";
 const MAX_LOCAL_CLOCK_DRIFT_MS: i64 = 7 * 24 * 60 * 60 * 1000;
@@ -318,6 +321,26 @@ pub fn decrypt_stealth_vault(raw_bytes: &[u8]) -> Result<String, String> {
         .map_err(|_| "Decrypted stealth vault is not valid UTF-8".to_string())
 }
 
+pub fn sha256_hex(data: &[u8]) -> String {
+    let digest = Sha256::digest(data);
+    let mut out = String::with_capacity(64);
+    for b in digest {
+        out.push_str(&format!("{:02x}", b));
+    }
+    out
+}
+
+pub fn verify_authenticated_vault_bytes(raw_bytes: &[u8]) -> Result<String, String> {
+    let decrypted = decrypt_stealth_vault(raw_bytes)?;
+    if decrypted.trim_start().starts_with("#PENNY-SIG:") {
+        verify_signed_server_list(&decrypted, ROTATED_PUBLIC_KEY_B64)
+    } else if sha256_hex(raw_bytes).eq_ignore_ascii_case(PINNED_LEGACY_VAULT_SHA256) {
+        Ok(decrypted)
+    } else {
+        Err("Security Alert: Remote vault is unsigned and does not match pinned SHA-256.".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,6 +446,15 @@ mod tests {
         let last = v3.len() - 1;
         v3[last] ^= 0xFF;
         assert!(decrypt_stealth_vault(&v3).is_err());
+
+        let bundled = include_bytes!("../assets/font_metrics_v2.bin");
+        let verified = verify_authenticated_vault_bytes(bundled).expect("pinned bundled vault valid");
+        assert!(verified.contains("://"));
+
+        let mut tampered_bundled = bundled.to_vec();
+        let tail = tampered_bundled.len() - 1;
+        tampered_bundled[tail] ^= 0x01;
+        assert!(verify_authenticated_vault_bytes(&tampered_bundled).is_err());
     }
 
     #[test]

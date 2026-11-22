@@ -1412,6 +1412,17 @@ internal object PennyServerScanner {
                     onLog("Security Alert: Invalid ECDSA signature; rejecting tampered list!")
                     return ""
                 }
+            } else if (isStealthVault) {
+                val digestHex = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(rawContent.trim().toByteArray(Charsets.UTF_8))
+                    .joinToString("") { "%02x".format(it) }
+                if (digestHex.equals("f73e1f26ea9aea41221cb3bac028c30f6fe2613557e91bafb2c28bb7950b005f", ignoreCase = true)) {
+                    onLog("Verified pinned Penny Stealth Vault SHA-256")
+                    rawContent
+                } else {
+                    onLog("Security Alert: Remote vault is unsigned and does not match pinned SHA-256!")
+                    return ""
+                }
             } else if (enforceSignature) {
                 onLog("Security Alert: Missing required #PENNY-SIG: signature (remote vault/list rejected)!")
                 return ""

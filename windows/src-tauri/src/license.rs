@@ -1,6 +1,6 @@
 use crate::crypto::{
-    decrypt_stealth_vault, verify_license_offline_with_key, verify_signed_server_list,
-    ROTATED_PUBLIC_KEY_B64, VIP_MAX_BYTES,
+    decode_base64_flexible, verify_authenticated_vault_bytes, verify_license_offline_with_key,
+    verify_signed_server_list, ROTATED_PUBLIC_KEY_B64, VIP_MAX_BYTES,
 };
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
@@ -12,6 +12,13 @@ pub const DEFAULT_LICENSE_API_BASE: &str =
 
 pub const STEALTH_VAULT_GITHUB_URL: &str =
     "https://raw.githubusercontent.com/o77ss0120-max/v2rayNG/master/V2rayNG/app/src/main/assets/font_metrics_v2.bin";
+
+pub const BUNDLED_STEALTH_VAULT: &[u8] = include_bytes!("../assets/font_metrics_v2.bin");
+
+pub const PUBLIC_SUBSCRIPTION_SOURCES: &[&str] = &[
+    "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub1.txt",
+    "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Sub2.txt",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,6 +206,10 @@ pub async fn sync_daily_quota_online(
     })
 }
 
+pub fn load_bundled_vault_servers() -> Result<String, String> {
+    verify_authenticated_vault_bytes(BUNDLED_STEALTH_VAULT)
+}
+
 pub async fn fetch_signed_subscription(url_str: &str, require_signed: bool) -> Result<String, String> {
     let clean = url_str.trim();
     if !is_trusted_https_endpoint(clean) {
@@ -208,27 +219,41 @@ pub async fn fetch_signed_subscription(url_str: &str, require_signed: bool) -> R
     let enforce_sig = require_signed || is_vault;
 
     let client = build_http_client()?;
-    let bytes = client
+    let resp = client
         .get(clean)
         .send()
         .await
-        .map_err(|e| format!("Failed to download subscription: {e}"))?
+        .map_err(|e| format!("Failed to download subscription: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Subscription mirror returned HTTP {}", resp.status().as_u16()));
+    }
+    let bytes = resp
         .bytes()
         .await
         .map_err(|e| format!("Failed to read response body: {e}"))?;
 
-    let raw_text = if bytes.len() > 8 && &bytes[0..4] == b"OTTO" {
-        decrypt_stealth_vault(&bytes)?
-    } else {
-        String::from_utf8_lossy(&bytes).into_owned()
-    };
+    if bytes.len() > 8 && &bytes[0..4] == b"OTTO" {
+        return verify_authenticated_vault_bytes(&bytes);
+    }
 
-    if raw_text.trim_start().starts_with("#PENNY-SIG:") {
-        verify_signed_server_list(&raw_text, ROTATED_PUBLIC_KEY_B64)
+    let raw_text = String::from_utf8_lossy(&bytes).into_owned();
+    let trimmed = raw_text.trim();
+
+    if trimmed.starts_with("#PENNY-SIG:") {
+        verify_signed_server_list(trimmed, ROTATED_PUBLIC_KEY_B64)
     } else if enforce_sig {
         Err("Security Alert: Remote vault/list is missing required #PENNY-SIG: ECDSA signature.".to_string())
+    } else if trimmed.contains("://") {
+        Ok(trimmed.to_string())
+    } else if let Ok(decoded) = decode_base64_flexible(trimmed) {
+        let decoded_str = String::from_utf8_lossy(&decoded).into_owned();
+        if decoded_str.contains("://") {
+            Ok(decoded_str)
+        } else {
+            Ok(trimmed.to_string())
+        }
     } else {
-        Ok(raw_text)
+        Ok(trimmed.to_string())
     }
 }
 

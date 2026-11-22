@@ -1,0 +1,37 @@
+[package]
+name = "penny-vpn"
+version = "2.9.8"
+description = "Penny VPN Desktop Client for Windows (Xray-core + ECDSA P-256 Hardened)"
+authors = ["Penny VPN Team"]
+edition = "2021"
+
+[lib]
+name = "penny_vpn_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+url = "2"
+chrono = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

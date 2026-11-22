@@ -1,0 +1,138 @@
+name: Build Penny VPN Windows
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+    paths:
+      - "windows/**"
+      - ".github/workflows/build_penny_vpn_windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  XRAY_VERSION: "v25.3.6"
+  APP_VERSION: "2.9.8"
+
+jobs:
+  build-windows:
+    name: Build Windows x64 (NSIS + Portable)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad7ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "22"
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@e4f349a16f7d2f2b4b22f0a527788a0f258a088a # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Download and SHA-256 verify official Xray-core Windows binary
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zipUrl = "https://github.com/XTLS/Xray-core/releases/download/$env:XRAY_VERSION/Xray-windows-64.zip"
+          $dgstUrl = "$zipUrl.dgst"
+          $workDir = Join-Path $env:RUNNER_TEMP "xray-dl"
+          New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+          $zipPath = Join-Path $workDir "Xray-windows-64.zip"
+          $dgstPath = Join-Path $workDir "Xray-windows-64.zip.dgst"
+
+          Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
+          Invoke-WebRequest -Uri $dgstUrl -OutFile $dgstPath
+
+          $dgstText = Get-Content -Path $dgstPath -Raw
+          if ($dgstText -match "SHA2-256=\s*([0-9a-fA-F]{64})") {
+            $expectedHash = $Matches[1].ToLowerInvariant()
+          } else {
+            throw "Could not parse SHA2-256 digest from Xray-windows-64.zip.dgst"
+          }
+
+          $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "Xray SHA-256 mismatch! Expected $expectedHash, got $actualHash"
+          }
+          Write-Host "Verified Xray-core $env:XRAY_VERSION SHA-256: $actualHash"
+
+          $extractDir = Join-Path $workDir "extracted"
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+          $binDir = "windows/src-tauri/binaries"
+          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+          Copy-Item -Path (Join-Path $extractDir "xray.exe") -Destination (Join-Path $binDir "xray-x86_64-pc-windows-msvc.exe") -Force
+
+      - name: Install frontend dependencies
+        working-directory: windows
+        run: npm install
+
+      - name: Generate multi-resolution Windows icons from Android launcher icon
+        working-directory: windows
+        run: |
+          if (Test-Path "../V2rayNG/app/src/main/ic_launcher-web.png") {
+            npx tauri icon "../V2rayNG/app/src/main/ic_launcher-web.png"
+          }
+
+      - name: Run Rust crypto & security unit tests
+        working-directory: windows
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Typecheck and build React frontend
+        working-directory: windows
+        run: npm run build
+
+      - name: Build Tauri NSIS installer
+        working-directory: windows
+        run: npx tauri build --bundles nsis
+
+      - name: Package Portable ZIP and SHA256SUMS
+        run: |
+          $ErrorActionPreference = "Stop"
+          $outDir = "windows/dist-release"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
+          $nsisFiles = Get-ChildItem -Path "windows/src-tauri/target/release/bundle/nsis" -Filter "*.exe"
+          foreach ($f in $nsisFiles) {
+            Copy-Item -Path $f.FullName -Destination $outDir -Force
+          }
+
+          $portableDir = Join-Path $env:RUNNER_TEMP "penny-vpn-portable"
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          Copy-Item -Path "windows/src-tauri/target/release/penny-vpn.exe" -Destination (Join-Path $portableDir "PennyVPN.exe") -Force
+          Copy-Item -Path "windows/src-tauri/binaries/xray-x86_64-pc-windows-msvc.exe" -Destination (Join-Path $portableDir "xray.exe") -Force
+
+          $portableZip = Join-Path $outDir "Penny-VPN-Windows-Portable-v$env:APP_VERSION.zip"
+          Compress-Archive -Path (Join-Path $portableDir "*") -DestinationPath $portableZip -Force
+
+          $checksumLines = @()
+          Get-ChildItem -Path $outDir -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $checksumLines += "$hash  $($_.Name)"
+          }
+          $checksumLines | Set-Content -Path (Join-Path $outDir "SHA256SUMS-windows.txt") -Encoding UTF8
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: penny-vpn-windows-x64
+          path: windows/dist-release/*
+
+      - name: Publish to GitHub Release (on tag or manual dispatch)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa1b2ef237fc2 # v2.2.1
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}-windows', env.APP_VERSION) }}
+          name: Penny VPN Windows v${{ env.APP_VERSION }}
+          draft: false
+          prerelease: false
+          files: windows/dist-release/*
